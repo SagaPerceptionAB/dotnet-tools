@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- Egenskaper för systemkartan i appen, se README.md i paketet. Standardvärden som beror på projektet sätts i .targets,
+       eftersom projektfilen inte hunnit läsas när den här filen läses. -->
+  <PropertyGroup>
+    <SystemMapFailOnError Condition="'$(SystemMapFailOnError)' == ''">false</SystemMapFailOnError>
+    <SystemMapToolPath Condition="'$(SystemMapToolPath)' == ''">$(MSBuildThisFileDirectory)../tools/net10.0/any/SystemMap.Cli.dll</SystemMapToolPath>
+  </PropertyGroup>
+
+</Project>

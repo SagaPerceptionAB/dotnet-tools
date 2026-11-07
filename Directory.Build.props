@@ -1,0 +1,42 @@
+<Project>
+
+  <!-- Gemensamma inställningar för alla projekt i repot. -->
+  <Import Project="$(MSBuildThisFileDirectory)eng/Versions.props" />
+
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!-- Paketmetadata. Paketprojekten sätter IsPackable=true, PackageId, Version (från eng/Versions.props), Description och PackageTags. README.md i projektkatalogen paketeras
+       av Directory.Build.targets. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <Authors>SagaPerception</Authors>
+    <Copyright>Copyright (c) 2026 SagaPerception AB</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/SagaPerceptionAB/dotnet-tools</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/SagaPerceptionAB/dotnet-tools</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- SourceLink ingår i .NET-SDK:n. PublishRepositoryUrl och EmbedUntrackedSources lägger käll-URL:en och commit-hashen i paketet,
+       och symbolpaketen (snupkg) gör att man kan kliva in i källkoden vid felsökning. Utan commit eller remote (en färsk klon som
+       ännu inte har pushats) fungerar bygget som vanligt, men paketet får ingen commit-hash; paket som ges ut byggs därför bara av release.yml. -->
+  <PropertyGroup>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Deterministiska sökvägar i symbolerna (krävs för att debuggern ska hitta rätt källa), men bara i CI, där bygget alltid sker från en ren checkout. -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

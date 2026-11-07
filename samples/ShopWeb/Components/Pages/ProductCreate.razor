@@ -1,0 +1,73 @@
+@page "/products/create"
+@inject ShopStore Store
+@inject ShopApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Ny produkt</PageTitle>
+
+<h1>Ny produkt</h1>
+
+<EditForm Model="Input" FormName="CreateProduct" OnValidSubmit="Save">
+    <DataAnnotationsValidator />
+
+    <div>
+        <label for="name">Namn</label>
+        <InputText id="name" @bind-Value="Input.Name" />
+        <ValidationMessage For="() => Input.Name" />
+    </div>
+    <div>
+        <label for="sku">Artikelkod</label>
+        <InputText id="sku" @bind-Value="Input.Sku" />
+        <ValidationMessage For="() => Input.Sku" />
+    </div>
+    <div>
+        <label for="price">Pris</label>
+        <InputNumber id="price" @bind-Value="Input.Price" />
+        <ValidationMessage For="() => Input.Price" />
+    </div>
+
+    <button type="submit">Spara produkt</button>
+</EditForm>
+
+@if (_error is not null)
+{
+    <p role="alert" class="error">@_error</p>
+}
+
+<p><a href="/products">Avbryt</a></p>
+
+@code {
+    private ProductInput? _input;
+
+    [SupplyParameterFromForm]
+    private ProductInput Input { get => _input ??= new(); set => _input = value; }
+
+    private string? _error;
+
+    private async Task Save()
+    {
+        // Produkten sparas i ShopApi. Misslyckas anropet visas ett felmeddelande och inget läggs till.
+        var result = await Api.CreateProductAsync(Input.Name, Input.Sku, Input.Price);
+        if (!result.Ok)
+        {
+            _error = result.Error;
+            return;
+        }
+        var product = Store.AddProduct(Input.Name, Input.Sku, Input.Price);
+        Navigation.NavigateTo($"/products/{product.Id}");
+    }
+
+    public sealed class ProductInput
+    {
+        [Required(ErrorMessage = "Namn måste fyllas i.")]
+        [StringLength(50, MinimumLength = 2, ErrorMessage = "Namnet ska vara mellan 2 och 50 tecken.")]
+        public string Name { get; set; } = "";
+
+        [Required(ErrorMessage = "Artikelkod måste fyllas i.")]
+        [RegularExpression("^[A-Z]{3}-[0-9]{4}$", ErrorMessage = "Artikelkoden ska se ut som ABC-1234.")]
+        public string Sku { get; set; } = "";
+
+        [Range(1, 100000, ErrorMessage = "Priset ska vara mellan 1 och 100000.")]
+        public decimal Price { get; set; }
+    }
+}

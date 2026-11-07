@@ -1,0 +1,19 @@
+[
+  {
+    "name": "getOrder_valid",
+    "operationId": "getOrder",
+    "method": "GET",
+    "path": "/orders/${createOrder.id}",
+    "kind": "valid",
+    "setup": [
+      "createCustomer",
+      "createProduct",
+      "createOrder"
+    ],
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      200
+    ]
+  }
+]

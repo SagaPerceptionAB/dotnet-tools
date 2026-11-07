@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\CommandLine\CommandLine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- uitestgen som dotnet-verktyg: hittar vyerna i en app och skriver Playwright-tester (NUnit) för dem. -->
+  <ItemGroup>
+    <ProjectReference Include="..\UiTestGen\UiTestGen.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UiTestGen.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>UiTestGen.Cli</RootNamespace>
+    <RollForward>Major</RollForward>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>uitestgen</ToolCommandName>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.UiTestGen.Cli</PackageId>
+    <Version>$(SagaPerceptionUiTestGenVersion)</Version>
+    <Description>Hittar vyerna i en webbapp (Blazor, Razor Pages, MVC, React, Angular, Vue) och skriver Playwright-tester i C# (NUnit) för dem: smoke, formulär, navigering och skärmdumpar.</Description>
+    <PackageTags>playwright;ui-tests;blazor;razor;testgen;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Playwright-drivrutinen (.playwright/) följer med i verktyget och innehåller .ps1-skript som NuGet inte känner igen
+         (NU5111). De körs aldrig av NuGet; playwright.ps1 används av användaren för att installera Chromium. -->
+    <NoWarn>$(NoWarn);NU5111</NoWarn>
+  </PropertyGroup>
+
+</Project>

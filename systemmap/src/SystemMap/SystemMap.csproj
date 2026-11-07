@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Systemkartan: läser källkoden till ett system (Roslyn) och följer anropen från controllers genom projekten ut till
+       integrationerna. Fristående: vet inget om programmen som använder biblioteket.
+       Analys/  läser solutionen och följer anropen.
+       Modell/  kartan och översikten (varje del och integration en gång).
+       Spec/    anropen i en OpenAPI-spec, för att koppla kartan till specen.
+       Utdata/  kartan som text, JSON, Mermaid och webbsida.
+       Web/     kartan i webbläsaren (systemmap.js, systemmap.css, Cytoscape.js och fcose). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\CommandLine\CommandLine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Kartan i webbläsaren, se CodeMapAssets. Licenserna packas av verktygen som använder kartan. -->
+    <EmbeddedResource Include="Web\*.js;Web\*.css;Web\*.html;Web\lib\*.js" LogicalName="SystemMap.Web.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SystemMap.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,34 @@
+# Exempel på manuellt scenario. Utelämnade body-fält fylls från motsvarande
+# genererade giltiga scenario (scenarios/generated/*.json).
+name: Stamkund lägger en order
+steps:
+  - call: createCustomer
+    body:
+      name: Stina Stamkund        # övriga fält (email, phone ...) genereras
+    save: kund                    # sparar svaret under alias "kund"
+    expect:
+      status: 201
+
+  - call: createProduct
+    save: produkt
+    expect:
+      status: 201
+
+  - call: createOrder
+    body:
+      customerId: ${kund.id}      # JSON-typen behålls (tal förblir tal)
+      productId: ${produkt.id}
+      quantity: 5
+    save: order
+    expect:
+      status: 201
+      body:
+        quantity: 5
+
+  - call: getOrder
+    body:
+      id: ${order.id}
+    expect:
+      status: 200
+      body:
+        quantity: 5

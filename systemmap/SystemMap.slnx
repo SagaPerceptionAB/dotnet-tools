@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/shared/">
+    <Project Path="../shared/CommandLine/CommandLine.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/SystemMap/SystemMap.csproj" />
+    <Project Path="src/SystemMap.AspNetCore/SystemMap.AspNetCore.csproj" />
+    <Project Path="src/SystemMap.Cli/SystemMap.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SystemMap.Tests/SystemMap.Tests.csproj" />
+  </Folder>
+</Solution>

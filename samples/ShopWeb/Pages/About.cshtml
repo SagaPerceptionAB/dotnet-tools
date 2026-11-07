@@ -1,0 +1,41 @@
+@page "/about"
+@model AboutModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Om oss";
+}
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8" />
+    <title>@ViewData["Title"]</title>
+</head>
+<body>
+    <h1>Kontakta oss</h1>
+    <p><a href="/">Till startsidan</a></p>
+
+    @if (Model.Sent)
+    {
+        <p>Tack, vi hör av oss.</p>
+    }
+
+    <form method="post">
+        <div>
+            <label asp-for="Input.Name"></label>
+            <input asp-for="Input.Name" />
+            <span asp-validation-for="Input.Name"></span>
+        </div>
+        <div>
+            <label asp-for="Input.Email"></label>
+            <input asp-for="Input.Email" />
+            <span asp-validation-for="Input.Email"></span>
+        </div>
+        <div>
+            <label asp-for="Input.Message"></label>
+            <textarea asp-for="Input.Message"></textarea>
+            <span asp-validation-for="Input.Message"></span>
+        </div>
+        <button type="submit">Skicka meddelande</button>
+    </form>
+</body>
+</html>

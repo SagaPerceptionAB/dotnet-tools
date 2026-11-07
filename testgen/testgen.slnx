@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/shared/">
+    <Project Path="../shared/CommandLine/CommandLine.csproj" />
+    <Project Path="../systemmap/src/SystemMap/SystemMap.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/TestGen.Scenarios/TestGen.Scenarios.csproj" />
+    <Project Path="src/TestGen.Cli/TestGen.Cli.csproj" />
+    <Project Path="src/TestGen.Core/TestGen.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Api.Tests/Api.Tests.csproj" />
+    <Project Path="tests/TestGen.Tests/TestGen.Tests.csproj" />
+  </Folder>
+</Solution>

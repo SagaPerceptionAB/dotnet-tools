@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Exemplets integrationer: databas (EF Core + Dapper mot SQLite i minnet), Betaltjänst (HTTP), Lagersystem (WCF),
+       kön order-lagd (Service Bus), kvitton (Blob) och e-post (SMTP). Lokalt läge är standard, se InfrastructureRegistration. -->
+  <ItemGroup>
+    <ProjectReference Include="..\ShopApplication\ShopApplication.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" />
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="System.ServiceModel.Http" />
+    <PackageReference Include="System.ServiceModel.Primitives" />
+  </ItemGroup>
+
+</Project>

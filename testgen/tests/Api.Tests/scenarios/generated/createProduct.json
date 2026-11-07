@@ -1,0 +1,198 @@
+[
+  {
+    "name": "createProduct_missing_name",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "price": 80520.9,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_missing_price",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_name_too_long",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "price": 80520.9,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_name_too_short",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "",
+      "price": 80520.9,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_name_wrong_type",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": {},
+      "price": 80520.9,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_price_above_max",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "price": 100001,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_price_below_min",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "price": -0.99,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_price_wrong_type",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "price": "not-a-number",
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_sku_pattern_mismatch",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "price": 80520.9,
+      "sku": "!TI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_sku_wrong_type",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "price": 80520.9,
+      "sku": {}
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createProduct_valid",
+    "operationId": "createProduct",
+    "method": "POST",
+    "path": "/products",
+    "kind": "valid",
+    "setup": [],
+    "body": {
+      "name": "Madeleine Magnusson",
+      "price": 80520.9,
+      "sku": "XTI-6293"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      201
+    ]
+  }
+]

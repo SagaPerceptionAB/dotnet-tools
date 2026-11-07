@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Det kommandoraderna i testgen och systemkarta har gemensamt: flaggläsningen, felen på enkel svenska och ramen runt
+       Main. Inget här vet något om testgen eller systemkartan. -->
+</Project>

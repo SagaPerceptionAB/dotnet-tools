@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Systemkartan som en sida i en ASP.NET Core-app, som Swagger UI. Läser bara filer som bygget lagt i appens utdata
+       och refererar därför varken SystemMap eller Roslyn. Paketet bär också MSBuild-målen (build/) som ritar kartan och
+       verktyget (tools/) som målen kör. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Bara för att verktyget ska byggas före paketet: det blir inget beroende och ingen referens, se PublishSystemMapTool. -->
+    <ProjectReference Include="..\SystemMap.Cli\SystemMap.Cli.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="build\*" Pack="true" PackagePath="build\" />
+    <None Include="..\SystemMap\Web\lib\*.LICENSE.txt" Pack="true" PackagePath="\licenses\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SystemMap.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PublishSystemMapTool</TargetsForTfmSpecificContentInPackage>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.SystemMap.AspNetCore</PackageId>
+    <Version>$(SagaPerceptionSystemMapVersion)</Version>
+    <Description>Systemkartan som en sida i en ASP.NET Core-app, som Swagger UI: app.MapSystemMap(). Kartan ritas när appen byggs i Release och när sidan öppnas i Development. Visar vägen från varje anrop genom projekten ut till databaser, andra system, köer, lagring och e-post.</Description>
+    <PackageTags>systemkarta;architecture;diagram;aspnetcore;roslyn</PackageTags>
+  </PropertyGroup>
+
+  <!-- Verktyget som bygget kör (build/*.targets) ligger i paketet under tools/net10.0/any/. Det måste vara publiceringsutdata,
+       inte bin: bin saknar beroenden och BuildHost-mapparna som Roslyn behöver. -->
+  <Target Name="PublishSystemMapTool">
+    <PropertyGroup>
+      <_ToolPublishDir>$(MSBuildProjectDirectory)/$(IntermediateOutputPath)tool/</_ToolPublishDir>
+    </PropertyGroup>
+    <RemoveDir Directories="$(_ToolPublishDir)" />
+    <MSBuild Projects="..\SystemMap.Cli\SystemMap.Cli.csproj" Targets="Publish" Properties="Configuration=$(Configuration);PublishDir=$(_ToolPublishDir)" />
+    <ItemGroup>
+      <_ToolFile Include="$(_ToolPublishDir)**" />
+      <TfmSpecificPackageFile Include="@(_ToolFile)" PackagePath="tools/net10.0/any/%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

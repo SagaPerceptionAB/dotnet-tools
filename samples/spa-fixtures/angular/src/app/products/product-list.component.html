@@ -1,0 +1,7 @@
+<h1>Produkter</h1>
+<a routerLink="/products/new">Ny produkt</a>
+<ul>
+  <li *ngFor="let p of products">
+    <a [routerLink]="['/products', p.id]">{{ p.name }}</a>
+  </li>
+</ul>

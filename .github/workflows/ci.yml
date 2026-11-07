@@ -1,0 +1,92 @@
+# Bygger och testar allt i repot. Playwright-webbläsare och Docker behövs inte (se kommentarerna vid testgen och uitestgen).
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  test:
+    name: test ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: testgen
+            solution: testgen/testgen.slnx
+          - name: systemmap
+            solution: systemmap/SystemMap.slnx
+          - name: uitestgen
+            solution: uitestgen/UiTestGen.slnx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ matrix.name }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-${{ matrix.name }}-
+      # testgen/tests/Api.Tests (Playwright + Testcontainers/SQL Server) hoppar över sig själva (Assert.Ignore) när
+      # TESTGEN_API_PROJECT inte är satt. Vi sätter den inte, så de kräver varken webbläsare eller Docker och behöver inget filter.
+      # uitestgens sonderingstester (uitestgen/tests/UiTestGen.Tests/ProbeTests.cs) öppnar sidor i Chromium. De hoppar över sig själva
+      # (IgnoreException) när ingen Chromium hittas via UITEST_BROWSER_PATH eller i standardsökvägen, så de kräver ingen webbläsare här.
+      # Testerna som uitestgen genererar körs inte av CI; de kör man mot den egna appen.
+      - name: Test
+        run: dotnet test ${{ matrix.solution }} --logger "trx;LogFileName=results.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testresultat-${{ matrix.name }}
+          path: TestResults
+          if-no-files-found: ignore
+
+  # Bevisar att paketen går att installera och starta, inte bara att koden bygger: paketerar, installerar verktygen från en lokal källa
+  # och kör --help (exitkod 0 för alla tre). Fångar t.ex. saknade filer i paketet eller fel ToolCommandName.
+  pack-smoke:
+    name: paket (installera och starta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-pack-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-pack-
+      - name: Paketera
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore uitestgen/src/UiTestGen.Cli; do
+            dotnet pack "$p" -c Release -o "$RUNNER_TEMP/feed"
+          done
+          ls -l "$RUNNER_TEMP/feed"
+      - name: Installera och starta verktygen
+        shell: bash
+        run: |
+          set -euo pipefail
+          for t in testgen:SagaPerception.TestGen.Cli systemmap:SagaPerception.SystemMap.Cli uitestgen:SagaPerception.UiTestGen.Cli; do
+            cmd="${t%%:*}"
+            id="${t#*:}"
+            dotnet tool install "$id" --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/feed" --prerelease
+            "$RUNNER_TEMP/tools/$cmd" --help
+          done

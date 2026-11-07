@@ -1,0 +1,50 @@
+/* Systemkartan (systemmap.js): blått = systemets egen kod, grönt = utanför systemet (integrationer). Typen står alltid i text.
+   Används av den fristående sidan (page.html) och av sidor som bäddar in kartan. Kartan fyller ytan sidan ger den: sidan sätter
+   höjden med --map-height. Kartan klarar sig själv: sidan kan ändra färgerna med --blue, --blue-dark, --line, --muted,
+   --grey-bg, --ctl, --text och --focus, men behöver inte. */
+.systemmap [hidden] { display: none !important; }
+.systemmap button { font: inherit; cursor: pointer; border-radius: 8px; min-height: 40px; padding: 6px 14px; border: 1px solid var(--ctl, #6b7a8f);
+  background: #fff; color: var(--text, #1b2430); }
+.systemmap button:hover:not(:disabled):not([aria-disabled=true]) { background: #f0f4f9; }
+.systemmap button[aria-disabled=true] { cursor: default; background: var(--grey-bg, #eef1f5); color: #5b6677; border-color: #b4bdc9; }
+.systemmap :focus-visible { outline: 3px solid var(--focus, #0b57d0); outline-offset: 2px; }
+.map-sr { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.map-wrap { position: relative; display: flex; flex-direction: column; height: var(--map-height, 100vh); }
+.systemmap .map-view { flex: 1; min-height: 240px; overflow: hidden; border: 1px solid var(--line, #d9e0e8); background: #fcfcfb; }
+
+/* Verktygsraden ovanför kartan: anrop, riktning och nivå, och längst till höger exporten. */
+.map-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding: 6px 8px;
+  background: #fcfcfb; border: 1px solid var(--line, #d9e0e8); border-bottom: 0; }
+.map-field { display: inline-flex; align-items: center; gap: 8px; }
+
+.map-label { font-size: 13px; font-weight: 600; color: var(--muted, #536071); }
+.map-entry { display: block; width: 14em; max-width: 100%; min-height: 44px; font: inherit; padding: 6px 10px; border: 1px solid var(--ctl, #6b7a8f);
+  border-radius: 8px; background: #fff; color: var(--text, #1b2430); cursor: pointer; }
+.segmented { display: inline-flex; }
+.systemmap .segmented button { min-height: 44px; }
+.segmented button { border-radius: 0; margin-left: -1px; }
+.segmented button:first-child { margin-left: 0; border-radius: 8px 0 0 8px; }
+.segmented button:last-child { border-radius: 0 8px 8px 0; }
+.segmented button[aria-pressed=true] { background: var(--blue, #1d4ed8); border-color: var(--blue, #1d4ed8); color: #fff; font-weight: 600; position: relative; z-index: 1; }
+.segmented button[aria-pressed=true]:hover:not(:disabled):not([aria-disabled=true]) { background: var(--blue-dark, #1e40af); }
+/* Högerkanten: Exportera, och skillnader och varningar. Listorna fälls ut över kartan, under raden. */
+#map-export { margin-left: auto; }
+.systemmap #map-mermaid { width: 44px; height: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.map-extra summary { cursor: pointer; color: var(--blue, #1d4ed8); font-weight: 600; padding: 10px 0; }
+.map-extra ul { position: absolute; top: 100%; right: 0; z-index: 6; width: 360px; max-width: 100%; max-height: calc(var(--map-height, 100vh) - 90px); overflow: auto;
+  margin: 4px 0 0; padding: 10px 12px 10px 32px; background: #fff; border: 1px solid var(--line, #d9e0e8); border-radius: 12px; box-shadow: 0 8px 28px rgba(15, 23, 42, .16); font-size: 14px; }
+.map-extra li { margin: 3px 0; word-break: break-word; }
+
+.map-card { position: absolute; z-index: 5; width: max-content; max-width: min(380px, 80%); background: #fff; border: 1px solid var(--line, #d9e0e8);
+  border-radius: 12px; box-shadow: 0 8px 28px rgba(15, 23, 42, .16); padding: 10px 14px 12px; font-size: 14px; }
+.map-card h3 { margin: 0 28px 6px 0; font-size: 15px; }
+.map-card p { margin: 3px 0; word-break: break-word; }
+.map-card .label { font-weight: 600; }
+.map-card .close { position: absolute; top: 4px; right: 4px; min-height: 0; padding: 2px 9px; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted, #536071); }
+
+/* Stegen för ett anrop, där en sida visar dem (map.steps()). */
+.map-steps, .map-steps ol { margin: 4px 0; padding-left: 22px; }
+.map-steps li { margin: 4px 0; word-break: break-word; }
+.map-steps .external { color: #1f5c1f; }
+.map-steps .data { color: var(--muted, #536071); font-size: 14px; }

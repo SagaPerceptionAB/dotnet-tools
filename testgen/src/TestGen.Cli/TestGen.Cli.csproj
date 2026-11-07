@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Scenarios\TestGen.Scenarios.csproj" />
+    <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
+    <!-- Systemkartan (testgen map, kartan i testgen ui och vägen i testkorten). Beroendet går bara åt det här hållet:
+         systemkartan vet inget om testgen. -->
+    <ProjectReference Include="..\..\..\systemmap\src\SystemMap\SystemMap.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Ui\index.html" LogicalName="TestGen.Ui.index.html" />
+    <!-- Cytoscape.js och layouten fcose (MIT) ritar systemkartan. De ligger i systemkartan och följer med i programmet,
+         så att sidan inte hämtar något utifrån. -->
+    <None Include="..\..\..\systemmap\src\SystemMap\Web\lib\*.LICENSE.txt" Pack="true" PackagePath="\licenses\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TestGen.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>testgen</AssemblyName>
+    <RootNamespace>TestGen.Cli</RootNamespace>
+    <!-- Installeras som dotnet-verktyg, se README (Installera). Paket-id:t är inte "testgen": det namnet används redan av ett annat verktyg på nuget.org. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>testgen</ToolCommandName>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.TestGen.Cli</PackageId>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+    <Description>Testar ett API utifrån dess OpenAPI-spec (ingen AI vid körning, samma indata ger samma resultat).</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+</Project>

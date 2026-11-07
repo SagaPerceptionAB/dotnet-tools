@@ -1,0 +1,37 @@
+<Solution>
+  <Folder Name="/eng/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="eng/Versions.props" />
+  </Folder>
+  <Folder Name="/tools/shared/">
+    <Project Path="shared/CommandLine/CommandLine.csproj" />
+  </Folder>
+  <Folder Name="/tools/systemmap/">
+    <Project Path="systemmap/src/SystemMap/SystemMap.csproj" />
+    <Project Path="systemmap/src/SystemMap.AspNetCore/SystemMap.AspNetCore.csproj" />
+    <Project Path="systemmap/src/SystemMap.Cli/SystemMap.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tools/testgen/">
+    <Project Path="testgen/src/TestGen.Scenarios/TestGen.Scenarios.csproj" />
+    <Project Path="testgen/src/TestGen.Cli/TestGen.Cli.csproj" />
+    <Project Path="testgen/src/TestGen.Core/TestGen.Core.csproj" />
+  </Folder>
+  <Folder Name="/tools/uitestgen/">
+    <Project Path="uitestgen/src/UiTestGen/UiTestGen.csproj" />
+    <Project Path="uitestgen/src/UiTestGen.Cli/UiTestGen.Cli.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ShopApi/ShopApi.csproj" />
+    <Project Path="samples/ShopApplication/ShopApplication.csproj" />
+    <Project Path="samples/ShopInfrastructure/ShopInfrastructure.csproj" />
+    <Project Path="samples/ShopWeb/ShopWeb.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="systemmap/tests/SystemMap.Tests/SystemMap.Tests.csproj" />
+    <Project Path="testgen/tests/Api.Tests/Api.Tests.csproj" />
+    <Project Path="testgen/tests/TestGen.Tests/TestGen.Tests.csproj" />
+    <Project Path="uitestgen/tests/UiTestGen.Tests/UiTestGen.Tests.csproj" />
+  </Folder>
+</Solution>

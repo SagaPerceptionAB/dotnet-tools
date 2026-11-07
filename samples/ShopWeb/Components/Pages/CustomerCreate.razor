@@ -1,0 +1,76 @@
+@page "/customers/create"
+@inject ShopStore Store
+@inject ShopApiClient Api
+
+<PageTitle>Ny kund</PageTitle>
+
+<h1>Ny kund</h1>
+
+<EditForm Model="Input" FormName="CreateCustomer" OnValidSubmit="Save">
+    <DataAnnotationsValidator />
+
+    <div>
+        <label for="customer-name">Namn</label>
+        <InputText id="customer-name" @bind-Value="Input.Name" />
+        <ValidationMessage For="() => Input.Name" />
+    </div>
+    <div>
+        <label for="customer-email">E-post</label>
+        <InputText id="customer-email" type="email" @bind-Value="Input.Email" />
+        <ValidationMessage For="() => Input.Email" />
+    </div>
+    <div>
+        <label for="customer-phone">Telefon</label>
+        <InputText id="customer-phone" @bind-Value="Input.Phone" />
+        <ValidationMessage For="() => Input.Phone" />
+    </div>
+
+    <button type="submit">Spara kund</button>
+</EditForm>
+
+@if (_error is not null)
+{
+    <p role="alert" class="error">@_error</p>
+}
+
+@if (_saved)
+{
+    <p>Kunden är sparad.</p>
+}
+
+@code {
+    private bool _saved;
+
+    private CustomerInput? _input;
+
+    [SupplyParameterFromForm]
+    private CustomerInput Input { get => _input ??= new(); set => _input = value; }
+
+    private string? _error;
+
+    private async Task Save()
+    {
+        // Kunden sparas i ShopApi. Misslyckas anropet visas ett felmeddelande och inget läggs till.
+        var result = await Api.CreateCustomerAsync(Input.Name, Input.Email, Input.Phone);
+        if (!result.Ok)
+        {
+            _error = result.Error;
+            return;
+        }
+        Store.AddCustomer(Input.Name, Input.Email, Input.Phone);
+        _saved = true;
+    }
+
+    public sealed class CustomerInput
+    {
+        [Required(ErrorMessage = "Namn måste fyllas i.")]
+        public string Name { get; set; } = "";
+
+        [Required(ErrorMessage = "E-post måste fyllas i.")]
+        [EmailAddress(ErrorMessage = "E-postadressen är ogiltig.")]
+        public string Email { get; set; } = "";
+
+        [Phone(ErrorMessage = "Telefonnumret är ogiltigt.")]
+        public string Phone { get; set; } = "";
+    }
+}

@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "detail": "Bygger testgen.slnx (testgen och testerna)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/testgen/testgen.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "build ShopApi",
+      "detail": "Bygger exempel-API:et (ingår inte i testgen.slnx)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/samples/ShopApi/ShopApi.csproj", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
+      "label": "test",
+      "detail": "Kör testerna i testgen.slnx (Api.Tests hoppas över utan Docker och TESTGEN_API_PROJECT)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/testgen/testgen.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "build systemmap",
+      "detail": "Bygger SystemMap.slnx (biblioteket, verktyget och testerna)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/systemmap/SystemMap.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
+      "label": "test systemmap",
+      "detail": "Kör testerna i SystemMap.slnx",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/systemmap/SystemMap.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "build all",
+      "detail": "Bygger SagaPerception.Tools.slnx (alla projekt)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/SagaPerception.Tools.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- README.md i projektkatalogen följer med i paketet. SystemMap.Cli och TestGen.Cli sätter PackageReadmeFile själva (de paketerar rotens README).
+       Ligger här och inte i Directory.Build.props eftersom IsPackable sätts i projektfilen, efter att props lästs. -->
+  <PropertyGroup Condition="'$(IsPackable)' == 'true' and '$(PackageReadmeFile)' == '' and Exists('$(MSBuildProjectDirectory)/README.md')">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(PackageReadmeFile)' == 'README.md' and Exists('$(MSBuildProjectDirectory)/README.md') and '$(IsPackable)' == 'true'">
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

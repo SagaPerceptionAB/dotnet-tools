@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Exempel-API för att prova testgen utan Docker/databas. Ingår inte i testgen.slnx.
+       Hela exemplet (ShopApi, ShopApplication och ShopInfrastructure) finns i samples/Shop.slnx. -->
+  <ItemGroup>
+    <ProjectReference Include="..\ShopApplication\ShopApplication.csproj" />
+    <ProjectReference Include="..\ShopInfrastructure\ShopInfrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

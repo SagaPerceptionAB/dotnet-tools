@@ -1,0 +1,38 @@
+# testgen i GitHub Actions. Se README, avsnittet "Köra i CI". Byt API-adress och hemlighet.
+name: api-tests
+on: [pull_request, workflow_dispatch]
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write                        # test-reporter skriver resultatet som en check
+    steps:
+      - uses: actions/checkout@v4          # ditt repo (t.ex. Excel-filen med egna tester)
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Installera testgen
+        run: dotnet tool install --global SagaPerception.TestGen.Cli --prerelease   # eller dotnet tool restore med ett verktygsmanifest
+      - name: Kör API-tester
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          testgen run \
+              --spec https://test.example.se/openapi.json --api https://test.example.se \
+              --token '${env:API_TOKEN}' --seed ci --max-time 600 \
+              --report out/testgen.json --report out/testgen.junit.xml --report out/testgen.html \
+            || { rc=$?; [ $rc = 3 ] || [ $rc = 4 ] || exit $rc; }   # 3 och 4 (miljö/osäkert svar) gör inte bygget rött
+      - uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: testgen
+          path: out/testgen.junit.xml
+          reporter: java-junit
+          fail-on-error: false
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testgen-rapport
+          path: out/

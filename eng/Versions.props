@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- Enda källan till paketens versioner. Höj versionen här i en PR, merga och tagga sedan (se README, "Släppa en ny version").
+       Varje paketprojekt läser sin version härifrån och release.yml kräver att taggen är samma version. -->
+  <PropertyGroup>
+    <!-- Gäller både SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore. -->
+    <SagaPerceptionSystemMapVersion>0.1.0-preview.1</SagaPerceptionSystemMapVersion>
+    <SagaPerceptionTestGenVersion>0.1.0-preview.1</SagaPerceptionTestGenVersion>
+    <SagaPerceptionUiTestGenVersion>0.1.0-preview.1</SagaPerceptionUiTestGenVersion>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+@page "/products"
+@inject ShopStore Store
+
+<PageTitle>Produkter</PageTitle>
+
+<h1>Produkter</h1>
+
+<ul>
+    @foreach (var p in Store.Products)
+    {
+        <li><a href="/products/@p.Id">@p.Name</a></li>
+    }
+</ul>
+
+<p><a href="/products/create">Ny produkt</a></p>

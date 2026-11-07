@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Scenarios\TestGen.Scenarios.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Bogus" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>

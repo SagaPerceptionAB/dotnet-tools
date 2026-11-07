@@ -1,0 +1,46 @@
+# testgen i Azure DevOps. Se README, avsnittet "Köra i CI". Byt API-adress och hemlighetsgruppen.
+trigger: none
+pr: [ main ]
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: api-test-secrets          # innehåller API_TOKEN som hemlig variabel
+
+steps:
+  - checkout: self                   # ditt repo (t.ex. Excel-filen med egna tester)
+  - task: UseDotNet@2
+    inputs:
+      packageType: sdk
+      version: 10.0.x
+  - bash: |
+      dotnet tool install --global SagaPerception.TestGen.Cli --prerelease   # eller dotnet tool restore med ett verktygsmanifest
+      echo "##vso[task.prependpath]$HOME/.dotnet/tools"
+    displayName: Installera testgen
+  - bash: |
+      testgen run \
+          --spec https://test.example.se/openapi.json --api https://test.example.se \
+          --token '${env:API_TOKEN}' --seed ci --max-time 600 \
+          --report out/testgen.json --report out/testgen.junit.xml --report out/testgen.html
+      rc=$?
+      # 3 och 4 (miljö/osäkert svar) ger gult, inte rött; 1 och 2 ger rött
+      case $rc in
+        0) ;;
+        3|4) echo "##vso[task.complete result=SucceededWithIssues;]" ;;
+        *) exit $rc ;;
+      esac
+    displayName: Kör API-tester
+    env:
+      API_TOKEN: $(API_TOKEN)        # hemliga variabler måste mappas hit
+  - task: PublishTestResults@2
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: out/testgen.junit.xml
+      failTaskOnFailedTests: false
+  - task: PublishBuildArtifacts@1
+    condition: succeededOrFailed()
+    inputs:
+      PathtoPublish: out
+      ArtifactName: testgen-rapport

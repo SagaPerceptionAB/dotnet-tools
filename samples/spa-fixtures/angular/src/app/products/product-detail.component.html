@@ -1,0 +1,3 @@
+<h1>{{ (product$ | async)?.name }}</h1>
+<a [routerLink]="['/products', id, 'edit']">Redigera</a>
+<a routerLink="/products">Tillbaka</a>

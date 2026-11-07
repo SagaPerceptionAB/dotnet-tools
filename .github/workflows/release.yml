@@ -1,0 +1,112 @@
+# Ger ut paket till nuget.org när en tagg skjuts: <komponent>/v<semver>, t.ex. testgen/v1.2.0.
+#   testgen/v*   -> SagaPerception.TestGen.Cli
+#   systemmap/v* -> SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore (samma version)
+#   uitestgen/v* -> SagaPerception.UiTestGen.Cli
+#
+# Publiceringen använder trusted publishing: ingen långlivad API-nyckel finns sparad. NuGet/login byter jobbets OIDC-token mot en
+# tillfällig nyckel som bara gäller en kort stund. Det som krävs:
+#   - hemligheten NUGET_USER = användarnamnet (profilnamnet) på nuget.org, inte e-postadressen. Det är inte en hemlighet i sig men läggs
+#     som secret i environment nuget,
+#   - en trusted publishing-policy på nuget.org för det här repot, workflow-filen release.yml och environment nuget,
+#   - environment `nuget` i repots inställningar (där kan man kräva godkännande innan jobbet körs).
+# OBS: en publicerad version kan aldrig tas bort från nuget.org, bara avlistas (unlist). Kontrollera versionen innan du taggar.
+name: release
+
+on:
+  push:
+    tags:
+      - 'testgen/v*'
+      - 'systemmap/v*'
+      - 'uitestgen/v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: nuget
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Läs taggen
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          component="${tag%%/*}"
+          version="${tag#*/v}"
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if ! [[ "$version" =~ $semver ]]; then
+            echo "::error::Taggen '$tag' har ingen giltig semver-version ('$version'). Exempel: $component/v1.2.3 eller $component/v1.2.3-beta.1"
+            exit 1
+          fi
+          case "$component" in
+            testgen)       projects="testgen/src/TestGen.Cli";    test="dotnet test testgen/testgen.slnx" ;;
+            systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore"; test="dotnet test systemmap/SystemMap.slnx" ;;
+            uitestgen)     projects="uitestgen/src/UiTestGen.Cli"; test="dotnet test uitestgen/UiTestGen.slnx" ;;
+            *) echo "::error::Okänd komponent '$component'"; exit 1 ;;
+          esac
+          {
+            echo "component=$component"
+            echo "version=$version"
+            echo "projects=$projects"
+            echo "test=$test"
+          } >> "$GITHUB_OUTPUT"
+          echo "Ger ut $component $version ($projects)"
+
+      # Versionen står i eng/Versions.props. Taggen får inte säga något annat: då släpps aldrig en version som repot inte känner till.
+      - name: Kontrollera att taggen stämmer med eng/Versions.props
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in ${{ steps.tag.outputs.projects }}; do
+            actual="$(dotnet msbuild "$p" -getProperty:Version | tr -d '[:space:]')"
+            if [ "$actual" != "${{ steps.tag.outputs.version }}" ]; then
+              echo "::error::Taggen ${GITHUB_REF_NAME} har versionen ${{ steps.tag.outputs.version }}, men $p har versionen '$actual' i eng/Versions.props. Höj versionen i eng/Versions.props, merga och tagga om."
+              exit 1
+            fi
+            echo "$p: $actual stämmer med taggen"
+          done
+
+      - name: Test
+        run: ${{ steps.tag.outputs.test }}
+
+      - name: Paketera
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in ${{ steps.tag.outputs.projects }}; do
+            dotnet pack "$p" -c Release -o nupkg
+          done
+          ls -l nupkg
+
+      # Hämtar en kortlivad API-nyckel från nuget.org via jobbets OIDC-token (kräver id-token: write).
+      - name: Logga in på nuget.org (trusted publishing)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # Symbolpaketen (*.snupkg) ligger i samma katalog och skjuts automatiskt med motsvarande .nupkg.
+      - name: Publicera till nuget.org
+        run: >
+          dotnet nuget push "nupkg/*.nupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --skip-duplicate

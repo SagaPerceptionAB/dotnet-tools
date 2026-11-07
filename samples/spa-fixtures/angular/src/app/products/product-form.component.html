@@ -1,0 +1,16 @@
+<h1>Produktformulär</h1>
+<form [formGroup]="form" (ngSubmit)="save()">
+  <label for="name">Namn</label>
+  <input id="name" formControlName="name" />
+
+  <label for="sku">Artikelnummer</label>
+  <input id="sku" formControlName="sku" />
+
+  <label for="price">Pris</label>
+  <input id="price" type="number" formControlName="price" />
+
+  <label for="contact">Kontakt</label>
+  <input id="contact" type="text" formControlName="contact" />
+
+  <button type="submit">Spara</button>
+</form>

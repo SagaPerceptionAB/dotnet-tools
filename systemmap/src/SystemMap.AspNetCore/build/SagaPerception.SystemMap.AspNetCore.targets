@@ -1,0 +1,93 @@
+<Project>
+
+  <!-- Systemkartan i appen. Release-bygget (GenerateSystemMap=true) ritar kartan och lägger den i utdatamappen systemmap/ och i
+       publiceringen. Andra bygge skriver systemmap/dev.json, så att appen kan rita kartan när sidan öppnas i Development.
+       Ingen av dem läggs under wwwroot. Det här körs bara i projektet som refererar paketet direkt (build/, inte buildTransitive/). -->
+  <PropertyGroup>
+    <GenerateSystemMap Condition="'$(GenerateSystemMap)' == '' and '$(Configuration)' == 'Release'">true</GenerateSystemMap>
+    <SystemMapSolution Condition="'$(SystemMapSolution)' == '' and '$(SolutionPath)' != '' and !$(SolutionPath.Contains('Undefined'))">$(SolutionPath)</SystemMapSolution>
+    <SystemMapDotnet Condition="'$(SystemMapDotnet)' == ''">$(DOTNET_HOST_PATH)</SystemMapDotnet>
+    <SystemMapDotnet Condition="'$(SystemMapDotnet)' == '' and '$(NetCoreRoot)' != '' and $([MSBuild]::IsOSPlatform('Windows'))">$([MSBuild]::EnsureTrailingSlash('$(NetCoreRoot)'))dotnet.exe</SystemMapDotnet>
+    <SystemMapDotnet Condition="'$(SystemMapDotnet)' == '' and '$(NetCoreRoot)' != ''">$([MSBuild]::EnsureTrailingSlash('$(NetCoreRoot)'))dotnet</SystemMapDotnet>
+    <SystemMapDotnet Condition="'$(SystemMapDotnet)' == ''">dotnet</SystemMapDotnet>
+  </PropertyGroup>
+
+  <!-- IntermediateOutputPath är inte satt när den här filen läses, så mappen räknas ut först när målen körs. -->
+  <Target Name="_SystemMapPaths">
+    <PropertyGroup>
+      <_SystemMapObjDir>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)systemmap/', '$(MSBuildProjectDirectory)'))</_SystemMapObjDir>
+    </PropertyGroup>
+  </Target>
+
+  <!-- Släppbygget: ritar kartan efter bygget. Hoppas över när ingen kod eller referens ändrats. -->
+  <Target Name="SystemMapGenerate" DependsOnTargets="_SystemMapPaths"
+          Condition="'$(GenerateSystemMap)' == 'true' and '$(DesignTimeBuild)' != 'true'"
+          Inputs="@(Compile);$(MSBuildProjectFullPath);@(ReferencePath)"
+          Outputs="$(_SystemMapObjDir)systemmap.html">
+    <PropertyGroup>
+      <_SystemMapArgs>exec "$(SystemMapToolPath)"</_SystemMapArgs>
+      <_SystemMapArgs Condition="'$(SystemMapSolution)' != ''">$(_SystemMapArgs) --solution "$(SystemMapSolution)"</_SystemMapArgs>
+      <_SystemMapArgs Condition="'$(SystemMapSpec)' != ''">$(_SystemMapArgs) --spec "$(SystemMapSpec)"</_SystemMapArgs>
+      <_SystemMapArgs>$(_SystemMapArgs) --html "$(_SystemMapObjDir)systemmap.html" --json "$(_SystemMapObjDir)map.json" --no-restore --no-browser</_SystemMapArgs>
+    </PropertyGroup>
+    <MakeDir Directories="$(_SystemMapObjDir)" />
+    <Delete Files="$(_SystemMapObjDir)systemmap.html;$(_SystemMapObjDir)map.json" />
+    <Exec Command="&quot;$(SystemMapDotnet)&quot; $(_SystemMapArgs)"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true"
+          StdOutEncoding="utf-8"
+          StdErrEncoding="utf-8"
+          StandardOutputImportance="low"
+          StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_SystemMapExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_SystemMapConsole" />
+    </Exec>
+    <PropertyGroup Condition="'$(_SystemMapExitCode)' != '0'">
+      <_SystemMapText>@(_SystemMapConsole, ' | ')</_SystemMapText>
+    </PropertyGroup>
+    <Warning Code="SYSMAP001" Condition="'$(_SystemMapExitCode)' != '0' and '$(SystemMapFailOnError)' != 'true'"
+             Text="Systemkartan kunde inte ritas (SystemMap.Cli avslutades med kod $(_SystemMapExitCode)): $(_SystemMapText)" />
+    <Error Code="SYSMAP001" Condition="'$(_SystemMapExitCode)' != '0' and '$(SystemMapFailOnError)' == 'true'"
+           Text="Systemkartan kunde inte ritas (SystemMap.Cli avslutades med kod $(_SystemMapExitCode)): $(_SystemMapText)" />
+  </Target>
+
+  <!-- Släppbygget: kopierar kartan till utdatamappen (körs även när ritningen hoppades över) och tar bort dev.json. -->
+  <Target Name="SystemMapCopyOutput" AfterTargets="Build" DependsOnTargets="_SystemMapPaths;SystemMapGenerate"
+          Condition="'$(GenerateSystemMap)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_SystemMapBuilt Include="$(_SystemMapObjDir)systemmap.html;$(_SystemMapObjDir)map.json" />
+    </ItemGroup>
+    <Delete Files="$(OutDir)systemmap/dev.json" />
+    <!-- Misslyckades ritningen ska ingen gammal karta ligga kvar. -->
+    <Delete Files="$(OutDir)systemmap/systemmap.html;$(OutDir)systemmap/map.json" Condition="!Exists('$(_SystemMapObjDir)systemmap.html')" />
+    <Copy SourceFiles="@(_SystemMapBuilt)" DestinationFolder="$(OutDir)systemmap" SkipUnchangedFiles="true" Condition="Exists('$(_SystemMapObjDir)systemmap.html')" />
+  </Target>
+
+  <!-- Släppbygget: kartan följer med vid publish (men inte under wwwroot). -->
+  <Target Name="SystemMapPublishFiles" DependsOnTargets="_SystemMapPaths" BeforeTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(GenerateSystemMap)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(_SystemMapObjDir)systemmap.html" RelativePath="systemmap/systemmap.html" CopyToPublishDirectory="PreserveNewest" Condition="Exists('$(_SystemMapObjDir)systemmap.html')" />
+      <ResolvedFileToPublish Include="$(_SystemMapObjDir)map.json" RelativePath="systemmap/map.json" CopyToPublishDirectory="PreserveNewest" Condition="Exists('$(_SystemMapObjDir)map.json')" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Andra bygge: appen ritar kartan själv när sidan öppnas i Development. dev.json tas inte med vid publish. -->
+  <Target Name="SystemMapDevFiles" AfterTargets="Build"
+          Condition="'$(GenerateSystemMap)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_SystemMapDir>$(OutDir)systemmap/</_SystemMapDir>
+      <_SystemMapJsonSolution Condition="'$(SystemMapSolution)' != ''">"$(SystemMapSolution.Replace('\', '/'))"</_SystemMapJsonSolution>
+      <_SystemMapJsonSolution Condition="'$(SystemMapSolution)' == ''">null</_SystemMapJsonSolution>
+      <_SystemMapJsonSpec Condition="'$(SystemMapSpec)' != ''">"$(SystemMapSpec.Replace('\', '/'))"</_SystemMapJsonSpec>
+      <_SystemMapJsonSpec Condition="'$(SystemMapSpec)' == ''">null</_SystemMapJsonSpec>
+      <_SystemMapDevJson>{ "dotnet": "$(SystemMapDotnet.Replace('\', '/'))", "tool": "$([MSBuild]::NormalizePath('$(SystemMapToolPath)').Replace('\', '/'))", "projectDir": "$(MSBuildProjectDirectory.Replace('\', '/'))", "solution": $(_SystemMapJsonSolution), "spec": $(_SystemMapJsonSpec) }</_SystemMapDevJson>
+    </PropertyGroup>
+    <MakeDir Directories="$(_SystemMapDir)" />
+    <Delete Files="$(_SystemMapDir)systemmap.html;$(_SystemMapDir)map.json" />
+    <WriteLinesToFile File="$(_SystemMapDir)dev.json" Lines="$(_SystemMapDevJson)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+</Project>

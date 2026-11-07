@@ -1,0 +1,33 @@
+@page "/products/{id:int}"
+@inject ShopStore Store
+
+<PageTitle>Produkt</PageTitle>
+
+<h1>Produktinformation</h1>
+
+@if (_product is null)
+{
+    <p>Produkten finns inte.</p>
+}
+else
+{
+    <dl>
+        <dt>Namn</dt>
+        <dd>@_product.Name</dd>
+        <dt>Artikelkod</dt>
+        <dd>@_product.Sku</dd>
+        <dt>Pris</dt>
+        <dd>@_product.Price kr</dd>
+    </dl>
+}
+
+<a href="/products">Tillbaka till produkter</a>
+
+@code {
+    private Product? _product;
+
+    [Parameter]
+    public int Id { get; set; }
+
+    protected override void OnParametersSet() => _product = Store.FindProduct(Id);
+}

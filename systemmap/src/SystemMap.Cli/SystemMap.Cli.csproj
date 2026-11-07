@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Systemkartan som dotnet-verktyg, för vilken solution som helst. Installeras som lokalt verktyg i repot som ska
+       visas, se ../../README.md. -->
+  <ItemGroup>
+    <ProjectReference Include="..\SystemMap\SystemMap.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\SystemMap\Web\lib\*.LICENSE.txt" Pack="true" PackagePath="\licenses\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SystemMap.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SystemMap.Cli</RootNamespace>
+    <!-- Går även på senare .NET-versioner än 10. -->
+    <RollForward>Major</RollForward>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>systemmap</ToolCommandName>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.SystemMap.Cli</PackageId>
+    <Version>$(SagaPerceptionSystemMapVersion)</Version>
+    <Description>Systemkarta för en .NET-solution: följer anropen från varje controller genom projekten ut till databaser, andra system, köer, lagring och e-post. Ritar ett nätverk i webbläsaren och skriver Mermaid, JSON och text.</Description>
+    <PackageTags>systemkarta;architecture;diagram;mermaid;roslyn;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+</Project>

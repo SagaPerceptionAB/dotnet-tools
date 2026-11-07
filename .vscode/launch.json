@@ -1,0 +1,74 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ShopApi (exempel-API, port 5080)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build ShopApi",
+      "program": "${workspaceFolder}/samples/ShopApi/bin/Debug/net10.0/ShopApi.dll",
+      "cwd": "${workspaceFolder}/samples/ShopApi",
+      "console": "internalConsole"
+    },
+    {
+      "name": "testgen ui (webbgränssnitt, port 5100)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/testgen/src/TestGen.Cli/bin/Debug/net10.0/testgen.dll",
+      "args": ["ui", "--spec", "samples/shop.openapi.yaml", "--excel", "samples/tester.xlsx"],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "(http://localhost:[0-9]+)",
+        "uriFormat": "%s"
+      }
+    },
+    {
+      "name": "testgen run (mot ShopApi, klartext)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/testgen/src/TestGen.Cli/bin/Debug/net10.0/testgen.dll",
+      "args": ["run", "--spec", "samples/shop.openapi.yaml", "--api", "http://localhost:5080", "--excel", "samples/tester.xlsx", "--klartext"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "testgen (valfria argument)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/testgen/src/TestGen.Cli/bin/Debug/net10.0/testgen.dll",
+      "args": "${input:testgenArgs}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "systemmap (exemplet, öppnas i webbläsaren)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build systemmap",
+      "program": "${workspaceFolder}/systemmap/src/SystemMap.Cli/bin/Debug/net10.0/SystemMap.Cli.dll",
+      "args": ["--solution", "samples/Shop.slnx", "--spec", "samples/shop.openapi.yaml"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "ShopApi + testgen ui",
+      "configurations": ["ShopApi (exempel-API, port 5080)", "testgen ui (webbgränssnitt, port 5100)"],
+      "stopAll": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testgenArgs",
+      "type": "promptString",
+      "description": "Argument till testgen (samma som efter 'testgen' i README)",
+      "default": "run --spec samples/shop.openapi.yaml --api http://localhost:5080"
+    }
+  ]
+}

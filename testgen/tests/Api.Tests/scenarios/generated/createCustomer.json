@@ -1,0 +1,260 @@
+[
+  {
+    "name": "createCustomer_email_bad_format",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "abc",
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_email_empty",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "",
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_email_wrong_type",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": {},
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_missing_email",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_missing_name",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_name_too_long",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_name_too_short",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_name_wrong_type",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": {},
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_personnummer_wrong_type",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "Kristina Bergman",
+      "personnummer": {},
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_phone_wrong_type",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": {},
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_status_not_in_enum",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "__not_in_enum__"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_status_wrong_type",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "negative",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": {}
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      400
+    ]
+  },
+  {
+    "name": "createCustomer_valid",
+    "operationId": "createCustomer",
+    "method": "POST",
+    "path": "/customers",
+    "kind": "valid",
+    "setup": [],
+    "body": {
+      "email": "Karolina.Hellstrom@hotmail.com",
+      "name": "Kristina Bergman",
+      "personnummer": "19911103-6621",
+      "phone": "2938-996686",
+      "status": "active"
+    },
+    "query": {},
+    "headers": {},
+    "expectedStatus": [
+      201
+    ]
+  }
+]

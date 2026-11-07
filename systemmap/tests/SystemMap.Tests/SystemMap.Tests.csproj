@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers" />
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Koden i testerna kompileras mot testprocessens assemblies, och controllers behöver ASP.NET Core:s attribut. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="NUnit.Framework" />
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SystemMap\SystemMap.csproj" />
+    <ProjectReference Include="..\..\src\SystemMap.AspNetCore\SystemMap.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\SystemMap.Cli\SystemMap.Cli.csproj" />
+  </ItemGroup>
+
+</Project>

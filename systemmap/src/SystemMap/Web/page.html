@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Sidan hämtar ingenting utifrån: allt den behöver finns i filen. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; base-uri 'none'; form-action 'none'">
+<title>Systemkarta – __TITLE__</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f5f7fa; color: #1b2430; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .empty { margin: 24px; padding: 8px 12px; background: #eef1f5; border-left: 4px solid #94a3b8; border-radius: 4px; }
+  [hidden] { display: none !important; }
+__STYLE__
+</style>
+</head>
+<body>
+<div id="map" hidden></div>
+<p class="empty" id="empty" hidden>Kartan hittade inga anrop i koden.</p>
+<script type="application/json" id="map-data">__MAP__</script>
+<script type="application/json" id="mermaid-data">__MERMAID__</script>
+__SCRIPTS__
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var json = JSON.parse($('map-data').textContent), mermaid = JSON.parse($('mermaid-data').textContent);
+  $('empty').hidden = json.entryPoints.length > 0;
+  var map = SystemMap.create($('map'), {
+    // Mermaid-texten skrevs när sidan skapades, en för varje nivå och anrop, vänster till höger. Uppifrån och ned skiljer
+    // sig bara på första raden.
+    mermaid: function (level, direction, entry) {
+      var text = mermaid[level + '|' + (entry || '')];
+      if (!text) return Promise.reject({ message: 'Mermaid-filen för det här valet finns inte i sidan.', tip: 'Skapa sidan på nytt.' });
+      return Promise.resolve(direction === 'TB' ? text.replace(/^flowchart LR/, 'flowchart TB') : text);
+    }
+  });
+  map.show(json);
+})();
+</script>
+</body>
+</html>

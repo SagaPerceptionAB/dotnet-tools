@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Exempel-webbapp (Blazor med statisk SSR, plus en Razor Page) för att prova uitestgen. Ingår inte i Shop.slnx.
+       Listorna ligger i minnet och sidorna som bara visar dem fungerar utan backend. Formulären "Ny produkt" och "Ny kund" skickar
+       POST till ShopApi (ShopApi:BaseUrl, standard http://localhost:5080); är den inte nåbar visas ett felmeddelande. -->
+
+</Project>

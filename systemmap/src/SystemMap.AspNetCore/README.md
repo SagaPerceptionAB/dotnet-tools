@@ -5,7 +5,7 @@ innehåller bara en liten middleware.
 
 ## Installera
 
-Paketet ges ut som förhandsversion på nuget.org, så `--prerelease` behövs.
+Paketet är en förhandsversion och finns ännu inte på nuget.org (bygg det med `dotnet pack`, se repots README), så `--prerelease` behövs.
 
 ```
 dotnet add package SagaPerception.SystemMap.AspNetCore --prerelease

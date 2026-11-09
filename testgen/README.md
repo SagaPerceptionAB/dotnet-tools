@@ -10,7 +10,7 @@ testgen testar ett API utifrån dess OpenAPI-spec och en webbapp utifrån dess v
 
 ## Installera
 
-Som dotnet-verktyg från nuget.org (paketet heter `SagaPerception.TestGen.Cli`, kommandot `testgen`). Paketet ges ut som förhandsversion, så `--prerelease` behövs:
+Som dotnet-verktyg (paketet heter `SagaPerception.TestGen.Cli`, kommandot `testgen`). Paketet är en förhandsversion och finns ännu inte på nuget.org (bygg det med `dotnet pack`, se repots README), så `--prerelease` behövs:
 
 ```
 dotnet tool install -g SagaPerception.TestGen.Cli --prerelease
@@ -25,7 +25,7 @@ dotnet tool install SagaPerception.TestGen.Cli --prerelease
 dotnet tool restore
 ```
 
-Testerna i `dotnet test` kommer från paketet `SagaPerception.TestGen.NUnit` (som `testgen init` lägger i testprojektet). Alla testgen-paket ges ut tillsammans med samma version: `SagaPerception.TestGen.Cli`, `SagaPerception.TestGen.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine`.
+Testerna i `dotnet test` kommer från paketet `SagaPerception.TestGen.NUnit` (som `testgen init` lägger i testprojektet). De två testgen-paketen (`SagaPerception.TestGen.Cli` och `SagaPerception.TestGen.NUnit`) ges ut tillsammans med samma version. NUnit-paketet har motorn (Core, Excel, Mock, Browser och CommandLine) inbakad.
 
 Använd `--tool-path verktyg` i stället för `--global` för att installera i en egen mapp.
 

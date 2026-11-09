@@ -17,21 +17,26 @@ Säkerhet i korthet (vad verktygen skyddar och vad man bör tänka på) står i 
 
 ## Installera
 
-Paketen ges ut till nuget.org som förhandsversioner (`0.1.0-preview.1`). Därför behövs `--prerelease`. Du behöver .NET 10 SDK.
+Paketen finns ännu inte på nuget.org. Bygg dem från källkoden (.NET 10 SDK) och installera från katalogen `nupkg`. Versionerna är förhandsversioner (`0.1.0-preview.1`), därför behövs `--prerelease`.
 
 ```
-dotnet tool install -g SagaPerception.TestGen.Cli --prerelease
-dotnet tool install -g SagaPerception.SystemMap.Cli --prerelease
+dotnet pack testgen/src/SagaPerception.TestGen.NUnit -c Release -o nupkg   # testprojektet som testgen init skapar använder det här paketet
+dotnet pack testgen/src/TestGen.Cli -c Release -o nupkg
+dotnet pack systemmap/src/SystemMap.Cli -c Release -o nupkg
+dotnet tool install -g SagaPerception.TestGen.Cli --add-source nupkg --prerelease
+dotnet tool install -g SagaPerception.SystemMap.Cli --add-source nupkg --prerelease
 ```
 
 Eller som lokala verktyg i ett projekt, med ett verktygsmanifest:
 
 ```
 dotnet new tool-manifest
-dotnet tool install SagaPerception.TestGen.Cli --prerelease
-dotnet tool install SagaPerception.SystemMap.Cli --prerelease
+dotnet tool install SagaPerception.TestGen.Cli --add-source nupkg --prerelease
+dotnet tool install SagaPerception.SystemMap.Cli --add-source nupkg --prerelease
 dotnet tool restore
 ```
+
+SagaPerception AB ger ut paketen till organisationens privata GitHub Packages-flöde; det kräver en token med `read:packages`.
 
 Kommandona är `testgen` och `systemmap` (lokalt: `dotnet testgen`, `dotnet systemmap`).
 
@@ -87,6 +92,7 @@ dotnet test testgen/testgen.slnx
 dotnet test systemmap/SystemMap.slnx
 dotnet test tests/Repository.Tests
 
+dotnet pack testgen/src/SagaPerception.TestGen.NUnit -c Release -o nupkg
 dotnet pack testgen/src/TestGen.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.AspNetCore -c Release -o nupkg
@@ -94,7 +100,6 @@ dotnet pack systemmap/src/SystemMap.AspNetCore -c Release -o nupkg
 
 UI-testerna kör Chromium. Installera den en gång med `playwright.ps1 install chromium` i ett testprojekts `bin`-mapp.
 
-`SagaPerception.TestGen.NUnit` och dess beroenden (`SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser`, `SagaPerception.CommandLine`) packas på samma sätt, se [release.yml](.github/workflows/release.yml).
 Paketens versioner kommer från [eng/Versions.props](eng/Versions.props); `-p:Version` behövs inte.
 
 ## Släppa en ny version
@@ -103,18 +108,16 @@ Versionerna står på ett ställe: [eng/Versions.props](eng/Versions.props). Var
 
 1. Höj versionen i `eng/Versions.props` i en PR och merga den.
 2. Tagga: `<komponent>/v<version>` (semver). [release.yml](.github/workflows/release.yml) avbryter om taggen inte är samma version som i
-   `eng/Versions.props`, och annars testar komponenten, paketerar och publicerar till nuget.org.
+   `eng/Versions.props`, och annars testar komponenten, paketerar och publicerar till organisationens GitHub Packages. Taggen måste ligga på `main`.
 
 | Tagg | Paket |
 |---|---|
-| `testgen/v0.1.0-preview.1` | `SagaPerception.TestGen.Cli`, `SagaPerception.TestGen.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine` (samma version). |
-| `systemmap/v0.1.0-preview.1` | `SagaPerception.SystemMap.Cli` och `SagaPerception.SystemMap.AspNetCore` (samma version) |
+| `testgen/v0.1.0-preview.1` | `SagaPerception.TestGen.Cli` och `SagaPerception.TestGen.NUnit` (samma version). |
+| `systemmap/v0.1.0-preview.1` | `SagaPerception.SystemMap.Cli` och `SagaPerception.SystemMap.AspNetCore` (samma version). |
 
 ```
 git tag testgen/v0.1.0-preview.1
 git push origin testgen/v0.1.0-preview.1
 ```
 
-Publiceringen använder trusted publishing mot nuget.org (GitHub OIDC), så det finns ingen API-nyckel i repot.
-
-En publicerad version kan inte tas bort från nuget.org, bara avlistas. Kontrollera därför versionen innan du taggar.
+Publiceringen använder jobbets `GITHUB_TOKEN`, så det finns ingen API-nyckel i repot. Paketen är privata och får inte göras publika (det går inte att ångra); nuget.org kommer senare.

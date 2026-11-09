@@ -54,7 +54,7 @@ public class RateLimitTests
         var (session, plan) = await StartAsync();
         await using var _ = session;
 
-        var skipped = Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /always"))!;
+        var skipped = (await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /always")))!;
 
         Assert.That(skipped.Message, Does.Contain("429").And.Contain("för många anrop"));
         Assert.That(File.ReadAllText(session.WriteResult()!), Does.Contain("rate-limited"));
@@ -67,7 +67,7 @@ public class RateLimitTests
         await using var _ = session;
         var clock = Stopwatch.StartNew();
 
-        var skipped = Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /never"))!;
+        var skipped = (await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /never")))!;
 
         Assert.That(skipped.Message, Does.Contain("429"));
         Assert.That(clock.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)));
@@ -80,7 +80,7 @@ public class RateLimitTests
         await using var _ = session;
         var clock = Stopwatch.StartNew();
 
-        Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /slow"));
+        await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /slow"));
 
         Assert.That(clock.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)));
     }

@@ -94,7 +94,7 @@ public class ViewSessionTests
         var plan = Plan(name => name == "TESTGEN_ENV" ? "test" : null);
         await using var session = await ViewSession.StartAsync(plan);
 
-        var ignored = Assert.ThrowsAsync<IgnoreException>(() => session.RunTestAsync(IdOf(plan, "ui:/customers/create:form")))!;
+        var ignored = (await Assert.ThrowsAsync<IgnoreException>(() => session.RunTestAsync(IdOf(plan, "ui:/customers/create:form"))))!;
 
         Assert.That(ignored.Message, Does.Contain("skrivskyddad"));
         Assert.That(File.ReadAllText(session.WriteResult()!), Does.Contain("\"environment\": \"test\"").And.Contain("\"skipped\""));
@@ -117,7 +117,7 @@ public class ViewSessionTests
             await using var session = await ViewSession.StartAsync(plan);
 
             await session.RunTestAsync(IdOf(plan, "ui:/products:accessibility"));
-            var first = Assert.ThrowsAsync<InconclusiveException>(() => session.RunTestAsync(IdOf(plan, "ui:/products:screenshot")))!;
+            var first = (await Assert.ThrowsAsync<InconclusiveException>(() => session.RunTestAsync(IdOf(plan, "ui:/products:screenshot"))))!;
             await session.RunTestAsync(IdOf(plan, "ui:/products:screenshot"));   // andra körningen jämför mot referensen som skapades
 
             Assert.That(first.Message, Does.Contain("saknades och skapades"));

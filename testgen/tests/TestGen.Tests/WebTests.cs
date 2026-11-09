@@ -1268,7 +1268,7 @@ public class WebCancelTests
             Seed = 1,
             OnResult = _ => { if (++count == 2) cts.Cancel(); },
         }, TextWriter.Null, new OkApi());
-        Assert.ThrowsAsync<OperationCanceledException>(async () => await runner.RunAsync(cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await runner.RunAsync(cts.Token));
         Assert.That(runner.Outcomes.Count, Is.EqualTo(2));
     }
 

@@ -47,7 +47,7 @@ public class RunControlTests
         var report = Path.Combine(_dir, "r.html");
         var sw = new StringWriter { NewLine = "\n" };
         var runner = new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, TimeoutSeconds = 2, ReportPath = report }, sw, api);
-        var e = Assert.ThrowsAsync<ApiUnreachableException>(() => runner.RunAsync())!;
+        var e = (await Assert.ThrowsAsync<ApiUnreachableException>(() => runner.RunAsync()))!;
         Assert.That(api.Calls, Is.EqualTo(3), "inte 34 anrop");
         Assert.That(e.Message, Does.Contain("API:et på http://fake.test svarar inte (inget svar inom 2 s på 3 anrop i rad)"));
         Assert.That(FriendlyErrors.Translate(e).ExitCode, Is.EqualTo(ExitCodes.Unreachable));
@@ -75,7 +75,7 @@ public class RunControlTests
     public async Task Threshold_can_be_changed_and_turned_off()
     {
         var two = new FlakyApi(0);
-        Assert.ThrowsAsync<ApiUnreachableException>(() => new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, MaxConsecutiveTimeouts = 2 }, TextWriter.Null, two).RunAsync());
+        await Assert.ThrowsAsync<ApiUnreachableException>(() => new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, MaxConsecutiveTimeouts = 2 }, TextWriter.Null, two).RunAsync());
         Assert.That(two.Calls, Is.EqualTo(2));
         var off = new FlakyApi(0);
         var exit = await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, Only = "createCustomer", MaxConsecutiveTimeouts = 0 }, TextWriter.Null, off).RunAsync();
@@ -212,11 +212,11 @@ public class RunControlTests
     }
 
     [Test]
-    public void Unknown_test_id_gives_a_Swedish_error()
+    public async Task Unknown_test_id_gives_a_Swedish_error()
     {
-        var e = Assert.ThrowsAsync<UsageException>(() => Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Seed = o.Seed, Tests = new[] { "T-099" } }))!;
+        var e = (await Assert.ThrowsAsync<UsageException>(() => Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Seed = o.Seed, Tests = new[] { "T-099" } })))!;
         Assert.That(e.Message, Does.Contain("det finns inget test T-099").And.Contain("T-034"));
-        Assert.That(Assert.ThrowsAsync<UsageException>(() => Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Seed = o.Seed, Tests = new[] { "abc" } }))!.Message, Does.Contain("inget test-id"));
+        Assert.That((await Assert.ThrowsAsync<UsageException>(() => Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Seed = o.Seed, Tests = new[] { "abc" } })))!.Message, Does.Contain("inget test-id"));
     }
 
     // --- 6. Huvud och sammanfattning ------------------------------------------------------------

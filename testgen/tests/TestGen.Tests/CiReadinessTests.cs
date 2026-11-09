@@ -464,7 +464,7 @@ public class CiReadinessTests
     {
         var json = Out("a.json"); var xml = Out("a.junit.xml"); var html = Out("a.html");
         var down = new ThrowingApi();
-        Assert.ThrowsAsync<ApiUnreachableException>(async () =>
+        await Assert.ThrowsAsync<ApiUnreachableException>(async () =>
             await new TestRunner(Opts(b => { b.Reports.AddRange(new[] { json, xml, html }); }), new StringWriter { NewLine = "\n" }, down).RunAsync());
         var doc = Read(json);
         Assert.That(doc["exitCode"]!.GetValue<int>(), Is.EqualTo(3));
@@ -553,7 +553,7 @@ public class CiReadinessTests
     public async Task Empty_spec_gives_exit_2_with_explanation_and_allow_empty_gives_0_with_report()
     {
         var spec = EmptySpec();
-        var e = Assert.ThrowsAsync<UsageException>(async () => await Go(new Always(HttpStatusCode.OK), b => b.Spec = spec))!;
+        var e = (await Assert.ThrowsAsync<UsageException>(async () => await Go(new Always(HttpStatusCode.OK), b => b.Spec = spec)))!;
         Assert.That(e.Message, Does.Contain("inga tester att köra").And.Contain("paths är tom"));
         Assert.That(e.Tip, Does.Contain("--allow-empty"));
         Assert.That(FriendlyErrors.Translate(e).ExitCode, Is.EqualTo(2));
@@ -573,7 +573,7 @@ public class CiReadinessTests
     public async Task Filter_that_matches_nothing_gives_exit_2_but_allow_empty_is_fine()
     {
         // --only getOrder valjer bara T-032; --test T-001 finns men ingår inte i urvalet.
-        var e = Assert.ThrowsAsync<UsageException>(async () => await Go(new Always(HttpStatusCode.OK), b => { b.Only = "getOrder"; b.Tests.Add("T-001"); }))!;
+        var e = (await Assert.ThrowsAsync<UsageException>(async () => await Go(new Always(HttpStatusCode.OK), b => { b.Only = "getOrder"; b.Tests.Add("T-001"); })))!;
         Assert.That(e.Message, Does.Contain("Inga tester matchade urvalet").And.Contain("0 av 34 möjliga"));
         var (exit, _) = await Go(new Always(HttpStatusCode.OK), b => { b.Only = "getOrder"; b.Tests.Add("T-001"); b.AllowEmpty = true; });
         Assert.That(exit, Is.EqualTo(0));
@@ -701,7 +701,7 @@ public class CiReadinessTests
     {
         using var cts = new CancellationTokenSource();
         var runner = new TestRunner(Opts(), new StringWriter { NewLine = "\n" }, new HangsAfter(2, () => cts.Cancel()));
-        Assert.CatchAsync<OperationCanceledException>(async () => await runner.RunAsync(cts.Token));
+        await Assert.CatchAsync<OperationCanceledException>(async () => await runner.RunAsync(cts.Token));
         Assert.That(runner.Outcomes, Has.Count.EqualTo(2), "det som hunnit bli klart finns kvar");
         await Task.CompletedTask;
     }
@@ -845,7 +845,7 @@ public class CiReadinessTests
     [Test]
     public async Task Fail_on_new_without_compare_is_a_usage_error()
     {
-        var e = Assert.ThrowsAsync<UsageException>(async () => await Go(new FakeShop(), b => b.FailOnNew = true))!;
+        var e = (await Assert.ThrowsAsync<UsageException>(async () => await Go(new FakeShop(), b => b.FailOnNew = true)))!;
         Assert.That(e.Message, Does.Contain("--fail-on-new").And.Contain("--baseline"));
         await Task.CompletedTask;
     }
@@ -897,7 +897,7 @@ public class CiReadinessTests
         // En JSON-fil som inte är en testgen-rapport skrivs inte över utan --force.
         var other = Out("annan.json");
         File.WriteAllText(other, "{\"min\": \"fil\"}");
-        var e = Assert.ThrowsAsync<UsageException>(async () => await Go(new FakeShop(), b => { b.Only = "createOrder"; b.Reports.Add(other); }))!;
+        var e = (await Assert.ThrowsAsync<UsageException>(async () => await Go(new FakeShop(), b => { b.Only = "createOrder"; b.Reports.Add(other); })))!;
         Assert.That(e.Message, Does.Contain("ser inte ut som en rapport"));
     }
 

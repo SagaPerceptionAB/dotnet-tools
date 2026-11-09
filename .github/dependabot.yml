@@ -7,6 +7,10 @@ updates:
     groups:
       nuget:
         patterns: [ "*" ]
+    ignore:
+      # Microsoft.AspNetCore.OpenApi 10 kräver Microsoft.OpenApi under 3.0.
+      - dependency-name: "Microsoft.OpenApi*"
+        update-types: [ "version-update:semver-major" ]
   - package-ecosystem: github-actions
     directory: /
     schedule:

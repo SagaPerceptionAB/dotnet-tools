@@ -130,7 +130,7 @@ public class InitCommandTests
         var lines = File.ReadAllLines(props).Where(l => l.Contains("<PackageVersion")).Select(l => Regex.Match(l, "Include=\"([^\"]+)\" Version=\"([^\"]+)\"").Groups).ToList();
         Assert.That(lines.Select(g => g[1].Value), Is.EqualTo(new[]
             { "Alpha", "Microsoft.NET.Test.Sdk", "NUnit", "NUnit3TestAdapter", "SagaPerception.Testing.NUnit", "Zeta" }));
-        Assert.That(lines.Select(g => g[2].Value), Has.All.Matches<string>(v => Regex.IsMatch(v, @"^\d+\.\d+\.\d+")), "riktiga versioner");
+        Assert.That(lines.Select(g => g[2].Value), Has.All.Matches<string>(v => v is not null && Regex.IsMatch(v, @"^\d+\.\d+\.\d+")), "riktiga versioner");
         Assert.That(e, Does.Contain("(paketversioner: Microsoft.NET.Test.Sdk, NUnit, NUnit3TestAdapter, SagaPerception.Testing.NUnit)"));
     }
 
@@ -184,12 +184,12 @@ public class InitCommandTests
     }
 
     [Test]
-    public void A_test_project_folder_that_does_not_use_testgen_is_a_usage_error_with_what_to_do()
+    public async Task A_test_project_folder_that_does_not_use_testgen_is_a_usage_error_with_what_to_do()
     {
         var solution = Solution(Api("ShopApi"));
         Write("tests/My.Tests/My.Tests.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
 
-        var e = Assert.ThrowsAsync<UsageException>(() => InitAsync(solution));
+        var e = await Assert.ThrowsAsync<UsageException>(() => InitAsync(solution));
 
         Assert.That(e!.Message, Does.Contain("finns redan men använder inte testgen"));
         Assert.That(e.Tip, Does.Contain("SagaPerception.Testing.NUnit"));
@@ -250,11 +250,11 @@ public class InitCommandTests
     }
 
     [Test]
-    public void Nothing_to_test_is_a_usage_error()
+    public async Task Nothing_to_test_is_a_usage_error()
     {
         Write("L/L.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         var solution = Solution("L/L.csproj");
-        var e = Assert.ThrowsAsync<UsageException>(() => InitAsync(solution));
+        var e = await Assert.ThrowsAsync<UsageException>(() => InitAsync(solution));
         Assert.That(e!.Message, Does.Contain("varken API eller webbapp"));
     }
 
@@ -344,7 +344,7 @@ public class InitOnShopCopyTests
         }
     }
 
-    [Test, Order(1)]
+    [Test]
     public void The_generated_project_looks_like_samples_Shop_Tests()
     {
         var samples = Path.GetDirectoryName(ShopSolution.Path)!;
@@ -354,7 +354,7 @@ public class InitOnShopCopyTests
         Assert.That(File.ReadAllText(_solution), Does.Contain("Shop.Tests.csproj"));
     }
 
-    [Test, Order(2), CancelAfter(600_000)]
+    [Test, DependsOnTest(nameof(The_generated_project_looks_like_samples_Shop_Tests), AllowFailure = true), CancelAfter(600_000)]
     public void Probe_adds_what_only_shows_when_the_app_runs()
     {
         var (exit, o, err) = Cli("views", "--probe", "--solution", _solution);
@@ -365,7 +365,7 @@ public class InitOnShopCopyTests
         Assert.That(json, Does.Contain("\"text\": \"Kaffebryggare\""), "länktexten syns bara i den körande appen");
     }
 
-    [Test, Order(3), CancelAfter(900_000)]
+    [Test, DependsOnTest(nameof(Probe_adds_what_only_shows_when_the_app_runs), AllowFailure = true), CancelAfter(900_000)]
     public async Task Dotnet_test_runs_green_except_the_expected_failures()
     {
         var info = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, WorkingDirectory = _tests };

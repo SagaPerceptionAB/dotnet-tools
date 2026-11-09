@@ -52,7 +52,7 @@ Ordningen för specen är:
 Jämförelsen med appens spec hoppas över när specen skrivs av bygget.
 
 **Microsoft.Testing.Platform och aktuella testpaket.** `testgen init` läser `test.runner` i `global.json`. Med MTP får projektet `OutputType Exe` och `EnableNUnitRunner`, och kommandot blir `dotnet test --project`. NUnit-adaptern 5.0.0 kraschade `dotnet test` i SDK 10.0.4xx, så paketen är uppdaterade:
-- NUnit 4.6.1;
+- NUnit 5.0.0;
 - NUnit3TestAdapter 6.3.1;
 - Microsoft.NET.Test.Sdk 18.11.0;
 - NUnit.Analyzers 4.15.0.

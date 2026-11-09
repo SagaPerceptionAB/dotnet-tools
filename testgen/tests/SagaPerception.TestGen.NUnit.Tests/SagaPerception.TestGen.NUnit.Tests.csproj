@@ -24,6 +24,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SagaPerception.TestGen.NUnit\SagaPerception.TestGen.NUnit.csproj" />
+    <!-- PrivateAssets="all" i NUnit-projektet stoppar modulerna från att flöda vidare; testerna använder typer ur dem. -->
+    <ProjectReference Include="..\..\src\TestGen.Core\TestGen.Core.csproj" />
+    <ProjectReference Include="..\..\..\shared\CommandLine\CommandLine.csproj" />
     <!-- Apparna som testerna kör i testprocessen. -->
     <ProjectReference Include="..\..\..\samples\ShopApi\ShopApi.csproj" />
     <ProjectReference Include="..\..\..\samples\ShopWeb\ShopWeb.csproj" />

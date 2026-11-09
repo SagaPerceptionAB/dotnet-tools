@@ -23,7 +23,7 @@ public sealed record ViewsApi(string Project, string? ConfigKey);
 /// <param name="Id">Stabilt id: <c>ui:</c> och ruttmallen, t.ex. <c>ui:/products/create</c>. Unikt i appen.</param>
 /// <param name="Route">Ruttmallen som den står i koden, t.ex. <c>/products/{id:int}</c>. Börjar alltid med <c>/</c>.</param>
 /// <param name="Source">Filen vyn kommer från, relativt views.json, med <c>/</c>.</param>
-/// <param name="Title">Sidans titel, om den går att läsa.</param>
+/// <param name="Title">Sidans egen titel, om den går att läsa. Layouten får lägga text runt den (t.ex. <c>Hem - MinApp</c>); kontrollen godkänner när sidans faktiska titel innehåller den.</param>
 /// <param name="Heading">Texten i första <c>&lt;h1&gt;</c>, om den är fast text.</param>
 /// <param name="Parameters">Ruttparametrarna i den ordning de står i mallen.</param>
 /// <param name="Forms">Formulären på sidan i den ordning de står.</param>

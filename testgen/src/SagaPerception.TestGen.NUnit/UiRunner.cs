@@ -66,8 +66,8 @@ internal sealed class UiRunner(BrowserSession browser, UiContext context)
         if (!response.Ok) problems.Add($"{path} svarade {response.Status}.");
         problems.AddRange(browser.Errors.All.Select(e => e.Message));
         problems.AddRange(context.Gate.Calls.Skip(blockedBefore).Where(x => x.Action != HostAction.Allow && x.Status >= 400).Select(x => "Appens anrop stoppades: " + x.Text));
-        if (c.View.Title is { } title && await Page.TitleAsync() is var actualTitle && actualTitle != title)
-            problems.Add($"Sidans titel är '{actualTitle}', men views.json har '{title}'. Kör testgen views om sidan ändrats.");
+        if (c.View.Title is { } title && await Page.TitleAsync() is var actualTitle && TitleProblem(actualTitle, title) is { } titleProblem)
+            problems.Add(titleProblem);
         if (c.View.Heading is { } heading)
         {
             var actual = (await Page.Locator("h1").First.InnerTextAsync()).Trim();
@@ -75,6 +75,11 @@ internal sealed class UiRunner(BrowserSession browser, UiContext context)
         }
         return problems.Count == 0 ? UiOutcome.Pass : UiOutcome.Fail($"Sidan {path} laddas inte felfritt:{Lines(problems)}");
     }
+
+    // Titeln i views.json är sidans egen del; layouten får lägga text runt den.
+    internal static string? TitleProblem(string actual, string expected) =>
+        actual.Contains(expected, StringComparison.Ordinal) ? null
+            : $"Sidans titel '{actual}' innehåller inte '{expected}' från views.json. Kör testgen views om sidan ändrats.";
 
     private async Task<UiOutcome> LinksAsync(UiCase c)
     {

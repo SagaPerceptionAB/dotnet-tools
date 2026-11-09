@@ -59,7 +59,7 @@ playwright="$(echo "$test_dir"/bin/Debug/net*/playwright.ps1)"
 deps=()
 [ "$(uname -s)" = "Linux" ] && deps=(--with-deps)
 if command -v pwsh >/dev/null; then ps=pwsh; elif command -v powershell >/dev/null; then ps=powershell; else fail "Varken pwsh eller powershell finns, så Chromium kan inte installeras."; fi
-"$ps" -NoProfile -File "$playwright" install "${deps[@]}" chromium
+"$ps" -NoProfile -ExecutionPolicy Bypass -File "$playwright" install "${deps[@]}" chromium
 
 echo "== dotnet test på hela lösningen"
 dotnet test Demo.slnx --logger "trx" --results-directory "$demo/TestResults" || fail "dotnet test misslyckades. Alla tester ska vara gröna på rena mallar."

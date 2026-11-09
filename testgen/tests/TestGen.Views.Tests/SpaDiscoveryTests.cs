@@ -462,15 +462,15 @@ public class SpaDiscoveryTests
 
     private static ViewCatalog Discover(string fixture)
     {
-        var (root, directories) = TestRoots.From(Path.Combine(FindRoot(), "samples", "spa-fixtures", fixture));
+        var (root, directories) = TestRoots.From(Path.Combine(FindRoot(), "testgen", "tests", "spa-fixtures", fixture));
         return ViewDiscovery.Run(new DiscoveryContext(root, directories, []), [new SpaDiscoverer()]);
     }
 
     private static string FindRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "samples", "spa-fixtures"))) dir = dir.Parent;
-        return dir?.FullName ?? throw new DirectoryNotFoundException("Hittar inte samples/spa-fixtures.");
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "testgen", "tests", "spa-fixtures"))) dir = dir.Parent;
+        return dir?.FullName ?? throw new DirectoryNotFoundException("Hittar inte testgen/tests/spa-fixtures.");
     }
 
     private sealed class TempSpa : IDisposable

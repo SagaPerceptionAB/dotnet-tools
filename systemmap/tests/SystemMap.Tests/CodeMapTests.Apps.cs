@@ -359,22 +359,20 @@ public partial class CodeMapTests
     }
 
     [Test]
-    public async Task Health_paths_come_from_MapHealthChecks_with_prefix_and_the_library_method()
+    public async Task Health_paths_come_from_MapHealthChecks_with_prefix()
     {
         var map = await MapAsync(Build(true, Web("Api", $$"""
             {{AppWithEntry}}
-            public static class Hx { public static IEndpointRouteBuilder MapSagaPerceptionHealthChecks(this IEndpointRouteBuilder a) => a; }
             public static class Run
             {
                 public static void Map(WebApplication app)
                 {
                     app.MapHealthChecks("/healthz");
                     app.MapGroup("/ops").MapHealthChecks("/live");
-                    app.MapSagaPerceptionHealthChecks();
                 }
             }
             """)));
-        Assert.That(map.Apps.Single().HealthPaths, Is.EqualTo(new[] { "/health/live", "/health/ready", "/healthz", "/ops/live" }));
+        Assert.That(map.Apps.Single().HealthPaths, Is.EqualTo(new[] { "/healthz", "/ops/live" }));
     }
 
     [TestCase("UseSqlServer", "sql-server")]

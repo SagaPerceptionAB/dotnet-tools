@@ -51,7 +51,7 @@ public sealed record ProjectFacts(
     public bool ServesSpec => Packages.Any(p => OpenApiPackages.Any(o => p.StartsWith(o, StringComparison.OrdinalIgnoreCase)));
     public bool UsesPlaywright => Packages.Any(p => p.StartsWith("Microsoft.Playwright", StringComparison.OrdinalIgnoreCase));
     /// <summary>Projektet använder testgens NUnit-bibliotek (som paket, eller som projekt i samma repo).</summary>
-    public bool UsesTestGen => Packages.Concat(ProjectReferences).Any(p => p.StartsWith("SagaPerception.Testing", StringComparison.OrdinalIgnoreCase));
+    public bool UsesTestGen => Packages.Concat(ProjectReferences).Any(p => p.StartsWith("SagaPerception.TestGen.NUnit", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Vad testklasserna pekar ut: <c>ApiTests("ShopApi")</c> ger ("api", "ShopApi") och <c>ViewTests("ShopWeb")</c> ger ("ui", "ShopWeb").

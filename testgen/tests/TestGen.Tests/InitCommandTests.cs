@@ -24,10 +24,10 @@ public class InitCommandTests
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
         {
-            var f = Path.Combine(d.FullName, "testgen", "src", "SagaPerception.Testing.NUnit", "SagaPerception.Testing.NUnit.csproj");
+            var f = Path.Combine(d.FullName, "testgen", "src", "SagaPerception.TestGen.NUnit", "SagaPerception.TestGen.NUnit.csproj");
             if (File.Exists(f)) return f;
         }
-        throw new FileNotFoundException("testgen/src/SagaPerception.Testing.NUnit");
+        throw new FileNotFoundException("testgen/src/SagaPerception.TestGen.NUnit");
     }
 
     private string Write(string relative, string text)
@@ -82,14 +82,29 @@ public class InitCommandTests
             .And.Contain("<PackageReference Include=\"NUnit\" Version=\"").And.Contain("<PackageReference Include=\"NUnit3TestAdapter\" Version=\"")
             .And.Contain("<PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\""), "utan central pakethantering står versionerna i projektet");
         Assert.That(File.ReadAllText(Path.Combine(tests, "ShopApiTests.cs")),
-            Is.EqualTo("using SagaPerception.Testing.NUnit;\n\nnamespace My.Tests;\n\npublic sealed class ShopApiTests() : ApiTests(\"ShopApi\");\n"));
+            Is.EqualTo("using SagaPerception.TestGen.NUnit;\n\nnamespace My.Tests;\n\npublic sealed class ShopApiTests() : ApiTests(\"ShopApi\");\n"));
         Assert.That(File.ReadAllText(Path.Combine(tests, "BillingApiTests.cs")), Does.Contain("ApiTests(\"Billing.Api\")"), "klassnamnet är en giltig identifierare");
         Assert.That(File.Exists(Path.Combine(tests, "views.json")), Is.False, "utan webbapp ingen views.json");
-        Assert.That(File.ReadAllText(solution), Does.Contain("tests/My.Tests/My.Tests.csproj").And.Not.Contain("SagaPerception.Testing"), "bara testprojektet läggs till, inte projekten det refererar");
+        Assert.That(File.ReadAllText(solution), Does.Contain("tests/My.Tests/My.Tests.csproj").And.Not.Contain("SagaPerception.TestGen.NUnit"), "bara testprojektet läggs till, inte projekten det refererar");
 
         Assert.That(e, Does.Contain($"Skrev {Rel("tests/My.Tests/My.Tests.csproj")} (testprojekt)").And.Contain($"Skrev {Rel("tests/My.Tests/ShopApiTests.cs")} (API-tester för ShopApi)")
             .And.Not.Contain("Allt finns redan"));
         Assert.That(o, Does.Contain("- run: dotnet test tests/My.Tests").And.EndWith("\nNästa steg: dotnet test\n").And.Not.Contain("chromium"));
+    }
+
+    [Test]
+    public async Task The_test_class_never_gets_the_name_of_its_base_class()
+    {
+        var (exit, _, e) = await InitAsync(Solution(Api("Api"), Api("View"), Api("ShopApi")));
+
+        Assert.That(exit, Is.EqualTo(0), e);
+        var tests = Path.Combine(_root, "tests", "My.Tests");
+        Assert.That(File.ReadAllText(Path.Combine(tests, "ApiProjectTests.cs")), Does.Contain("public sealed class ApiProjectTests() : ApiTests(\"Api\");"));
+        Assert.That(File.ReadAllText(Path.Combine(tests, "ViewProjectTests.cs")), Does.Contain("public sealed class ViewProjectTests() : ApiTests(\"View\");"));
+        Assert.That(File.Exists(Path.Combine(tests, "ShopApiTests.cs")));
+        Assert.That(File.Exists(Path.Combine(tests, "ApiTests.cs")), Is.False);
+        Assert.That(InitCommand.TestClassName("Api", "ApiTests"), Is.EqualTo("ApiProjectTests"));
+        Assert.That(InitCommand.TestClassName("Web", "ViewTests"), Is.EqualTo("WebViewTests"));
     }
 
     [Test]
@@ -126,12 +141,12 @@ public class InitCommandTests
         var (_, _, e) = await InitAsync(solution, Options with { LibraryProject = null });
 
         var csproj = File.ReadAllText(Path.Combine(_root, "tests", "My.Tests", "My.Tests.csproj"));
-        Assert.That(csproj, Does.Contain("<PackageReference Include=\"NUnit\" />").And.Contain("<PackageReference Include=\"SagaPerception.Testing.NUnit\" />").And.Not.Contain("Version="));
+        Assert.That(csproj, Does.Contain("<PackageReference Include=\"NUnit\" />").And.Contain("<PackageReference Include=\"SagaPerception.TestGen.NUnit\" />").And.Not.Contain("Version="));
         var lines = File.ReadAllLines(props).Where(l => l.Contains("<PackageVersion")).Select(l => Regex.Match(l, "Include=\"([^\"]+)\" Version=\"([^\"]+)\"").Groups).ToList();
         Assert.That(lines.Select(g => g[1].Value), Is.EqualTo(new[]
-            { "Alpha", "Microsoft.NET.Test.Sdk", "NUnit", "NUnit3TestAdapter", "SagaPerception.Testing.NUnit", "Zeta" }));
+            { "Alpha", "Microsoft.NET.Test.Sdk", "NUnit", "NUnit3TestAdapter", "SagaPerception.TestGen.NUnit", "Zeta" }));
         Assert.That(lines.Select(g => g[2].Value), Has.All.Matches<string>(v => v is not null && Regex.IsMatch(v, @"^\d+\.\d+\.\d+")), "riktiga versioner");
-        Assert.That(e, Does.Contain("(paketversioner: Microsoft.NET.Test.Sdk, NUnit, NUnit3TestAdapter, SagaPerception.Testing.NUnit)"));
+        Assert.That(e, Does.Contain("(paketversioner: Microsoft.NET.Test.Sdk, NUnit, NUnit3TestAdapter, SagaPerception.TestGen.NUnit)"));
     }
 
     [Test]
@@ -192,7 +207,7 @@ public class InitCommandTests
         var e = await Assert.ThrowsAsync<UsageException>(() => InitAsync(solution));
 
         Assert.That(e!.Message, Does.Contain("finns redan men använder inte testgen"));
-        Assert.That(e.Tip, Does.Contain("SagaPerception.Testing.NUnit"));
+        Assert.That(e.Tip, Does.Contain("SagaPerception.TestGen.NUnit"));
     }
 
     [Test]
@@ -321,7 +336,7 @@ public class InitOnShopCopyTests
         _tests = Path.Combine(_root, "samples", "tests", "Shop.Tests");
 
         var (o, e) = (new StringWriter(), new StringWriter());
-        var library = Path.Combine(repo, "testgen", "src", "SagaPerception.Testing.NUnit", "SagaPerception.Testing.NUnit.csproj");
+        var library = Path.Combine(repo, "testgen", "src", "SagaPerception.TestGen.NUnit", "SagaPerception.TestGen.NUnit.csproj");
         await InitCommand.RunAsync(_solution, new InitOptions(InstallChromium: false, LibraryProject: library), new Terminal(o, e, interactive: false));
         Assert.That(e.ToString(), Does.Contain($"Skrev {Terminal.Relative(Path.Combine(_tests, "views.json"))} (vyer: 6, appar: 1)"));
     }

@@ -11,7 +11,7 @@ namespace TestGen.Cli;
 /// <param name="Restore">Kör <c>dotnet restore</c> när vyerna läses.</param>
 /// <param name="InstallChromium">Installerar Chromium om en webbapp finns och den saknas.</param>
 /// <param name="LibraryProject">
-/// Intern möjlighet (miljövariabeln <c>TESTGEN_LIBRARY_PROJECT</c>): sökväg till SagaPerception.Testing.NUnit.csproj. Testprojektet får då en
+/// Intern möjlighet (miljövariabeln <c>TESTGEN_LIBRARY_PROJECT</c>): sökväg till SagaPerception.TestGen.NUnit.csproj. Testprojektet får då en
 /// ProjectReference dit i stället för paketet. Används av repots egna tester: ett paket från en lokal feed hamnar kvar i NuGet-cachen
 /// och skulle ge gammal kod nästa gång.
 /// </param>
@@ -26,7 +26,7 @@ internal sealed record InitOptions(bool Restore = true, bool InstallChromium = t
 /// </summary>
 internal static partial class InitCommand
 {
-    private const string PackageId = "SagaPerception.Testing.NUnit";
+    private const string PackageId = "SagaPerception.TestGen.NUnit";
 
     /// <summary>Paketen testprojektet behöver förutom testgen, med versionerna verktyget är byggt med.</summary>
     private static readonly string[] TestPackages = ["Microsoft.NET.Test.Sdk", "NUnit", "NUnit3TestAdapter"];
@@ -95,7 +95,7 @@ internal static partial class InitCommand
         var ns = Namespace(Path.GetFileNameWithoutExtension(testProject));
         foreach (var (project, template) in apis.Select(x => (x, "ApiTests")).Concat(apps.Select(x => (x, "ViewTests"))))
         {
-            var className = Identifier(project.Name) + (template == "ApiTests" ? "Tests" : "ViewTests");
+            var className = TestClassName(project.Name, template);
             var file = Path.Combine(testDirectory, className + ".cs");
             if (File.Exists(file))
             {
@@ -190,7 +190,7 @@ internal static partial class InitCommand
     }
 
     private static string TestClass(string ns, string className, string template, string project) =>
-        $"using SagaPerception.Testing.NUnit;\n\nnamespace {ns};\n\npublic sealed class {className}() : {template}(\"{project}\");\n";
+        $"using SagaPerception.TestGen.NUnit;\n\nnamespace {ns};\n\npublic sealed class {className}() : {template}(\"{project}\");\n";
 
     /// <summary>Lägger views.json bland det som kopieras till utdata om projektfilen inte nämner den. True om filen ändrades.</summary>
     private static bool EnsureViewsCopied(string testProject)
@@ -203,6 +203,14 @@ internal static partial class InitCommand
         var newline = text.Contains("\r\n", StringComparison.Ordinal);
         File.WriteAllText(testProject, text.Insert(end, newline ? item.Replace("\n", "\r\n") : item));
         return true;
+    }
+
+    // Klassen får aldrig heta som basklassen (ApiTests, ViewTests): då ärver den sig själv eller skuggar basen i hela namnrymden.
+    internal static string TestClassName(string projectName, string template)
+    {
+        var suffix = template == "ApiTests" ? "Tests" : "ViewTests";
+        var name = Identifier(projectName);
+        return name + suffix is "ApiTests" or "ViewTests" ? name + "Project" + suffix : name + suffix;
     }
 
     private static string Identifier(string name) => NotIdentifier().Replace(name, "");

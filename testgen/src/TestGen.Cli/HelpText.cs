@@ -75,7 +75,7 @@ public static class HelpText
             new("--excel-only", "Hoppa över de genererade testerna."),
             new("--config <fil>", "En annan testgen.yaml än den som hittas vid solutionen."),
             new("--explain", "Förklara varje test i klartext."),
-            new("--report <fil>", "Skriv rapport: .html, .xlsx, .json eller .junit.xml. Kan anges flera gånger."),
+            new("--report <fil>", "Skriv rapport: .html, .xlsx, .json eller .xml (JUnit; även .junit.xml). Kan anges flera gånger."),
             new("--force", "Skriv över en befintlig fil som inte är en testgen-rapport."),
             new("--verbose", "Visa anrop och svar för alla tester, och tekniska detaljer vid fel."),
         ],

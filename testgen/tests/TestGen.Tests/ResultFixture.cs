@@ -21,7 +21,7 @@ internal static class ResultFixture
             <Project Sdk="Microsoft.NET.Sdk">
               <ItemGroup>
                 <PackageReference Include="NUnit" Version="4.0.0" />
-                <PackageReference Include="SagaPerception.Testing.NUnit" Version="1.0.0" />
+                <PackageReference Include="SagaPerception.TestGen.NUnit" Version="1.0.0" />
               </ItemGroup>
             </Project>
             """);

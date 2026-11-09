@@ -26,7 +26,7 @@ public class OutOfTheBoxTests
     private string Api(string name = "Api") =>
         Write($"{name}/{name}.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\"><ItemGroup><PackageReference Include=\"Microsoft.AspNetCore.OpenApi\" /></ItemGroup></Project>");
 
-    private const string TestCsproj = "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"NUnit\" /><PackageReference Include=\"SagaPerception.Testing.NUnit\" /></ItemGroup></Project>";
+    private const string TestCsproj = "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"NUnit\" /><PackageReference Include=\"SagaPerception.TestGen.NUnit\" /></ItemGroup></Project>";
 
     /// <summary>Solution med ett API och ett testprojekt som använder testgen.</summary>
     private RepositoryFacts Repository(string api = "Api")

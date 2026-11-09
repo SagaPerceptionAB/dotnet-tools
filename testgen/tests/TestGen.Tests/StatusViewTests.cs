@@ -99,7 +99,7 @@ public class StatusViewTests
         Assert.That(Render(RepositoryFacts.Read(Path.Combine(_dir, "r.slnx")), chromium: false).Err, Is.Empty);
 
         File.WriteAllText(Path.Combine(_dir, "T", "T.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"NUnit\" /><PackageReference Include=\"SagaPerception.Testing.NUnit\" /></ItemGroup></Project>");
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"NUnit\" /><PackageReference Include=\"SagaPerception.TestGen.NUnit\" /></ItemGroup></Project>");
         Assert.That(Render(RepositoryFacts.Read(Path.Combine(_dir, "r.slnx")), chromium: false).Err, Is.Empty, "bara API-tester: ingen webbläsare behövs");
 
         File.WriteAllText(Path.Combine(_dir, "T", "WebTests.cs"), "public sealed class WebTests() : ViewTests(\"ShopWeb\");");

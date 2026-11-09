@@ -98,7 +98,7 @@ public class ViewsBuilderTests
     {
         var facts = Repository();
         var other = char.ToUpperInvariant(facts.SolutionDirectory[0]) == 'Z' ? @"Y:\views" : @"Z:\views";
-        var e = Assert.Throws<CommandLine.UsageException>(() => Build(facts, Map([Client()]), other))!;
+        var e = Assert.Throws<UsageException>(() => Build(facts, Map([Client()]), other))!;
         Assert.That(e.Message, Does.Contain("annan enhet än solutionen"));
     }
 

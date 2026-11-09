@@ -1,29 +1,21 @@
-# Ger ut paket till nuget.org när en tagg skjuts: <komponent>/v<semver>, t.ex. testgen/v0.1.0-preview.1.
-#   testing/v*   -> SagaPerception.Testing
-#   testgen/v*   -> SagaPerception.TestGen.Cli (verktyget) och SagaPerception.Testing.NUnit med SagaPerception.TestGen.Core, .Excel, .Mock, .Browser
-#                   och SagaPerception.CommandLine (samma version). SagaPerception.Testing, som NUnit-paketet beror på, packas med
-#                   men har sin egen version och tas inte med i versionskontrollen. Ge ut testing/v* först när den versionen är ny.
-#   systemmap/v* -> SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore (samma version)
+# Ger ut paket till organisationens GitHub Packages när en tagg skjuts: <komponent>/v<semver>, t.ex. testgen/v0.1.0-preview.1.
+#   testgen/v*   -> SagaPerception.TestGen.Cli (verktyget) och SagaPerception.TestGen.NUnit (med Core, Excel, Mock, Browser och CommandLine inbakade)
+#   systemmap/v* -> SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore
 #
-# Publiceringen använder trusted publishing: ingen långlivad API-nyckel finns sparad. NuGet/login byter jobbets OIDC-token mot en
-# tillfällig nyckel som bara gäller en kort stund. Det som krävs:
-#   - hemligheten NUGET_USER = användarnamnet (profilnamnet) på nuget.org, inte e-postadressen. Det är inte en hemlighet i sig men läggs
-#     som secret i environment nuget,
-#   - en trusted publishing-policy på nuget.org för det här repot, workflow-filen release.yml och environment nuget,
-#   - environment `nuget` i repots inställningar (där kan man kräva godkännande innan jobbet körs).
-# OBS: en publicerad version kan aldrig tas bort från nuget.org, bara avlistas (unlist). Kontrollera versionen innan du taggar.
+# Paketen är privata som standard och får inte göras publika: det går inte att ångra.
+# Att installera kräver en token med read:packages. Andra repons workflows behöver åtkomst via paketets "Manage Actions access".
+# nuget.org kommer senare.
 name: release
 
 on:
   push:
     tags:
-      - 'testing/v*'
       - 'testgen/v*'
       - 'systemmap/v*'
 
 permissions:
   contents: read
-  id-token: write
+  packages: write
 
 env:
   DOTNET_NOLOGO: "1"
@@ -32,10 +24,11 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: nuget
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
@@ -44,6 +37,15 @@ jobs:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
           restore-keys: ${{ runner.os }}-nuget-
+
+      # Bara commits på main får ges ut.
+      - name: Kontrollera att taggen ligger på main
+        shell: bash
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Taggen ${GITHUB_REF_NAME} pekar på en commit som inte finns på main. Merga till main och tagga därifrån."
+            exit 1
+          fi
 
       - name: Läs taggen
         id: tag
@@ -58,11 +60,9 @@ jobs:
             echo "::error::Taggen '$tag' har ingen giltig semver-version ('$version'). Exempel: $component/v1.2.3 eller $component/v1.2.3-beta.1"
             exit 1
           fi
-          extra=""
           browser=""
           case "$component" in
-            testing)       projects="testing/src/SagaPerception.Testing"; test="dotnet test testing/Testing.slnx" ;;
-            testgen)       projects="shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testgen/src/SagaPerception.Testing.NUnit testgen/src/TestGen.Cli"; extra="testing/src/SagaPerception.Testing"; browser="testgen/tests/TestGen.Browser.Tests"; test="dotnet test testgen/testgen.slnx" ;;
+            testgen)       projects="testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli"; browser="testgen/tests/TestGen.Browser.Tests"; test="dotnet test testgen/testgen.slnx" ;;
             systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore"; browser="systemmap/tests/SystemMap.Tests"; test="dotnet test systemmap/SystemMap.slnx" ;;
             *) echo "::error::Okänd komponent '$component'"; exit 1 ;;
           esac
@@ -70,7 +70,6 @@ jobs:
             echo "component=$component"
             echo "version=$version"
             echo "projects=$projects"
-            echo "extra=$extra"
             echo "browser=$browser"
             echo "test=$test"
           } >> "$GITHUB_OUTPUT"
@@ -105,10 +104,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in ${{ steps.tag.outputs.projects }} ${{ steps.tag.outputs.extra }}; do
+          for p in ${{ steps.tag.outputs.projects }}; do
             dotnet pack "$p" -c Release -o nupkg
           done
           ls -l nupkg
+
+      - name: Kontrollera paketen
+        run: eng/check-packages.sh nupkg 2
 
       # En CycloneDX-SBOM per paketprojekt, som bifogas körningen. Verktygets version är fast.
       - name: SBOM
@@ -117,7 +119,7 @@ jobs:
           set -euo pipefail
           dotnet tool install --global CycloneDX --version 6.3.1
           mkdir sbom
-          for p in ${{ steps.tag.outputs.projects }} ${{ steps.tag.outputs.extra }}; do
+          for p in ${{ steps.tag.outputs.projects }}; do
             dotnet-CycloneDX "$p" -o sbom -fn "$(basename "$p").cdx.json" -F Json
           done
           ls -l sbom
@@ -127,17 +129,11 @@ jobs:
           name: sbom-${{ steps.tag.outputs.component }}
           path: sbom
           if-no-files-found: error
-      # Hämtar en kortlivad API-nyckel från nuget.org via jobbets OIDC-token (kräver id-token: write).
-      - name: Logga in på nuget.org (trusted publishing)
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
-
-      # Symbolpaketen (*.snupkg) ligger i samma katalog och skjuts automatiskt med motsvarande .nupkg.
-      - name: Publicera till nuget.org
+      # Symbolpaketen (*.snupkg) skjuts inte: GitHub Packages stöder dem inte.
+      - name: Publicera till GitHub Packages
         run: >
           dotnet nuget push "nupkg/*.nupkg"
-          --source https://api.nuget.org/v3/index.json
-          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --source https://nuget.pkg.github.com/SagaPerceptionAB/index.json
+          --api-key ${{ secrets.GITHUB_TOKEN }}
           --skip-duplicate
+          --no-symbols

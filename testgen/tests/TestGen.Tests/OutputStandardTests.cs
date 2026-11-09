@@ -8,7 +8,7 @@ using TestGen.Core.Run;
 
 namespace TestGen.Tests;
 
-/// <summary>Utdatastandarden (plan, avsnitt 4) för testgen: strömmar, exitkoder, hjälptexter, JSON-kontraktet och namnen.</summary>
+/// <summary>Utdatastandarden för testgen: strömmar, exitkoder, hjälptexter, JSON-kontraktet och namnen.</summary>
 public class OutputStandardTests
 {
     private string _dir = "";

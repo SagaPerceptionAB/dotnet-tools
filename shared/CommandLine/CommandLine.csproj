@@ -1,12 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Det kommandoraderna i testgen och systemkarta har gemensamt: flaggläsningen, felen på enkel svenska och ramen runt
-       Main. Inget här vet något om testgen eller systemkartan. Paketeras bara för att TestGen.Core beror på det; paketet
-       har testgens version. -->
+       Main. Inget här vet något om testgen eller systemkartan. Inget eget paket: testgens NUnit-paket
+       bakar in det. -->
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
-    <PackageId>SagaPerception.CommandLine</PackageId>
-    <Version>$(SagaPerceptionTestGenVersion)</Version>
-    <Description>Gemensam kommandoradsdel för SagaPerception.TestGen: flaggor, felmeddelanden och utskrift. Används av SagaPerception.TestGen.Core och inte direkt.</Description>
+    <AssemblyName>SagaPerception.CommandLine</AssemblyName>
+    <RootNamespace>SagaPerception.CommandLine</RootNamespace>
   </PropertyGroup>
 </Project>

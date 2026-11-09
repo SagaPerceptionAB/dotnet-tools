@@ -4,9 +4,10 @@ SagaPerception: .NET-verktyg med öppen källkod (MIT). Allt byggs och paketeras
 
 | | Vad det gör | Paket |
 |---|---|---|
-| [**testgen**](testgen/README.md) | API- och UI-tester i `dotnet test`, ur OpenAPI-specen och appens källkod. Mockar backend ur specen, kör tester mot ett API från kommandoraden, visar resultatet i en webbläsare och som rapport. Egna tester skrivs i Excel. | `SagaPerception.TestGen.Cli` (kommandot `testgen`), `SagaPerception.Testing.NUnit` |
-| [**systemmap**](systemmap/README.md) | Ritar en karta över en .NET-solution: vägen från varje anrop genom projekten ut till databaser, andra system, köer, lagring och e-post. Som nätverk i webbläsaren, Mermaid, JSON och text. | `SagaPerception.SystemMap.Cli` (kommandot `systemmap`) |
-| [**Testing**](testing/src/SagaPerception.Testing/README.md) | Testhjälp för ASP.NET Core-tjänster, oberoende av testramverk: `ApiFactory` och fångst av spår och loggar. testgens NUnit-paket bygger på den. | `SagaPerception.Testing` |
+| [**testgen**](testgen/README.md) | API- och UI-tester i `dotnet test`, ur OpenAPI-specen och appens källkod. Mockar backend ur specen, kör tester mot ett API från kommandoraden, visar resultatet i en webbläsare och som rapport. Egna tester skrivs i Excel. | `SagaPerception.TestGen.Cli` (kommandot `testgen`), `SagaPerception.TestGen.NUnit` |
+| [**systemmap**](systemmap/README.md) | Ritar en karta över en .NET-solution: vägen från varje anrop genom projekten ut till databaser, andra system, köer, lagring och e-post. Som nätverk i webbläsaren, Mermaid, JSON och text. | `SagaPerception.SystemMap.Cli` (kommandot `systemmap`), `SagaPerception.SystemMap.AspNetCore` |
+
+Mapparna `shared/`, `samples/`, `tests/`, `eng/` och `docs/` finns bara för att bygga, testa och prova verktygen. De ges inte ut.
 
 testgen visar också systemkartan (`testgen map`, kartan i webbgränssnittet och vägen genom koden i varje test). Det gör den
 genom att använda systemkartans bibliotek; systemkartan vet inget om testgen.
@@ -18,21 +19,26 @@ Säkerhet i korthet (vad verktygen skyddar och vad man bör tänka på) står i 
 
 ## Installera
 
-Paketen ges ut till nuget.org som förhandsversioner (`0.1.0-preview.1`). Därför behövs `--prerelease`. Du behöver .NET 10 SDK.
+Paketen finns ännu inte på nuget.org. Bygg dem från källkoden (.NET 10 SDK) och installera från katalogen `nupkg`. Versionerna är förhandsversioner (`0.1.0-preview.1`), därför behövs `--prerelease`.
 
 ```
-dotnet tool install -g SagaPerception.TestGen.Cli --prerelease
-dotnet tool install -g SagaPerception.SystemMap.Cli --prerelease
+dotnet pack testgen/src/SagaPerception.TestGen.NUnit -c Release -o nupkg   # testprojektet som testgen init skapar använder det här paketet
+dotnet pack testgen/src/TestGen.Cli -c Release -o nupkg
+dotnet pack systemmap/src/SystemMap.Cli -c Release -o nupkg
+dotnet tool install -g SagaPerception.TestGen.Cli --add-source nupkg --prerelease
+dotnet tool install -g SagaPerception.SystemMap.Cli --add-source nupkg --prerelease
 ```
 
 Eller som lokala verktyg i ett projekt, med ett verktygsmanifest:
 
 ```
 dotnet new tool-manifest
-dotnet tool install SagaPerception.TestGen.Cli --prerelease
-dotnet tool install SagaPerception.SystemMap.Cli --prerelease
+dotnet tool install SagaPerception.TestGen.Cli --add-source nupkg --prerelease
+dotnet tool install SagaPerception.SystemMap.Cli --add-source nupkg --prerelease
 dotnet tool restore
 ```
+
+SagaPerception AB ger ut paketen till organisationens privata GitHub Packages-flöde; det kräver en token med `read:packages`.
 
 Kommandona är `testgen` och `systemmap` (lokalt: `dotnet testgen`, `dotnet systemmap`).
 
@@ -61,9 +67,8 @@ eng/              Versions.props (paketens versioner, se "Släppa en ny version"
 Directory.Build.props, Directory.Build.targets, Directory.Packages.props, global.json   gemensamma inställningar, paketversioner och SDK
 testgen/          testgen: src, tests, docs, testgen.slnx och README
 systemmap/        systemkartan: src, tests, SystemMap.slnx och README
-testing/          SagaPerception.Testing (src, tests) och Testing.slnx
-shared/           CommandLine: flaggorna, felen på enkel svenska och exitkoderna som verktygen använder
-samples/          exemplet Shop (ShopApi, ShopWeb, Shop.Tests och OpenAPI-specar) som testgen och systemmap provas mot
+shared/           CommandLine: kod som verktygen delar
+samples/          exemplet Shop, som verktygen provas mot
 tests/            Repository.Tests: arkitekturreglerna för hela repot
 docs/adr/         besluten bakom verktygen
 .github/workflows ci.yml (bygge, test, kodanalys och paketprov) och release.yml (ger ut paket vid tagg)
@@ -87,18 +92,16 @@ dotnet build SagaPerception.Tools.slnx                 # allt, utan varningar (v
 dotnet test shared/Shared.slnx
 dotnet test testgen/testgen.slnx
 dotnet test systemmap/SystemMap.slnx
-dotnet test testing/Testing.slnx
 dotnet test tests/Repository.Tests
 
+dotnet pack testgen/src/SagaPerception.TestGen.NUnit -c Release -o nupkg
 dotnet pack testgen/src/TestGen.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.AspNetCore -c Release -o nupkg
-dotnet pack testing/src/SagaPerception.Testing -c Release -o nupkg
 ```
 
 UI-testerna kör Chromium. Installera den en gång med `playwright.ps1 install chromium` i ett testprojekts `bin`-mapp.
 
-`SagaPerception.Testing.NUnit` och dess beroenden (`SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser`, `SagaPerception.CommandLine`) packas på samma sätt, se [release.yml](.github/workflows/release.yml).
 Paketens versioner kommer från [eng/Versions.props](eng/Versions.props); `-p:Version` behövs inte.
 
 ## Släppa en ny version
@@ -107,21 +110,16 @@ Versionerna står på ett ställe: [eng/Versions.props](eng/Versions.props). Var
 
 1. Höj versionen i `eng/Versions.props` i en PR och merga den.
 2. Tagga: `<komponent>/v<version>` (semver). [release.yml](.github/workflows/release.yml) avbryter om taggen inte är samma version som i
-   `eng/Versions.props`, och annars testar komponenten, paketerar och publicerar till nuget.org.
+   `eng/Versions.props`, och annars testar komponenten, paketerar och publicerar till organisationens GitHub Packages. Taggen måste ligga på `main`.
 
 | Tagg | Paket |
 |---|---|
-| `testing/v0.1.0-preview.1` | `SagaPerception.Testing` |
-| `testgen/v0.1.0-preview.1` | `SagaPerception.TestGen.Cli`, `SagaPerception.Testing.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine` (samma version). `SagaPerception.Testing` följer med men har sin egen version. |
-| `systemmap/v0.1.0-preview.1` | `SagaPerception.SystemMap.Cli` och `SagaPerception.SystemMap.AspNetCore` (samma version) |
-
-Ge ut `testing` först, eftersom `SagaPerception.Testing.NUnit` beror på den versionen.
+| `testgen/v0.1.0-preview.1` | `SagaPerception.TestGen.Cli` och `SagaPerception.TestGen.NUnit` (samma version). |
+| `systemmap/v0.1.0-preview.1` | `SagaPerception.SystemMap.Cli` och `SagaPerception.SystemMap.AspNetCore` (samma version). |
 
 ```
-git tag testing/v0.1.0-preview.1
-git push origin testing/v0.1.0-preview.1
+git tag testgen/v0.1.0-preview.1
+git push origin testgen/v0.1.0-preview.1
 ```
 
-Publiceringen använder trusted publishing mot nuget.org (GitHub OIDC), så det finns ingen API-nyckel i repot.
-
-En publicerad version kan inte tas bort från nuget.org, bara avlistas. Kontrollera därför versionen innan du taggar.
+Publiceringen använder jobbets `GITHUB_TOKEN`, så det finns ingen API-nyckel i repot. Paketen är privata och får inte göras publika (det går inte att ångra); nuget.org kommer senare.

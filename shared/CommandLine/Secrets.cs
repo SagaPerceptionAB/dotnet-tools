@@ -1,4 +1,4 @@
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Vad som är en hemlighet, och kommandoraden med hemligheterna maskade.</summary>
 public static class Secrets

@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <!-- Minimal app som testerna startar via ApiFactory. -->
-
-</Project>

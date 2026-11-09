@@ -10,7 +10,7 @@ testgen testar ett API utifrån dess OpenAPI-spec och en webbapp utifrån dess v
 
 ## Installera
 
-Som dotnet-verktyg från nuget.org (paketet heter `SagaPerception.TestGen.Cli`, kommandot `testgen`). Paketet ges ut som förhandsversion, så `--prerelease` behövs:
+Som dotnet-verktyg (paketet heter `SagaPerception.TestGen.Cli`, kommandot `testgen`). Paketet är en förhandsversion och finns ännu inte på nuget.org (bygg det med `dotnet pack`, se repots README), så `--prerelease` behövs:
 
 ```
 dotnet tool install -g SagaPerception.TestGen.Cli --prerelease
@@ -25,7 +25,7 @@ dotnet tool install SagaPerception.TestGen.Cli --prerelease
 dotnet tool restore
 ```
 
-Testerna i `dotnet test` kommer från paketet `SagaPerception.Testing.NUnit` (som `testgen init` lägger i testprojektet). Alla testgen-paket ges ut tillsammans med samma version: `SagaPerception.TestGen.Cli`, `SagaPerception.Testing.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine`.
+Testerna i `dotnet test` kommer från paketet `SagaPerception.TestGen.NUnit` (som `testgen init` lägger i testprojektet). De två testgen-paketen (`SagaPerception.TestGen.Cli` och `SagaPerception.TestGen.NUnit`) ges ut tillsammans med samma version. NUnit-paketet har motorn (Core, Excel, Mock, Browser och CommandLine) inbakad.
 
 Använd `--tool-path verktyg` i stället för `--global` för att installera i en egen mapp.
 
@@ -50,7 +50,14 @@ dotnet test
 
 Från installationen till klara tester tog det 2 minuter (122 s) på exemplet Shop utan testprojekt, med tom NuGet-cache och Chromium redan installerat; Chromium tar ungefär 40 s till första gången. `testgen init` ensam tog 39 s och `dotnet test` (bygge och 70 tester) 80 s. Exemplet har två avsiktliga fel, så två tester fallerar.
 
-`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Det som redan finns lämnas orört, och en andra körning ändrar inget. Resten av avsnittet visar webbgränssnittet och kommandoraden.
+`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Testprojektet använder NUnit, men du skriver ingen NUnit-kod. Det kan ligga bredvid xUnit- och MSTest-projekt. Det som redan finns lämnas orört, och en andra körning ändrar inget.
+
+| Flagga | Betydelse |
+|---|---|
+| `--solution <fil>` | Solution eller projekt (standard: den närmaste uppåt från aktuell katalog). |
+| `--no-restore` | Kör inte `dotnet restore` när vyerna läses. |
+
+Resten av avsnittet visar webbgränssnittet och kommandoraden.
 
 
 Starta exemplet i ett eget fönster (port 5080):
@@ -85,7 +92,7 @@ Samma testfall som `testgen run`, mot appen i testprocessen (TestServer). Inget 
 public sealed class ShopApiTests() : ApiTests("ShopApi");
 ```
 
-Testprojektet behöver en `ProjectReference` till API-projektet och paketet `SagaPerception.Testing.NUnit` (`testgen init` ordnar det; exempel: [`samples/Shop.Tests`](https://github.com/SagaPerceptionAB/dotnet-tools/tree/main/samples/Shop.Tests)). Solutionen, specen, `testgen.yaml` (i testprojektet eller vid solutionen) och miljön hittas av sig själva; miljön väljs med `TESTGEN_ENV` (standard `local`). I en miljö med adress testas den adressen i stället.
+Testprojektet behöver en `ProjectReference` till API-projektet och paketet `SagaPerception.TestGen.NUnit` (`testgen init` ordnar det; exempel: [`samples/Shop.Tests`](https://github.com/SagaPerceptionAB/dotnet-tools/tree/main/samples/Shop.Tests)). Solutionen, specen, `testgen.yaml` (i testprojektet eller vid solutionen) och miljön hittas av sig själva; miljön väljs med `TESTGEN_ENV` (standard `local`). I en miljö med adress testas den adressen i stället.
 
 - **Testnamn:** `T-001 POST /customers giltig indata`. Kategorier: `api`, `mutating` (POST, PUT, PATCH, DELETE) och orsakskoden vid fel, så `--filter TestCategory=mutating` fungerar.
 - **Utfall:** fel i systemet och förväntan som inte stämmer fäller testet, med samma förklaring, anrop, svar och curl som i terminalen. Osäkra orsaker (`auth`, `test-data`, `missing-data`, `test-user-rejected`, `rate-limited`, `environment`, `tool`, `dependency`) blir Inconclusive. Skrivskyddad miljö blir Ignore.
@@ -144,7 +151,7 @@ Webbappen körs på Kestrel (port 0) i testprocessen och dess API-anrop går til
 | `--excel-only` | Hoppa över de genererade testerna. |
 | `--explain` | Förklaring i klartext för varje test. |
 | `--verbose` | Visa anrop och svar för alla tester. |
-| `--report <fil>` | Rapport efter körningen: `.html`, `.xlsx`, `.json` eller `.xml` / `.junit.xml`. Får anges flera gånger. |
+| `--report <fil>` | Rapport efter körningen: `.html`, `.xlsx`, `.json` eller `.xml` (JUnit; även `.junit.xml`). Får anges flera gånger. |
 | `--baseline <fil>` | Jämför med en tidigare JSON-rapport (nya, lagade och kvarvarande FEL). |
 | `--fail-on <orsaker>` | Orsaker som ger exitkod 1 (se Köra i CI). |
 | `--config <fil>` | En annan testgen.yaml än den som hittas vid solutionen. |

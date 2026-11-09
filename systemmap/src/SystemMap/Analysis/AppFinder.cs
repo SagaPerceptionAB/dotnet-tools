@@ -10,11 +10,6 @@ namespace SystemMap;
 /// </summary>
 internal static partial class AppFinder
 {
-    /// <summary>
-    /// Vägarna som <c>MapSagaPerceptionHealthChecks()</c> mappar i biblioteket SagaPerception.Observability.
-    /// </summary>
-    internal static readonly string[] SagaPerceptionHealthPaths = ["/health/live", "/health/ready"];
-
     public static List<AppFacts> Find(
         IReadOnlyList<Project> projects, Solution solution, ModelCache models, ServiceResolver resolver, CallSites sites, IReadOnlyList<EntryCandidate> entries,
         IReadOnlyDictionary<string, Integration> integrations)
@@ -81,19 +76,17 @@ internal static partial class AppFinder
         return new string(buffer, 0, reader.Read(buffer, 0, buffer.Length));
     }
 
-    /// <summary><c>MapHealthChecks("/x")</c> och <c>MapSagaPerceptionHealthChecks()</c>, med prefix från <c>MapGroup</c>.</summary>
+    /// <summary><c>MapHealthChecks("/x")</c>, med prefix från <c>MapGroup</c>.</summary>
     private static List<string> HealthPaths(HashSet<string> projects, CallSites sites, ModelCache models)
     {
         var paths = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (call, model) in sites.Named("MapHealthChecks").Concat(sites.Named("MapSagaPerceptionHealthChecks")))
+        foreach (var (call, model) in sites.Named("MapHealthChecks"))
         {
             if (models.ProjectOf(call.SyntaxTree) is not { } project || !projects.Contains(project)) continue;
             var own = call.ArgumentList.Arguments.FirstOrDefault() is { } first ? Symbols.ConstantString(first.Expression, model) : null;
-            var routes = Symbols.InvokedName(call) == "MapHealthChecks" ? own is null ? [] : new[] { own } : SagaPerceptionHealthPaths;
-            // Metoden i biblioteket själv anropar MapHealthChecks på sin parameter: prefixen hör till den som anropar den.
+            if (own is null) continue;
             foreach (var prefix in sites.Prefixes(Symbols.Receiver(call), model))
-                foreach (var route in routes)
-                    paths.Add(RouteTemplate.Combine(prefix, route.TrimStart('/'), "", ""));
+                paths.Add(RouteTemplate.Combine(prefix, own.TrimStart('/'), "", ""));
         }
         return [.. paths.Order(StringComparer.Ordinal)];
     }

@@ -2,7 +2,7 @@ using System.Xml.Linq;
 
 namespace Repository.Tests;
 
-/// <summary>Modulgränserna (plan, avsnitt 3): läser alla .csproj i repot och kontrollerar referenserna mot regeltabellen.</summary>
+/// <summary>Modulgränserna (vilka projekt som får referera vilka): läser alla .csproj i repot och kontrollerar referenserna mot regeltabellen.</summary>
 public class ArchitectureTests
 {
     /// <summary>Ett projekt i repot. <see cref="Path"/> är relativt repots rot och använder snedstreck.</summary>
@@ -33,10 +33,6 @@ public class ArchitectureTests
         // systemmap är en egen produkt (egna paket). testgen använder dess bibliotek åt ett håll, aldrig tvärtom.
         new("systemmap är fristående: det får inte referera testgen.",
             p => p.Path.StartsWith("systemmap/src/"), IsTestGen, Never),
-
-        // Biblioteket ska fungera med vilket testramverk och vilket verktyg som helst, och paketeras utan dem.
-        new("SagaPerception.Testing ska vara oberoende av testramverk och verktyg: ingen referens till NUnit eller testgen.",
-            p => p.Path == "testing/src/SagaPerception.Testing/SagaPerception.Testing.csproj", IsTestGen, IsNUnit),
 
         // Mocken körs i testprocessen (och som ett eget kommando): den får inte dra in webbläsare, Roslyn eller något annat än Core.
         new("TestGen.Mock får bara referera TestGen.Core, och inte Playwright, Roslyn eller NUnit.",
@@ -73,16 +69,16 @@ public class ArchitectureTests
                 || package.StartsWith("Microsoft.CodeAnalysis", StringComparison.OrdinalIgnoreCase)
                 || package.StartsWith("Microsoft.Playwright", StringComparison.OrdinalIgnoreCase)),
 
-        // Värden för testgens tester i dotnet test: den får bo på Core, Excel, Mock, Browser och SagaPerception.Testing, men inte på Roslyn, Cli eller Views.
-        new("SagaPerception.Testing.NUnit får bara referera TestGen.Core, Excel, Mock, Browser och SagaPerception.Testing, och inte Roslyn.",
-            p => p.Path == "testgen/src/SagaPerception.Testing.NUnit/SagaPerception.Testing.NUnit.csproj",
+        // Värden för testgens tester i dotnet test: den får bo på Core, Excel, Mock och Browser, men inte på Roslyn, Cli eller Views.
+        new("SagaPerception.TestGen.NUnit får bara referera TestGen.Core, Excel, Mock och Browser, och inte Roslyn, Cli eller Views.",
+            p => p.Path == "testgen/src/SagaPerception.TestGen.NUnit/SagaPerception.TestGen.NUnit.csproj",
             path => !(path.EndsWith("/TestGen.Core.csproj") || path.EndsWith("/TestGen.Excel.csproj") || path.EndsWith("/TestGen.Mock.csproj")
-                      || path.EndsWith("/TestGen.Browser.csproj") || path.EndsWith("/SagaPerception.Testing.csproj")),
+                      || path.EndsWith("/TestGen.Browser.csproj")),
             package => package.StartsWith("Microsoft.CodeAnalysis", StringComparison.OrdinalIgnoreCase)),
 
         // Produktkod som drar in NUnit tvingar användarna av paketet att få testramverket i sin utdata och sina beroenden.
-        new("Produktkod under src får inte referera NUnit (utom värden SagaPerception.Testing.NUnit). NUnit hör hemma i testprojekt.",
-            p => p.IsProduct && (p.Path.Contains("/src/") || p.Path.StartsWith("src/")) && p.Name != "SagaPerception.Testing.NUnit", Never, IsNUnit),
+        new("Produktkod under src får inte referera NUnit (utom värden SagaPerception.TestGen.NUnit). NUnit hör hemma i testprojekt.",
+            p => p.IsProduct && (p.Path.Contains("/src/") || p.Path.StartsWith("src/")) && p.Name != "SagaPerception.TestGen.NUnit", Never, IsNUnit),
 
         // Annars hamnar testkod (och dess testramverk) i det som levereras.
         new("Produktprojekt får inte referera ett testprojekt.",
@@ -106,6 +102,27 @@ public class ArchitectureTests
             }
 
         Assert.That(violations, Is.Empty, "Otillåtna referenser:" + Environment.NewLine + string.Join(Environment.NewLine, violations));
+    }
+
+    // Bara fyra paket ges ut. Modulerna (CommandLine, Core, Excel, Mock, Browser) bakas in i NUnit-paketet och ska inte bli egna paket.
+    private static readonly string[] PackableProjects =
+    [
+        "systemmap/src/SystemMap.AspNetCore/SystemMap.AspNetCore.csproj",
+        "systemmap/src/SystemMap.Cli/SystemMap.Cli.csproj",
+        "testgen/src/SagaPerception.TestGen.NUnit/SagaPerception.TestGen.NUnit.csproj",
+        "testgen/src/TestGen.Cli/TestGen.Cli.csproj",
+    ];
+
+    [Test]
+    public void Only_the_four_packages_are_packable()
+    {
+        var root = FindRepositoryRoot();
+        var packable = LoadProjects()
+            .Where(p => XDocument.Load(Path.Combine(root, p.Path)).Descendants("IsPackable").Any(e => string.Equals(e.Value.Trim(), "true", StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.Path)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        Assert.That(packable, Is.EqualTo(PackableProjects), "Bara de fyra paketen får ha IsPackable=true. Ett till projekt blir annars ett eget paket (eller ett beroende i ett av dem).");
     }
 
     [Test]

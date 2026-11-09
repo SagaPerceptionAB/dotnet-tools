@@ -5,7 +5,7 @@ Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst an
 
 ## Installera
 
-Krav: .NET 10 SDK. Paketet ges ut som förhandsversion på nuget.org, så `--prerelease` behövs. Installera som lokalt dotnet-verktyg:
+Krav: .NET 10 SDK. Paketet är en förhandsversion och finns ännu inte på nuget.org (bygg det med `dotnet pack`, se repots README), så `--prerelease` behövs. Installera som lokalt dotnet-verktyg:
 
 ```
 dotnet new tool-manifest

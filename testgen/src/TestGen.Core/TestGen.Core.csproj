@@ -1,10 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Inget eget paket, men versionen behålls: TestRunner.Version läser den och skriver den i resultatfilerna (toolVersion). -->
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
-    <PackageId>SagaPerception.TestGen.Core</PackageId>
     <Version>$(SagaPerceptionTestGenVersion)</Version>
-    <Description>Motorn i testgen: OpenAPI-spec, testdata, testfall, körning och rapporter. Används av SagaPerception.Testing.NUnit.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="CommandLine" />
+    <Using Include="SagaPerception.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>

@@ -30,7 +30,6 @@ jobs:
           - { name: shared, solution: shared/Shared.slnx }
           - { name: testgen, solution: testgen/testgen.slnx, browser: testgen/tests/TestGen.Browser.Tests }
           - { name: systemmap, solution: systemmap/SystemMap.slnx, browser: systemmap/tests/SystemMap.Tests }
-          - { name: testing, solution: testing/Testing.slnx }
           - { name: repository, solution: tests/Repository.Tests/Repository.Tests.csproj }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx testing/Testing.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
+          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
             echo "::group::$s"
             dotnet format whitespace "$s" --verify-no-changes
             dotnet format style "$s" --verify-no-changes
@@ -134,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx testing/Testing.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
+          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
             echo "::group::$s"
             dotnet restore "$s" --verbosity quiet
             dotnet list "$s" package --vulnerable --include-transitive | tee audit.txt
@@ -146,12 +145,13 @@ jobs:
           done
           exit $failed
 
-  # Bevisar att paketen går att packa, installera och starta, inte bara att koden bygger: paketerar allt som release.yml ger ut, installerar
-  # verktygen från en lokal källa och kör --help. Fångar t.ex. saknade filer i paketet eller fel ToolCommandName.
+  # Bevisar att paketen går att packa, installera och starta, inte bara att koden bygger: paketerar de fyra paketen som release.yml ger ut,
+  # kontrollerar innehållet (eng/check-packages.sh), installerar verktygen från en lokal källa och kör --help. Fångar t.ex. saknade filer
+  # i paketet, modulerna som inte bakats in eller fel ToolCommandName.
   pack-smoke:
     name: paket (installera och starta)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -166,20 +166,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testing/src/SagaPerception.Testing testgen/src/SagaPerception.Testing.NUnit testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore; do
+          for p in testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore; do
             dotnet pack "$p" -c Release -o "$RUNNER_TEMP/feed"
           done
           ls -l "$RUNNER_TEMP/feed"
-      - name: Installera och starta verktygen
-        shell: bash
-        run: |
-          set -euo pipefail
-          for t in testgen:SagaPerception.TestGen.Cli systemmap:SagaPerception.SystemMap.Cli; do
-            cmd="${t%%:*}"
-            id="${t#*:}"
-            dotnet tool install "$id" --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/feed" --prerelease
-            "$RUNNER_TEMP/tools/$cmd" --help
-          done
+      - name: Kontrollera paketen
+        run: eng/check-packages.sh "$RUNNER_TEMP/feed" 4
+      # Det en användare gör: ny solution med API, webbapp och xUnit-projekt, verktygen från källan, testgen init, dotnet test, systemmap.
+      - name: Installera verktygen och kör som användare
+        run: eng/try-packages.sh "$RUNNER_TEMP/feed"
 
   # Kodanalys för C#. Gratis i ett publikt repo (se ADR 0009). Resultatet visas under Security > Code scanning.
   codeql:

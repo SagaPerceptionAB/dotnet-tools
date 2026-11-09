@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="CommandLine" />
+    <Using Include="SagaPerception.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>
@@ -63,6 +63,7 @@
     <PackageId>SagaPerception.TestGen.Cli</PackageId>
     <Version>$(SagaPerceptionTestGenVersion)</Version>
     <Description>Testar ett API utifrån dess OpenAPI-spec (ingen AI vid körning, samma indata ger samma resultat).</Description>
+    <PackageTags>testgen;openapi;testing;playwright;sagaperception;dotnet-tool</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Playwrights .ps1-skript följer med i verktyget (testgen init installerar Chromium med dem); NuGet varnar för skript utanför tools/. -->
     <NoWarn>$(NoWarn);NU5111</NoWarn>

@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ApiTests och ViewTests för NUnit: testgens tester i `dotnet test`. Core, Excel, Mock, Browser och CommandLine är egna projekt
+       men inga egna paket: deras DLL:er och symboler packas in i det här paketet (lib/net10.0/), och deras paketberoenden är
+       direkta beroenden här. build/ packas så att NUnit-adaptern hittar testprojektet automatiskt. -->
+  <PropertyGroup>
+    <RootNamespace>SagaPerception.TestGen.NUnit</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.TestGen.NUnit</PackageId>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+    <Description>API- och UI-tester ur OpenAPI-specen och källkoden i dotnet test: public sealed class MinaTester() : ApiTests("MittApi"); Tillägg till verktyget SagaPerception.TestGen.Cli.</Description>
+    <PackageTags>testing;openapi;playwright;nunit;sagaperception</PackageTags>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);BakeProjectReferences</TargetsForTfmSpecificBuildOutput>
+    <TargetsForTfmSpecificDebugSymbolsInPackage>$(TargetsForTfmSpecificDebugSymbolsInPackage);BakeProjectReferenceSymbols</TargetsForTfmSpecificDebugSymbolsInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\TestGen.Excel\TestGen.Excel.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\TestGen.Mock\TestGen.Mock.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\TestGen.Browser\TestGen.Browser.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="Testcontainers.Azurite" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Redis" />
+    <!-- Modulernas paketberoenden: modulerna är inbakade, så beroendena måste stå här för att hamna i nuspec. -->
+    <PackageReference Include="Bogus" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="SagaPerception.CommandLine" />
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="build\*" Pack="true" PackagePath="build\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SagaPerception.TestGen.NUnit.Tests" />
+  </ItemGroup>
+
+  <!-- DLL:erna från projektreferenserna (också CommandLine, som kommer via Core) läggs i lib/ bredvid den egna DLL:en, med sina symboler. -->
+  <Target Name="BakeProjectReferences" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->Distinct())"
+                            Condition="'%(ReferenceCopyLocalPaths.ReferenceSourceTarget)' == 'ProjectReference' and '%(ReferenceCopyLocalPaths.Extension)' == '.dll'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="BakeProjectReferenceSymbols" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_BakedDll Include="@(ReferenceCopyLocalPaths->Distinct())"
+                 Condition="'%(ReferenceCopyLocalPaths.ReferenceSourceTarget)' == 'ProjectReference' and '%(ReferenceCopyLocalPaths.Extension)' == '.dll'" />
+      <_BakedSymbol Include="@(_BakedDll->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <TfmSpecificDebugSymbolsFile Include="@(_BakedSymbol)" TargetPath="/lib/$(TargetFramework)/%(Filename)%(Extension)" TargetFramework="$(TargetFramework)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

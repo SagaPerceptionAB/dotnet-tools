@@ -15,7 +15,7 @@ Skapa inget öppet issue. Använd i stället GitHubs privata säkerhetsrapport: 
 | **Systemkartan i appen** | Visas bara i Development, eller om adressen kräver inloggning (`.RequireAuthorization()`). Sidan hämtar inget utifrån, eftersom Cytoscape följer med i paketet. |
 | **API- och UI-tester i `dotnet test`** | `ApiTests` och `ViewTests` startar appen och mocken i testprocessen, bara på localhost (port 0). Värdpolicyn blockerar appens utgående anrop som standard (`hosts` i `testgen.yaml`). Playwrights spårfiler är avstängda som standard, eftersom de kan innehålla känsliga uppgifter. Testdatan är fiktiv (Skatteverkets testpersonnummer, `example.com`, PTS fiktiva nummer). Resultatfilerna läses bara ur testprojekten. |
 | **Telemetri** | Inga av beroendena skickar telemetri. .NET SDK:ns telemetri stängs av i verktygen, och allt de startar ärver det. Den stängs också av i CI. |
-| **Workflows** | Minsta behörighet: `contents: read`. Release publicerar till nuget.org med trusted publishing (GitHub OIDC), så ingen API-nyckel ligger i repot. Actions är låsta till commit-SHA. CodeQL och NuGetAudit körs i CI. |
+| **Workflows** | Minsta behörighet: `contents: read`. Release (`packages: write`) publicerar till organisationens privata GitHub Packages med jobbets `GITHUB_TOKEN`, så ingen API-nyckel ligger i repot. Actions är låsta till commit-SHA. CodeQL och NuGetAudit körs i CI. |
 
 ## Tänk på
 

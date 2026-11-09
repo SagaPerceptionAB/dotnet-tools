@@ -145,8 +145,9 @@ jobs:
           done
           exit $failed
 
-  # Bevisar att paketen går att packa, installera och starta, inte bara att koden bygger: paketerar allt som release.yml ger ut, installerar
-  # verktygen från en lokal källa och kör --help. Fångar t.ex. saknade filer i paketet eller fel ToolCommandName.
+  # Bevisar att paketen går att packa, installera och starta, inte bara att koden bygger: paketerar de fyra paketen som release.yml ger ut,
+  # kontrollerar innehållet (eng/check-packages.sh), installerar verktygen från en lokal källa och kör --help. Fångar t.ex. saknade filer
+  # i paketet, modulerna som inte bakats in eller fel ToolCommandName.
   pack-smoke:
     name: paket (installera och starta)
     runs-on: ubuntu-latest
@@ -165,10 +166,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore; do
+          for p in testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore; do
             dotnet pack "$p" -c Release -o "$RUNNER_TEMP/feed"
           done
           ls -l "$RUNNER_TEMP/feed"
+      - name: Kontrollera paketen
+        run: eng/check-packages.sh "$RUNNER_TEMP/feed"
       - name: Installera och starta verktygen
         shell: bash
         run: |

@@ -151,7 +151,7 @@ jobs:
   pack-smoke:
     name: paket (installera och starta)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -171,17 +171,10 @@ jobs:
           done
           ls -l "$RUNNER_TEMP/feed"
       - name: Kontrollera paketen
-        run: eng/check-packages.sh "$RUNNER_TEMP/feed"
-      - name: Installera och starta verktygen
-        shell: bash
-        run: |
-          set -euo pipefail
-          for t in testgen:SagaPerception.TestGen.Cli systemmap:SagaPerception.SystemMap.Cli; do
-            cmd="${t%%:*}"
-            id="${t#*:}"
-            dotnet tool install "$id" --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/feed" --prerelease
-            "$RUNNER_TEMP/tools/$cmd" --help
-          done
+        run: eng/check-packages.sh "$RUNNER_TEMP/feed" 4
+      # Det en användare gör: ny solution med API, webbapp och xUnit-projekt, verktygen från källan, testgen init, dotnet test, systemmap.
+      - name: Installera verktygen och kör som användare
+        run: eng/try-packages.sh "$RUNNER_TEMP/feed"
 
   # Kodanalys för C#. Gratis i ett publikt repo (se ADR 0009). Resultatet visas under Security > Code scanning.
   codeql:

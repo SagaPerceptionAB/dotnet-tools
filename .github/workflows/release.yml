@@ -109,6 +109,9 @@ jobs:
           done
           ls -l nupkg
 
+      - name: Kontrollera paketen
+        run: eng/check-packages.sh nupkg 2
+
       # En CycloneDX-SBOM per paketprojekt, som bifogas körningen. Verktygets version är fast.
       - name: SBOM
         shell: bash

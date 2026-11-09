@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Inget eget paket, men versionen behålls: TestRunner.Version läser den och skriver den i resultatfilerna (toolVersion). -->
+  <PropertyGroup>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\shared\CommandLine\CommandLine.csproj" />
   </ItemGroup>

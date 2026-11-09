@@ -1,4 +1,4 @@
-using SagaPerception.Testing.NUnit;
+using SagaPerception.TestGen.NUnit;
 
 namespace Shop.Tests;
 

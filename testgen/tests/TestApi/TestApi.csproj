@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Minimal app som testerna startar via ApiFactory, för testerna av SagaPerception.TestGen.NUnit. -->
+
+</Project>

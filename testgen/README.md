@@ -25,7 +25,7 @@ dotnet tool install SagaPerception.TestGen.Cli --prerelease
 dotnet tool restore
 ```
 
-Testerna i `dotnet test` kommer från paketet `SagaPerception.Testing.NUnit` (som `testgen init` lägger i testprojektet). Alla testgen-paket ges ut tillsammans med samma version: `SagaPerception.TestGen.Cli`, `SagaPerception.Testing.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine`.
+Testerna i `dotnet test` kommer från paketet `SagaPerception.TestGen.NUnit` (som `testgen init` lägger i testprojektet). Alla testgen-paket ges ut tillsammans med samma version: `SagaPerception.TestGen.Cli`, `SagaPerception.TestGen.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine`.
 
 Använd `--tool-path verktyg` i stället för `--global` för att installera i en egen mapp.
 
@@ -85,7 +85,7 @@ Samma testfall som `testgen run`, mot appen i testprocessen (TestServer). Inget 
 public sealed class ShopApiTests() : ApiTests("ShopApi");
 ```
 
-Testprojektet behöver en `ProjectReference` till API-projektet och paketet `SagaPerception.Testing.NUnit` (`testgen init` ordnar det; exempel: [`samples/Shop.Tests`](https://github.com/SagaPerceptionAB/dotnet-tools/tree/main/samples/Shop.Tests)). Solutionen, specen, `testgen.yaml` (i testprojektet eller vid solutionen) och miljön hittas av sig själva; miljön väljs med `TESTGEN_ENV` (standard `local`). I en miljö med adress testas den adressen i stället.
+Testprojektet behöver en `ProjectReference` till API-projektet och paketet `SagaPerception.TestGen.NUnit` (`testgen init` ordnar det; exempel: [`samples/Shop.Tests`](https://github.com/SagaPerceptionAB/dotnet-tools/tree/main/samples/Shop.Tests)). Solutionen, specen, `testgen.yaml` (i testprojektet eller vid solutionen) och miljön hittas av sig själva; miljön väljs med `TESTGEN_ENV` (standard `local`). I en miljö med adress testas den adressen i stället.
 
 - **Testnamn:** `T-001 POST /customers giltig indata`. Kategorier: `api`, `mutating` (POST, PUT, PATCH, DELETE) och orsakskoden vid fel, så `--filter TestCategory=mutating` fungerar.
 - **Utfall:** fel i systemet och förväntan som inte stämmer fäller testet, med samma förklaring, anrop, svar och curl som i terminalen. Osäkra orsaker (`auth`, `test-data`, `missing-data`, `test-user-rejected`, `rate-limited`, `environment`, `tool`, `dependency`) blir Inconclusive. Skrivskyddad miljö blir Ignore.

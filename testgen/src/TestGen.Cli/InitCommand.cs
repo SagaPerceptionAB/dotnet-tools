@@ -11,7 +11,7 @@ namespace TestGen.Cli;
 /// <param name="Restore">Kör <c>dotnet restore</c> när vyerna läses.</param>
 /// <param name="InstallChromium">Installerar Chromium om en webbapp finns och den saknas.</param>
 /// <param name="LibraryProject">
-/// Intern möjlighet (miljövariabeln <c>TESTGEN_LIBRARY_PROJECT</c>): sökväg till SagaPerception.Testing.NUnit.csproj. Testprojektet får då en
+/// Intern möjlighet (miljövariabeln <c>TESTGEN_LIBRARY_PROJECT</c>): sökväg till SagaPerception.TestGen.NUnit.csproj. Testprojektet får då en
 /// ProjectReference dit i stället för paketet. Används av repots egna tester: ett paket från en lokal feed hamnar kvar i NuGet-cachen
 /// och skulle ge gammal kod nästa gång.
 /// </param>
@@ -26,7 +26,7 @@ internal sealed record InitOptions(bool Restore = true, bool InstallChromium = t
 /// </summary>
 internal static partial class InitCommand
 {
-    private const string PackageId = "SagaPerception.Testing.NUnit";
+    private const string PackageId = "SagaPerception.TestGen.NUnit";
 
     /// <summary>Paketen testprojektet behöver förutom testgen, med versionerna verktyget är byggt med.</summary>
     private static readonly string[] TestPackages = ["Microsoft.NET.Test.Sdk", "NUnit", "NUnit3TestAdapter"];
@@ -190,7 +190,7 @@ internal static partial class InitCommand
     }
 
     private static string TestClass(string ns, string className, string template, string project) =>
-        $"using SagaPerception.Testing.NUnit;\n\nnamespace {ns};\n\npublic sealed class {className}() : {template}(\"{project}\");\n";
+        $"using SagaPerception.TestGen.NUnit;\n\nnamespace {ns};\n\npublic sealed class {className}() : {template}(\"{project}\");\n";
 
     /// <summary>Lägger views.json bland det som kopieras till utdata om projektfilen inte nämner den. True om filen ändrades.</summary>
     private static bool EnsureViewsCopied(string testProject)

@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <Using Include="NUnit.Framework" />
-    <Using Include="CommandLine" />
+    <Using Include="SagaPerception.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>

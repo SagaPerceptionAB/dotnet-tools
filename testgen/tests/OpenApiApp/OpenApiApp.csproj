@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Minsta möjliga app med AddOpenApi() (Microsoft.OpenApi 2.x) för testerna av SagaPerception.Testing.NUnit. -->
+  <!-- Minsta möjliga app med AddOpenApi() (Microsoft.OpenApi 2.x) för testerna av SagaPerception.TestGen.NUnit. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
   </ItemGroup>

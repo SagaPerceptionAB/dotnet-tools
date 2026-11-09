@@ -1,4 +1,4 @@
-namespace CommandLine.Tests;
+namespace SagaPerception.CommandLine.Tests;
 
 public class SolutionFileTests
 {

@@ -24,7 +24,7 @@ public sealed class RepositoryFacts
     public IEnumerable<ProjectFacts> WebApps => Projects.Where(p => p.Kind == ProjectKind.Web);
     public IEnumerable<ProjectFacts> TestProjects => Projects.Where(p => p.Kind == ProjectKind.Test);
 
-    /// <summary>Testprojekt som använder testgen (<c>SagaPerception.Testing*</c>).</summary>
+    /// <summary>Testprojekt som använder testgen (<c>SagaPerception.TestGen.NUnit</c>).</summary>
     public IEnumerable<ProjectFacts> TestGenProjects => TestProjects.Where(p => p.UsesTestGen);
 
     /// <summary>Något projekt behöver en webbläsare: det använder Playwright eller har UI-tester (<c>ViewTests</c>) från testgen.</summary>

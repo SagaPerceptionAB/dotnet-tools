@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="CommandLine" />
+    <Using Include="SagaPerception.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>

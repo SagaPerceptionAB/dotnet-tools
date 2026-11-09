@@ -126,7 +126,7 @@ public class ProjectFactsTests
     public void References_and_packages_that_matter_are_read()
     {
         var facts = ProjectFacts.Read(Project("T", items: "<ProjectReference Include=\"..\\Zeta\\Zeta.csproj\" /><ProjectReference Include=\"../Alfa/Alfa.csproj\" />" +
-            Package("Microsoft.Playwright") + Package("SagaPerception.Testing.NUnit") + Package("Microsoft.AspNetCore.Mvc.Testing")));
+            Package("Microsoft.Playwright") + Package("SagaPerception.TestGen.NUnit") + Package("Microsoft.AspNetCore.Mvc.Testing")));
         Assert.That(facts.ProjectReferences, Is.EqualTo(new[] { "Alfa", "Zeta" }));
         Assert.That((facts.UsesPlaywright, facts.UsesTestGen), Is.EqualTo((true, true)));
         Assert.That(facts.Packages, Does.Contain("Microsoft.AspNetCore.Mvc.Testing"));
@@ -312,7 +312,7 @@ public class ProjectFactsTests
     [Test]
     public void Test_targets_skip_bin_obj_node_modules_and_dot_folders()
     {
-        var path = Project("Tests", items: Package("SagaPerception.Testing.NUnit"));
+        var path = Project("Tests", items: Package("SagaPerception.TestGen.NUnit"));
         var dir = Path.GetDirectoryName(path)!;
         foreach (var skipped in new[] { "bin", "obj", "node_modules", ".git" })
             Write($"Tests/{skipped}/X.cs", "public sealed class X() : ApiTests(\"Hoppas\");");
@@ -346,7 +346,7 @@ public class ProjectFactsTests
     public void The_views_file_in_a_testgen_test_project_wins_and_is_the_default_place_to_write()
     {
         Project("W", "Microsoft.NET.Sdk.Web");
-        Project("W.Tests", items: Package("NUnit") + Package("SagaPerception.Testing.NUnit"));
+        Project("W.Tests", items: Package("NUnit") + Package("SagaPerception.TestGen.NUnit"));
         var facts = Repository("W", "W.Tests");
         Assert.That(ViewsLocator.Default(facts, "elsewhere"), Is.EqualTo(Path.Combine(_dir, "W.Tests", "views.json")));
         Write("views.json", ViewsJsonText);
@@ -400,11 +400,11 @@ public class ProjectFactsTests
         Assert.That(Repository("Plain").NeedsChromium, Is.False);
         Project("Ui", items: Package("Microsoft.Playwright"));
         Assert.That(Repository("Plain", "Ui").NeedsChromium, Is.True);
-        var api = Project("ApiOnly", items: Package("NUnit") + "<ProjectReference Include=\"..\\SagaPerception.Testing.NUnit\\SagaPerception.Testing.NUnit.csproj\" />");
+        var api = Project("ApiOnly", items: Package("NUnit") + "<ProjectReference Include=\"..\\SagaPerception.TestGen.NUnit\\SagaPerception.TestGen.NUnit.csproj\" />");
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(api)!, "T.cs"), "public sealed class T() : ApiTests(\"ShopApi\");");
         Assert.That(ProjectFacts.Read(api).UsesTestGen, Is.True, "ett projekt i repot räknas som paketet");
         Assert.That(Repository("Plain", "ApiOnly").NeedsChromium, Is.False);
-        var ui = Project("UiToo", items: Package("NUnit") + Package("SagaPerception.Testing.NUnit"));
+        var ui = Project("UiToo", items: Package("NUnit") + Package("SagaPerception.TestGen.NUnit"));
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(ui)!, "V.cs"), "public sealed class V() : ViewTests(\"ShopWeb\");");
         Assert.That(Repository("Plain", "UiToo").NeedsChromium, Is.True);
     }
@@ -412,7 +412,7 @@ public class ProjectFactsTests
     [Test]
     public void Test_classes_point_out_their_projects_by_name()
     {
-        var path = Project("Tests", items: Package("SagaPerception.Testing.NUnit"));
+        var path = Project("Tests", items: Package("SagaPerception.TestGen.NUnit"));
         var dir = Path.GetDirectoryName(path)!;
         File.WriteAllText(Path.Combine(dir, "A.cs"), "public sealed class A() : ApiTests(\"ShopApi\");\npublic sealed class B() : ViewTests( \"ShopWeb\" );");
         File.WriteAllText(Path.Combine(dir, "Dubbel.cs"), "public sealed class C() : ApiTests(\"ShopApi\");");

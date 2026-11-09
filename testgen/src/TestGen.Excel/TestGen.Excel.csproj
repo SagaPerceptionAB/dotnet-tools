@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="CommandLine" />
+    <Using Include="SagaPerception.CommandLine" />
     <Using Include="TestGen.Core" />
   </ItemGroup>
 

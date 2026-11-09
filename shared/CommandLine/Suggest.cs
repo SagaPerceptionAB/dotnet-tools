@@ -1,4 +1,4 @@
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Förslag på "Menade du ...?" med Levenshtein-avstånd högst 2 (skiftläge spelar ingen roll).</summary>
 public static class Suggest

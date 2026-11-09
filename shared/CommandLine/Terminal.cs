@@ -1,4 +1,4 @@
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>
 /// All utskrift från ett kommando. <see cref="Out"/> (stdout) är resultat och data; <see cref="Err"/> (stderr) är förlopp,

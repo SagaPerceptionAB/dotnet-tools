@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>En rad i hjälpen: ett namn (kommando, flagga, kod) och en förklaring.</summary>
 public readonly record struct HelpItem(string Name, string Text);

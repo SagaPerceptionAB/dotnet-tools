@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Fel i användningen. Meddelandet är redan på svenska och visas som det är.</summary>
 public sealed class UsageException(string message, string? tip = null, string? technical = null) : Exception(message)

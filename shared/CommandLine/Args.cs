@@ -1,4 +1,4 @@
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Enkel flaggparser: --namn värde, --namn=värde och flaggor utan värde (t.ex. --force).</summary>
 public sealed class Args

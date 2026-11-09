@@ -4,7 +4,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>SagaPerception.TestGen.Core</PackageId>
     <Version>$(SagaPerceptionTestGenVersion)</Version>
-    <Description>Motorn i testgen: OpenAPI-spec, testdata, testfall, körning och rapporter. Används av SagaPerception.Testing.NUnit.</Description>
+    <Description>Motorn i testgen: OpenAPI-spec, testdata, testfall, körning och rapporter. Används av SagaPerception.TestGen.NUnit.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="CommandLine" />
+    <Using Include="SagaPerception.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>

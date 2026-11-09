@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Minsta möjliga app som använder PostgreSQL och Azure Storage vid start, med lokala adresser i Development, för testerna av SagaPerception.Testing.NUnit. -->
+  <!-- Minsta möjliga app som använder PostgreSQL och Azure Storage vid start, med lokala adresser i Development, för testerna av SagaPerception.TestGen.NUnit. -->
   <ItemGroup>
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Npgsql" />

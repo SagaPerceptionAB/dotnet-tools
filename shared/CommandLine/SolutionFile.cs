@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Projekten i en solution (<c>.slnx</c> som XML, <c>.sln</c> som text) eller ett enskilt <c>.csproj</c>. Ingen MSBuild.</summary>
 public static partial class SolutionFile

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Minsta möjliga app med JwtBearer som standard, en roll, ett schema angivet med namn, en inloggning och 429, för testerna av SagaPerception.Testing.NUnit. -->
+  <!-- Minsta möjliga app med JwtBearer som standard, en roll, ett schema angivet med namn, en inloggning och 429, för testerna av SagaPerception.TestGen.NUnit. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>

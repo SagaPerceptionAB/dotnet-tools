@@ -1,4 +1,4 @@
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Exitkoderna för alla kommandon. Ett kommando använder de som passar det.</summary>
 public static class ExitCodes

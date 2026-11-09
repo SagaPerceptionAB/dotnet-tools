@@ -1,4 +1,4 @@
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Hittar solutionen (eller projektet) som ett kommando ska arbeta mot. Ren filsystemslogik, ingen MSBuild.</summary>
 public static class SolutionFinder

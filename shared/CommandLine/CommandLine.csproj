@@ -4,6 +4,8 @@
        Main. Inget här vet något om testgen eller systemkartan. Paketeras bara för att TestGen.Core beror på det; paketet
        har testgens version. -->
   <PropertyGroup>
+    <AssemblyName>SagaPerception.CommandLine</AssemblyName>
+    <RootNamespace>SagaPerception.CommandLine</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>SagaPerception.CommandLine</PackageId>
     <Version>$(SagaPerceptionTestGenVersion)</Version>

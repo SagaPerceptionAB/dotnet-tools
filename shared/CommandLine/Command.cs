@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace CommandLine;
+namespace SagaPerception.CommandLine;
 
 /// <summary>Ramen runt Main: UTF-8 i konsolen, och fel skrivs på enkel svenska till stderr med rätt exitkod.</summary>
 public static class Command

@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 1,
+  "apps": [
+    {
+      "project": "ShopWeb",
+      "views": [
+        {
+          "id": "ui:/",
+          "route": "/",
+          "kind": "blazor",
+          "source": "../ShopWeb/Components/Pages/Home.razor",
+          "title": "Webbshop",
+          "heading": "Välkommen till webbshopen",
+          "parameters": [],
+          "forms": [],
+          "links": [
+            {
+              "href": "/",
+              "text": "Start"
+            },
+            {
+              "href": "/about",
+              "text": "Om oss"
+            },
+            {
+              "href": "/customers/create",
+              "text": "Kunder"
+            },
+            {
+              "href": "/products",
+              "text": "Produkter"
+            }
+          ],
+          "apiCalls": [],
+          "requiresAuth": false
+        },
+        {
+          "id": "ui:/about",
+          "route": "/about",
+          "kind": "razor-page",
+          "source": "../ShopWeb/Pages/About.cshtml",
+          "title": "Om oss",
+          "heading": "Kontakta oss",
+          "parameters": [],
+          "forms": [
+            {
+              "id": "Contact",
+              "model": "ContactInput",
+              "submit": {
+                "kind": "role",
+                "value": "button",
+                "name": "Skicka meddelande"
+              },
+              "fields": [
+                {
+                  "name": "Name",
+                  "label": "Ditt namn",
+                  "type": "text",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Ditt namn"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "Namn måste fyllas i."
+                    },
+                    {
+                      "kind": "min-length",
+                      "value": "2",
+                      "message": "Namnet ska vara mellan 2 och 60 tecken."
+                    },
+                    {
+                      "kind": "max-length",
+                      "value": "60",
+                      "message": "Namnet ska vara mellan 2 och 60 tecken."
+                    }
+                  ],
+                  "options": []
+                },
+                {
+                  "name": "Email",
+                  "label": "E-post",
+                  "type": "email",
+                  "locator": {
+                    "kind": "label",
+                    "value": "E-post"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "E-post måste fyllas i."
+                    },
+                    {
+                      "kind": "email",
+                      "message": "E-postadressen är ogiltig."
+                    }
+                  ],
+                  "options": []
+                },
+                {
+                  "name": "Message",
+                  "label": "Meddelande",
+                  "type": "text-area",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Meddelande"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "Meddelande måste fyllas i."
+                    },
+                    {
+                      "kind": "max-length",
+                      "value": "500",
+                      "message": "Meddelandet får vara högst 500 tecken."
+                    }
+                  ],
+                  "options": []
+                }
+              ]
+            }
+          ],
+          "links": [
+            {
+              "href": "/",
+              "text": "Till startsidan"
+            }
+          ],
+          "apiCalls": [],
+          "requiresAuth": false
+        },
+        {
+          "id": "ui:/customers/create",
+          "route": "/customers/create",
+          "kind": "blazor",
+          "source": "../ShopWeb/Components/Pages/CustomerCreate.razor",
+          "title": "Ny kund",
+          "heading": "Ny kund",
+          "parameters": [],
+          "forms": [
+            {
+              "id": "Customer",
+              "model": "CustomerInput",
+              "submit": {
+                "kind": "role",
+                "value": "button",
+                "name": "Spara kund"
+              },
+              "fields": [
+                {
+                  "name": "Name",
+                  "label": "Namn",
+                  "type": "text",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Namn"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "Namn måste fyllas i."
+                    }
+                  ],
+                  "options": [],
+                  "specField": "name"
+                },
+                {
+                  "name": "Email",
+                  "label": "E-post",
+                  "type": "email",
+                  "locator": {
+                    "kind": "label",
+                    "value": "E-post"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "E-post måste fyllas i."
+                    },
+                    {
+                      "kind": "email",
+                      "message": "E-postadressen är ogiltig."
+                    }
+                  ],
+                  "options": [],
+                  "specField": "email"
+                },
+                {
+                  "name": "Phone",
+                  "label": "Telefon",
+                  "type": "tel",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Telefon"
+                  },
+                  "rules": [],
+                  "options": [],
+                  "specField": "phone"
+                }
+              ],
+              "submitsTo": {
+                "method": "POST",
+                "path": "/customers"
+              },
+              "operationId": "createCustomer"
+            }
+          ],
+          "links": [
+            {
+              "href": "/",
+              "text": "Start"
+            },
+            {
+              "href": "/about",
+              "text": "Om oss"
+            },
+            {
+              "href": "/customers/create",
+              "text": "Ny kund"
+            },
+            {
+              "href": "/products",
+              "text": "Produkter"
+            }
+          ],
+          "apiCalls": [],
+          "requiresAuth": false
+        },
+        {
+          "id": "ui:/products",
+          "route": "/products",
+          "kind": "blazor",
+          "source": "../ShopWeb/Components/Pages/Products.razor",
+          "title": "Produkter",
+          "heading": "Produkter",
+          "parameters": [],
+          "forms": [],
+          "links": [
+            {
+              "href": "/",
+              "text": "Start"
+            },
+            {
+              "href": "/about",
+              "text": "Om oss"
+            },
+            {
+              "href": "/customers/create",
+              "text": "Ny kund"
+            },
+            {
+              "href": "/products",
+              "text": "Produkter"
+            },
+            {
+              "href": "/products/create",
+              "text": "Ny produkt"
+            },
+            {
+              "href": "/products/{}"
+            }
+          ],
+          "apiCalls": [],
+          "requiresAuth": false
+        },
+        {
+          "id": "ui:/products/create",
+          "route": "/products/create",
+          "kind": "blazor",
+          "source": "../ShopWeb/Components/Pages/ProductCreate.razor",
+          "title": "Ny produkt",
+          "heading": "Ny produkt",
+          "parameters": [],
+          "forms": [
+            {
+              "id": "Product",
+              "model": "ProductInput",
+              "submit": {
+                "kind": "role",
+                "value": "button",
+                "name": "Spara produkt"
+              },
+              "fields": [
+                {
+                  "name": "Name",
+                  "label": "Namn",
+                  "type": "text",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Namn"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "Namn måste fyllas i."
+                    },
+                    {
+                      "kind": "min-length",
+                      "value": "2",
+                      "message": "Namnet ska vara mellan 2 och 50 tecken."
+                    },
+                    {
+                      "kind": "max-length",
+                      "value": "50",
+                      "message": "Namnet ska vara mellan 2 och 50 tecken."
+                    }
+                  ],
+                  "options": [],
+                  "specField": "name"
+                },
+                {
+                  "name": "Sku",
+                  "label": "Artikelkod",
+                  "type": "text",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Artikelkod"
+                  },
+                  "rules": [
+                    {
+                      "kind": "required",
+                      "message": "Artikelkod måste fyllas i."
+                    },
+                    {
+                      "kind": "pattern",
+                      "value": "^[A-Z]{3}-[0-9]{4}$",
+                      "message": "Artikelkoden ska se ut som ABC-1234."
+                    }
+                  ],
+                  "options": [],
+                  "specField": "sku"
+                },
+                {
+                  "name": "Price",
+                  "label": "Pris",
+                  "type": "number",
+                  "locator": {
+                    "kind": "label",
+                    "value": "Pris"
+                  },
+                  "rules": [
+                    {
+                      "kind": "min",
+                      "value": "1",
+                      "message": "Priset ska vara mellan 1 och 100000."
+                    },
+                    {
+                      "kind": "max",
+                      "value": "100000",
+                      "message": "Priset ska vara mellan 1 och 100000."
+                    }
+                  ],
+                  "options": [],
+                  "specField": "price"
+                }
+              ],
+              "submitsTo": {
+                "method": "POST",
+                "path": "/products"
+              },
+              "operationId": "createProduct"
+            }
+          ],
+          "links": [
+            {
+              "href": "/",
+              "text": "Start"
+            },
+            {
+              "href": "/about",
+              "text": "Om oss"
+            },
+            {
+              "href": "/customers/create",
+              "text": "Ny kund"
+            },
+            {
+              "href": "/products",
+              "text": "Avbryt"
+            }
+          ],
+          "apiCalls": [],
+          "requiresAuth": false
+        },
+        {
+          "id": "ui:/products/{id:int}",
+          "route": "/products/{id:int}",
+          "kind": "blazor",
+          "source": "../ShopWeb/Components/Pages/ProductDetails.razor",
+          "title": "Produkt",
+          "heading": "Produktinformation",
+          "parameters": [
+            {
+              "name": "id",
+              "constraint": "int",
+              "optional": false
+            }
+          ],
+          "forms": [],
+          "links": [
+            {
+              "href": "/",
+              "text": "Start"
+            },
+            {
+              "href": "/about",
+              "text": "Om oss"
+            },
+            {
+              "href": "/customers/create",
+              "text": "Ny kund"
+            },
+            {
+              "href": "/products",
+              "text": "Tillbaka till produkter"
+            }
+          ],
+          "apiCalls": [],
+          "requiresAuth": false
+        }
+      ],
+      "apis": [
+        {
+          "project": "ShopApi",
+          "configKey": "ShopApi:BaseUrl"
+        }
+      ]
+    }
+  ]
+}

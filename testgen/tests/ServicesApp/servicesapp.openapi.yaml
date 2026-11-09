@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: ServicesApp
+  version: "1"
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pong: { type: boolean }
+  /where:
+    get:
+      operationId: where
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environment: { type: string }
+                  database: { type: string }
+                  storage: { type: string }

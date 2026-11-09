@@ -1,4 +1,6 @@
-using Microsoft.OpenApi.Readers;
+using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
+using Microsoft.OpenApi.YamlReader;
 
 namespace SystemMap;
 
@@ -18,12 +20,24 @@ public static class SpecReader
                 url ? "Kontrollera adressen och nätverket, eller spara specen som fil och ange filen." : "Kontrollera att filen går att läsa.", e.Message);
         }
 
-        var doc = new OpenApiStringReader().Read(text, out var diagnostic);
-        if (doc is null || diagnostic.Errors.Count > 0)
+        OpenApiDocument? doc;
+        IList<OpenApiError> errors;
+        try
+        {
+            var settings = new OpenApiReaderSettings();
+            settings.AddYamlReader();
+            var result = OpenApiDocument.Parse(text, text.TrimStart().StartsWith('{') ? "json" : "yaml", settings);
+            (doc, errors) = (result.Document, result.Diagnostic?.Errors ?? []);
+        }
+        catch (Exception e) when (e is OpenApiUnsupportedSpecVersionException or SharpYaml.YamlException)
+        {
+            (doc, errors) = (null, [new OpenApiError("", e.Message)]);
+        }
+        if (doc is null || errors.Count > 0)
             throw new UsageException($"{shown} är ingen giltig OpenAPI-spec.",
-                "Kontrollera specen i ett OpenAPI-verktyg, t.ex. editor.swagger.io.", string.Join("; ", diagnostic.Errors.Select(e => e.ToString())));
+                "Kontrollera specen i ett OpenAPI-verktyg, t.ex. editor.swagger.io.", string.Join("; ", errors.Select(e => e.ToString())));
 
-        return doc.Paths.SelectMany(p => p.Value.Operations.Select(o => new ApiOperation(
+        return doc.Paths.SelectMany(p => (p.Value.Operations ?? []).Select(o => new ApiOperation(
                 string.IsNullOrWhiteSpace(o.Value.OperationId) ? null : o.Value.OperationId, o.Key.ToString().ToUpperInvariant(), p.Key)))
             .ToList();
     }

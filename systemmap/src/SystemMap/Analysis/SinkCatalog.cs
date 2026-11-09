@@ -3,8 +3,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace SystemMap;
 
-/// <summary>Metoden som anropet finns i, och det som behövs för att namnge integrationen.</summary>
-internal sealed record SinkContext(IMethodSymbol Caller, SyntaxNode Body, SemanticModel Model, ServiceResolver Resolver, Origins Origins);
+/// <summary>Metoden som anropet finns i, och det som behövs för att namnge integrationen. <paramref name="Bindings"/> binder metodens parametrar till argumenten hos anroparen.</summary>
+internal sealed record SinkContext(
+    IMethodSymbol Caller, SyntaxNode Body, SemanticModel Model, ServiceResolver Resolver, Origins Origins, string Project, Bindings Bindings);
 
 /// <param name="Member">Anropet som lämnar systemet, t.ex. <c>PostAsJsonAsync</c>.</param>
 /// <param name="Sent">Det som skickas (en typ i solutionen), om det går att se.</param>
@@ -77,21 +78,57 @@ internal static class SinkCatalog
     private static SinkHit? Http(Call c)
     {
         if (!c.On("System.Net.Http.HttpClient", "System.Net.Http.HttpMessageInvoker") || HttpVerb(c.Name) is not { } verb) return null;
-        var path = c.Arguments.FirstOrDefault() is { } first ? PathArgument(first.Expression, c.Model) : null;
+        var target = Destination.None;
         if (verb == "SEND")
         {
-            var (v, p) = RequestMessage(c);
+            var (v, d) = RequestMessage(c);
             verb = v ?? "SEND";
-            path ??= p;
+            target = d;
         }
+        else if (c.Arguments.FirstOrDefault() is { } first) target = DestinationOf(first.Expression, c);
 
-        var info = c.Ctx.Resolver.HttpClientFor(c.Ctx.Caller.ContainingType)
+        var owner = ClientOwner(c);
+        var info = c.Ctx.Resolver.HttpClientFor(owner)
                    ?? (c.OriginText("call", "CreateClient") is { } named ? c.Ctx.Resolver.NamedClient(named) ?? new HttpClientInfo(named, null) : null)
                    ?? (c.ReceiverOrigins.FirstOrDefault(f => f.Kind == "config") is { } key ? new HttpClientInfo(Origins.NameFromConfigKey(key.Name), key.Name) : null)
-                   ?? new HttpClientInfo(c.Ctx.Caller.ContainingType.Name, null);
-        var integration = new Integration("http:" + info.Name, IntegrationKind.Http, info.Name, ["HTTP"], info.ConfigKey);
+                   ?? new HttpClientInfo(owner.Name, null);
+        var integration = new Integration("http:" + info.Name, IntegrationKind.Http, info.Name, ["HTTP"], info.ConfigKey ?? target.ConfigKey);
         var received = c.Name.Contains("FromJson") ? c.Method?.TypeArguments.Select(DataShapes.Of).FirstOrDefault(s => s is not null) : ReadInBody(c.Ctx);
-        return new SinkHit(integration, path is null ? verb : $"{verb} {path}", c.Name, c.Name.Contains("FromJson") ? null : c.Sent, received);
+        return new SinkHit(integration, target.Text is null ? verb : $"{verb} {target.Text}", c.Name, c.Name.Contains("FromJson") ? null : c.Sent, received);
+    }
+
+    /// <summary>Klientens ägare: klassen med den typade klienten. En <c>HttpClient</c> som är parameter hör till den som skickade den.</summary>
+    private static ITypeSymbol ClientOwner(Call c) =>
+        c.Receiver is IdentifierNameSyntax id && c.Ctx.Bindings.Of(c.Model.GetSymbolInfo(id).Symbol)?.Owner is { } bound ? bound : c.Ctx.Caller.ContainingType;
+
+    /// <summary>Vart ett anrop går: nyckeln för adressen (om den kommer ur konfigurationen) och texten som visas efter metoden.</summary>
+    private sealed record Destination(string? ConfigKey, string? Text)
+    {
+        public static readonly Destination None = new(null, null);
+    }
+
+    /// <summary>
+    /// Adressen i ett uttryck: en sökväg, <c>new Uri(...)</c> eller <c>new Uri(new Uri(bas), sökväg)</c>. En bas ur konfigurationen visas som
+    /// värdet i appsettings eller egenskapens startvärde när det är en adress, annars som <c>{Nyckel}</c>.
+    /// </summary>
+    private static Destination DestinationOf(ExpressionSyntax expression, Call c)
+    {
+        var (model, bindings) = (c.Model, c.Ctx.Bindings);
+        ExpressionSyntax? baseExpression = null;
+        if (expression is BaseObjectCreationExpressionSyntax { ArgumentList.Arguments: [var first, var second] } pair && Symbols.Is(model.GetTypeInfo(pair).Type, "System.Uri"))
+        {
+            baseExpression = first.Expression;
+            expression = second.Expression;
+        }
+        var key = c.Ctx.Origins.ConfigKeysIn(baseExpression ?? expression, model, bindings).FirstOrDefault();
+        var path = PathArgument(expression, model, bindings);
+        if (key is null) return new Destination(null, path);
+        if (baseExpression is null && path is not null) return new Destination(key, path);   // t.ex. $"{settings.BaseUrl}/orders"
+        var address = c.Ctx.Resolver.AddressOf(key, c.Ctx.Project) ?? "{" + key + "}";
+        if (path is null) return new Destination(key, address);
+        return new Destination(key, path.StartsWith("http://", StringComparison.Ordinal) || path.StartsWith("https://", StringComparison.Ordinal)
+            ? path
+            : address.TrimEnd('/') + "/" + path.TrimStart('/'));
     }
 
     private static string? HttpVerb(string name) => (name.EndsWith("Async") ? name[..^5] : name) switch
@@ -106,7 +143,7 @@ internal static class SinkCatalog
     };
 
     /// <summary><c>new HttpRequestMessage(HttpMethod.Post, "orders")</c> i samma metod, för <c>SendAsync</c>.</summary>
-    private static (string? Verb, string? Path) RequestMessage(Call c)
+    private static (string? Verb, Destination Target) RequestMessage(Call c)
     {
         foreach (var creation in c.Ctx.Body.DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
         {
@@ -117,10 +154,9 @@ internal static class SinkCatalog
                 BaseObjectCreationExpressionSyntax m => Origins.FirstString(m.ArgumentList, c.Model)?.ToUpperInvariant(),
                 _ => null,
             };
-            var path = args.Arguments.Count > 1 ? Text(args.Arguments[1].Expression, c.Model) : null;
-            return (verb, path);
+            return (verb, args.Arguments.Count > 1 ? DestinationOf(args.Arguments[1].Expression, c) : Destination.None);
         }
-        return (null, null);
+        return (null, Destination.None);
     }
 
     /// <summary><c>ReadFromJsonAsync&lt;T&gt;</c> eller <c>Deserialize&lt;T&gt;</c> i samma metod: det som kommer tillbaka.</summary>
@@ -373,13 +409,18 @@ internal static class SinkCatalog
     private static string Plain(string name) => name.Length > 2 && name[0] == 'I' && char.IsUpper(name[1]) ? name[1..] : name;
 
     /// <summary>En sökväg: en konstant, en interpolerad sträng (<c>$"orders/{id}"</c>) eller <c>new Uri("...")</c>.</summary>
-    private static string? PathArgument(ExpressionSyntax expression, SemanticModel model) =>
-        Text(expression, model) ?? (expression is BaseObjectCreationExpressionSyntax uri ? Origins.FirstString(uri.ArgumentList, model) : null);
+    private static string? PathArgument(ExpressionSyntax expression, SemanticModel model, Bindings? bindings = null) =>
+        Text(expression, model, bindings) ??
+        (expression is BaseObjectCreationExpressionSyntax uri ? uri.ArgumentList?.Arguments.Select(a => Text(a.Expression, model, bindings)).FirstOrDefault(s => s is not null) : null);
 
-    /// <summary>En strängkonstant eller en interpolerad sträng där hålen skrivs som <c>{namn}</c>.</summary>
-    private static string? Text(ExpressionSyntax expression, SemanticModel model)
+    /// <summary>
+    /// En strängkonstant eller en interpolerad sträng där hålen skrivs som <c>{namn}</c>. En parameter ger texten hos anroparen
+    /// när <paramref name="bindings"/> binder den.
+    /// </summary>
+    internal static string? Text(ExpressionSyntax expression, SemanticModel model, Bindings? bindings = null)
     {
         if (Symbols.ConstantString(expression, model) is { } s) return s;
+        if (expression is IdentifierNameSyntax && bindings?.Of(model.GetSymbolInfo(expression).Symbol) is { } bound) return Text(bound.Expression, bound.Model, bound.Outer);
         if (expression is not InterpolatedStringExpressionSyntax interpolated) return null;
         return string.Concat(interpolated.Contents.Select(part => part switch
         {

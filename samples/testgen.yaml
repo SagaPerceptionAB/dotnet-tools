@@ -1,0 +1,33 @@
+# Inställningar för samples/Shop.slnx. Allt är valfritt: lokalt behövs ingen fil.
+# Nycklarna under apis, apps och environments är projektnamn. Hemligheter skrivs som ${env:NAMN}.
+seed: 12345
+locale: sv
+
+apis:
+  ShopApi:
+    # spec: shop.openapi.yaml                      # bara om specen inte hittas av sig själv
+    # excel: tester.xlsx                           # egna tester som också körs av dotnet test
+    # skipOperations: [getOrder]
+    # settings:                                    # konfiguration för appen i testprocessen
+    #   Auth:SigningKey: ${env:SHOP_SIGNING_KEY}
+    # overrides: { createOrder: { quantity: 2 } }
+    # bindings: { getOrder: { id: ${createOrder.id} } }
+
+# Anrop som appen under test gör till andra system: block (standard), allow eller mock.
+hosts:
+  default: block
+  betaltjanst.example: mock   # Betaltjanst:BaseUrl i ShopApi; svarar ur betaltjanst.openapi.yaml
+
+environments:
+  local: {}                   # standard; adressen läses ur launchSettings.json
+  test:
+    readOnly: true            # bara GET, HEAD och OPTIONS
+    apis:
+      ShopApi:
+        url: https://shop-test.example.com
+        token: ${env:SHOP_TEST_TOKEN}
+        headers: { X-Tenant: demo }
+        timeout: 30
+    apps:
+      ShopWeb:
+        url: https://shopweb-test.example.com

@@ -1,6 +1,6 @@
 # SagaPerception.SystemMap.Cli
 
-Ritar en karta över en .NET-solution: vägen från varje anrop (controller-action) genom projekten ut till integrationerna.
+Ritar en karta över en .NET-solution: vägen från varje anrop (controller, minimal API, Razor Page eller Blazor-sida) genom projekten ut till integrationerna.
 Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog.
 
 ## Installera
@@ -51,7 +51,11 @@ dotnet systemmap --spec https://example.com/openapi.json
 
 Utan `--html`, `--mermaid` och `--json` skrivs kartan som en webbsida i en tillfällig mapp och öppnas i webbläsaren.
 
-Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns eller inte går att läsa).
+Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev karta.html (webbsida)`) skrivs på stderr.
+
+Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns eller inte går att läsa), `70` internt fel, `130` avbrutet med Ctrl+C.
+
+JSON-filen börjar med `schemaVersion`. null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider.
 
 ## I en app
 
@@ -60,7 +64,13 @@ konfiguration står i [SagaPerception.SystemMap.AspNetCore](https://github.com/S
 
 ## Vad som känns igen
 
-Databas (EF Core, Dapper, SQL), andra API:er (HTTP, Refit), WCF/SOAP, köer (Service Bus, MassTransit, RabbitMQ, Kafka,
+Ingångar: controllers, minimal API (`MapGet`, `MapPost` ..., med `MapGroup`), Razor Pages och Blazor-sidor (`@page`). Varje ingång
+har en sort i JSON (`controller`, `minimal-api`, `razor-page`, `blazor-page`, `mvc-view`).
+
+Fakta per app (JSON `apps`): sort (`api`, `web`), hälsovägar, databaser (leverantör, DbContext, nyckel för anslutningen) och
+utgående HTTP-klienter med projektet i solutionen de pekar på (namnet ur nyckeln, annars porten i `appsettings*.json`).
+
+Integrationer: databas (EF Core, Dapper, SQL), andra API:er (HTTP, Refit), WCF/SOAP, köer (Service Bus, MassTransit, RabbitMQ, Kafka,
 Azure Storage Queue), lagring (Blob, filer) och e-post (SMTP).
 
 ## Säkerhet

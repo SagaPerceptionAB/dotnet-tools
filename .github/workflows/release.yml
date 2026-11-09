@@ -1,7 +1,9 @@
-# Ger ut paket till nuget.org när en tagg skjuts: <komponent>/v<semver>, t.ex. testgen/v1.2.0.
-#   testgen/v*   -> SagaPerception.TestGen.Cli
+# Ger ut paket till nuget.org när en tagg skjuts: <komponent>/v<semver>, t.ex. testgen/v0.1.0-preview.1.
+#   testing/v*   -> SagaPerception.Testing
+#   testgen/v*   -> SagaPerception.TestGen.Cli (verktyget) och SagaPerception.Testing.NUnit med SagaPerception.TestGen.Core, .Excel, .Mock, .Browser
+#                   och SagaPerception.CommandLine (samma version). SagaPerception.Testing, som NUnit-paketet beror på, packas med
+#                   men har sin egen version och tas inte med i versionskontrollen. Ge ut testing/v* först när den versionen är ny.
 #   systemmap/v* -> SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore (samma version)
-#   uitestgen/v* -> SagaPerception.UiTestGen.Cli
 #
 # Publiceringen använder trusted publishing: ingen långlivad API-nyckel finns sparad. NuGet/login byter jobbets OIDC-token mot en
 # tillfällig nyckel som bara gäller en kort stund. Det som krävs:
@@ -15,9 +17,9 @@ name: release
 on:
   push:
     tags:
+      - 'testing/v*'
       - 'testgen/v*'
       - 'systemmap/v*'
-      - 'uitestgen/v*'
 
 permissions:
   contents: read
@@ -33,11 +35,11 @@ jobs:
     environment: nuget
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.x
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -56,16 +58,20 @@ jobs:
             echo "::error::Taggen '$tag' har ingen giltig semver-version ('$version'). Exempel: $component/v1.2.3 eller $component/v1.2.3-beta.1"
             exit 1
           fi
+          extra=""
+          browser=""
           case "$component" in
-            testgen)       projects="testgen/src/TestGen.Cli";    test="dotnet test testgen/testgen.slnx" ;;
-            systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore"; test="dotnet test systemmap/SystemMap.slnx" ;;
-            uitestgen)     projects="uitestgen/src/UiTestGen.Cli"; test="dotnet test uitestgen/UiTestGen.slnx" ;;
+            testing)       projects="testing/src/SagaPerception.Testing"; test="dotnet test testing/Testing.slnx" ;;
+            testgen)       projects="shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testgen/src/SagaPerception.Testing.NUnit testgen/src/TestGen.Cli"; extra="testing/src/SagaPerception.Testing"; browser="testgen/tests/TestGen.Browser.Tests"; test="dotnet test testgen/testgen.slnx" ;;
+            systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore"; browser="systemmap/tests/SystemMap.Tests"; test="dotnet test systemmap/SystemMap.slnx" ;;
             *) echo "::error::Okänd komponent '$component'"; exit 1 ;;
           esac
           {
             echo "component=$component"
             echo "version=$version"
             echo "projects=$projects"
+            echo "extra=$extra"
+            echo "browser=$browser"
             echo "test=$test"
           } >> "$GITHUB_OUTPUT"
           echo "Ger ut $component $version ($projects)"
@@ -84,6 +90,14 @@ jobs:
             echo "$p: $actual stämmer med taggen"
           done
 
+      # Testprojektet i browser kör Chromium (som i ci.yml).
+      - name: Installera Chromium
+        if: steps.tag.outputs.browser != ''
+        shell: pwsh
+        run: |
+          dotnet build ${{ steps.tag.outputs.browser }}
+          ${{ steps.tag.outputs.browser }}/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+
       - name: Test
         run: ${{ steps.tag.outputs.test }}
 
@@ -91,14 +105,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in ${{ steps.tag.outputs.projects }}; do
+          for p in ${{ steps.tag.outputs.projects }} ${{ steps.tag.outputs.extra }}; do
             dotnet pack "$p" -c Release -o nupkg
           done
           ls -l nupkg
 
+      # En CycloneDX-SBOM per paketprojekt, som bifogas körningen. Verktygets version är fast.
+      - name: SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet tool install --global CycloneDX --version 6.3.1
+          mkdir sbom
+          for p in ${{ steps.tag.outputs.projects }} ${{ steps.tag.outputs.extra }}; do
+            dotnet-CycloneDX "$p" -o sbom -fn "$(basename "$p").cdx.json" -F Json
+          done
+          ls -l sbom
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ steps.tag.outputs.component }}
+          path: sbom
+          if-no-files-found: error
       # Hämtar en kortlivad API-nyckel från nuget.org via jobbets OIDC-token (kräver id-token: write).
       - name: Logga in på nuget.org (trusted publishing)
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}

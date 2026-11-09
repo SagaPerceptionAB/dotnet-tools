@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.TestGen.Excel</PackageId>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+    <Description>Excel-tester och Excel-rapport för testgen.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+    <Using Include="TestGen.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" />
+  </ItemGroup>
+
+</Project>

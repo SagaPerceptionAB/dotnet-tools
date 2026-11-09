@@ -165,7 +165,7 @@ public class FailureCauseTests
     {
         Assert.That(Enum.GetValues<FailureCause>().Select(PlainLanguage.CauseName), Is.EqualTo(new[]
         {
-            "Fel i systemet", "Förväntan i testet stämmer inte", "Inloggning", "Miljön svarar inte", "Testdata fanns redan", "Fel i testgen", "Följdfel",
+            "Fel i systemet", "Förväntan i testet stämmer inte", "Inloggning", "Miljön svarar inte", "Testdata fanns redan", "Testdata saknas", "Testanvändaren godtogs inte", "För många anrop", "Fel i testgen", "Följdfel", "Skrivskyddad miljö",
         }));
         foreach (var c in Enum.GetValues<FailureCause>()) Assert.That(PlainLanguage.CauseExplanation(c), Is.Not.Empty);
         Assert.That(PlainLanguage.CauseExplanation(FailureCause.Expectation), Does.Contain("antingen i systemet eller i Excel-raden"));
@@ -274,7 +274,9 @@ public class FailureCauseTests
     {
         var r = new CaseResult(null, false, false, "FEL", new())
         {
-            Setup = new SetupFailure("createCustomer", "Skapa kund", 400), RootCauseTestId = "T-003", RootCauseText = "samma anrop 'Skapa kund' fick FEL",
+            Setup = new SetupFailure("createCustomer", "Skapa kund", 400),
+            RootCauseTestId = "T-003",
+            RootCauseText = "samma anrop 'Skapa kund' fick FEL",
         };
         var t = PlainLanguage.Explain(Valid(), r);
         Assert.That(t.Explanation, Does.Contain("först behövde vi köra \"Skapa kund\"").And.EndWith("Följd av T-003 (samma anrop 'Skapa kund' fick FEL)."));
@@ -485,8 +487,8 @@ public class FailureCauseTests
     private static async Task<List<TestOutcome>> RunAll(Api api, string? token = null, string? only = null, string? excel = null, string[]? scenarios = null)
     {
         var seen = new List<TestOutcome>();
-        await new TestRunner(new RunOptions { Spec = Spec(), Api = "http://fake.test", Token = token, Only = only, Seed = 1, Excel = excel, Scenarios = scenarios, OnResult = seen.Add },
-            new StringWriter(), api).RunAsync();
+        await new TestRunner(new RunOptions { Spec = Spec(), Api = "http://fake.test", Token = token, Only = only, Seed = 1, Excel = excel, Source = new ExcelTestSource(), Scenarios = scenarios, OnResult = seen.Add },
+            new StringWriter { NewLine = "\n" }, api).RunAsync();
         return seen;
     }
 
@@ -546,7 +548,7 @@ public class FailureCauseTests
         var xlsx = Path.Combine(dir, "t.xlsx");
         ExcelTemplate.Create(OpenApiLoader.Load(Spec()), xlsx);
         using var wb = new XLWorkbook(xlsx);
-        var ws = wb.Worksheet(ExcelScenarioReader.SheetName);
+        var ws = wb.Worksheet(ExcelLayout.SheetName);
         foreach (var r in ws.RowsUsed().Skip(1).ToList()) r.Clear();
         for (var i = 0; i < rows.Length; i++)
             for (var c = 0; c < 6; c++) ws.Cell(2 + i, c + 1).Value = rows[i][c];
@@ -583,7 +585,7 @@ public class FailureCauseTests
     {
         var seen = new List<TestOutcome>();
         var runner = new TestRunner(new RunOptions { Spec = Spec(), Api = "http://fake.test", Only = "createCustomer", Seed = 1, OnResult = seen.Add, MaxConsecutiveTimeouts = 0 },
-            new StringWriter(), new TimeoutApi());
+            new StringWriter { NewLine = "\n" }, new TimeoutApi());
         await runner.RunAsync();
         Assert.That(seen, Is.Not.Empty);
         Assert.That(seen.All(o => o.Cause == FailureCause.Environment));

@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ApiTests och ViewTests för NUnit: testgens tester i `dotnet test`. Core, Excel, Mock och Browser följer med som egna paket med samma version.
+       build/ packas så att NUnit-adaptern hittar testprojektet automatiskt. -->
+  <PropertyGroup>
+    <RootNamespace>SagaPerception.Testing.NUnit</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.Testing.NUnit</PackageId>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+    <Description>API- och UI-tester ur OpenAPI-specen och källkoden i dotnet test: public sealed class MinaTester() : ApiTests("MittApi"); Tillägg till verktyget SagaPerception.TestGen.Cli.</Description>
+    <PackageTags>testing;openapi;playwright;nunit;sagaperception</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
+    <ProjectReference Include="..\TestGen.Excel\TestGen.Excel.csproj" />
+    <ProjectReference Include="..\TestGen.Mock\TestGen.Mock.csproj" />
+    <ProjectReference Include="..\TestGen.Browser\TestGen.Browser.csproj" />
+    <ProjectReference Include="..\..\..\testing\src\SagaPerception.Testing\SagaPerception.Testing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="Testcontainers.Azurite" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="build\*" Pack="true" PackagePath="build\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SagaPerception.Testing.NUnit.Tests" />
+  </ItemGroup>
+
+</Project>

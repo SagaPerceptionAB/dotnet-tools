@@ -1,0 +1,177 @@
+openapi: 3.0.3
+info:
+  title: AuthApp
+  version: "1"
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+paths:
+  /open:
+    get:
+      operationId: getOpen
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  open: { type: boolean }
+  /me:
+    get:
+      operationId: getMe
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  email: { type: string }
+        "401": { description: unauthorized }
+  /admin:
+    get:
+      operationId: getAdmin
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  admin: { type: boolean }
+        "401": { description: unauthorized }
+        "403": { description: forbidden }
+  /named:
+    get:
+      operationId: getNamed
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  named: { type: boolean }
+        "401": { description: unauthorized }
+  /strict:
+    get:
+      operationId: getStrict
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  known: { type: boolean }
+        "401": { description: unauthorized }
+        "403": { description: forbidden }
+  /login:
+    post:
+      operationId: signIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userName]
+              properties:
+                userName: { type: string }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+  /logout:
+    post:
+      operationId: signOut
+      security: [{ bearer: [] }]
+      responses:
+        "204": { description: signed out }
+        "401": { description: unauthorized }
+  /nope:
+    get:
+      operationId: getNope
+      responses:
+        "200": { description: ok }
+        "401": { description: unauthorized }
+  /echo:
+    post:
+      operationId: echo
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: { type: string }
+        "400": { description: bad request }
+        "401": { description: unauthorized }
+        "403": { description: forbidden }
+  /dependent:
+    get:
+      operationId: getDependent
+      responses:
+        "200": { description: ok }
+        "503": { description: unavailable }
+  /once:
+    get:
+      operationId: getOnce
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "429": { description: too many requests }
+  /always:
+    get:
+      operationId: getAlways
+      responses:
+        "200": { description: ok }
+        "429": { description: too many requests }
+  /never:
+    get:
+      operationId: getNever
+      responses:
+        "200": { description: ok }
+        "429": { description: too many requests }
+  /slow:
+    get:
+      operationId: getSlow
+      responses:
+        "200": { description: ok }
+        "429": { description: too many requests }

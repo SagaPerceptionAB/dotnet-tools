@@ -2,9 +2,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
-using TestGen.Scenarios;
+using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
+using Microsoft.OpenApi.YamlReader;
 using TestGen.Core;
 using TestGen.Core.Run;
 
@@ -47,11 +47,18 @@ internal static class SpecText
     {
         var ops = Load(yaml);
         op = ops[0];
-        return new ScenarioGenerator(ops, new TestGenConfig { Seed = seed }).GenerateCases(op);
+        return new ScenarioGenerator(ops, new GeneratorOptions { Seed = seed }).GenerateCases(op);
     }
 
-    public static OpenApiSchema Schema(string yaml) =>
-        new OpenApiStringReader().ReadFragment<OpenApiSchema>(yaml, Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0, out _);
+    /// <summary>Ett schema ur en YAML-text, inläst som en del av ett litet dokument.</summary>
+    public static IOpenApiSchema Schema(string yaml)
+    {
+        var indented = string.Join("\n", yaml.Split('\n').Select(l => "      " + l));
+        var settings = new OpenApiReaderSettings();
+        settings.AddYamlReader();
+        var result = OpenApiDocument.Parse($"openapi: 3.0.1\ninfo: {{title: t, version: '1'}}\npaths: {{}}\ncomponents:\n  schemas:\n    Fragment:\n{indented}\n", "yaml", settings);
+        return result.Document!.Components!.Schemas!["Fragment"];
+    }
 }
 
 public class ResponseStoreListTests
@@ -98,7 +105,7 @@ public class DataRespectsSpecTests
 
     private static JsonNode? Gen(string name, string schemaYaml, int seed)
     {
-        var gen = new SchemaDataGenerator(seed, "sv", new FieldRules(new Dictionary<string, string>()));
+        var gen = new SchemaDataGenerator(seed, "sv");
         return gen.GenerateField(name, SpecText.Schema(schemaYaml));
     }
 
@@ -346,7 +353,7 @@ public class DeepNegativeCaseTests
         var props = string.Join("\n", Enumerable.Range(1, 30).Select(i => $"  f{i:00}: {{type: integer, minimum: 1, maximum: 5}}"));
         var yaml = $"type: object\nproperties:\n{props}\n  nested:\n    type: object\n    properties:\n      deep: {{type: integer, minimum: 1}}";
         var op = SpecText.Load(SpecText.Post(yaml))[0];
-        var cases = new ScenarioGenerator(new[] { op }, new TestGenConfig { Seed = 1 }).GenerateCases(op);
+        var cases = new ScenarioGenerator(new[] { op }, new GeneratorOptions { Seed = 1 }).GenerateCases(op);
         var negatives = cases.Where(c => c.Scenario.Kind == "negative").ToList();
         Assert.That(negatives, Has.Count.EqualTo(NegativeCaseGenerator.MaxCases));
         Assert.That(negatives.Select(c => c.Meta.Field), Does.Not.Contain("nested.deep"), "det nästlade faller bort före toppnivåfälten");
@@ -388,7 +395,7 @@ public class FormatNegativeTests
     [TestCase("email", "abc")]
     [TestCase("date", "2023-13-45")]
     [TestCase("uuid", "inte-ett-uuid")]
-    [TestCase("uri", "abc")]
+    [TestCase("uri", "http://")]
     public void Bad_format_sends_an_invalid_value(string format, string expected)
     {
         var c = Cases($"  f: {{type: string, format: {format}}}").Single(x => x.Meta.Rule == TestRule.BadFormat);
@@ -420,14 +427,16 @@ public class FormatNegativeTests
     }
 
     [Test]
-    public void Empty_text_is_tested_for_required_strings_without_minLength()
+    public void Empty_text_is_tested_only_for_required_strings_whose_schema_forbids_it()
     {
-        var cases = Cases("  a: {type: string}\n  b: {type: string}\n  c: {type: string, minLength: 1}\n  d: {type: string, pattern: '^[a-z]*$'}\n  e: {type: string, enum: [x, y]}", "[a, c, d, e]");
+        var cases = Cases("  a: {type: string}\n  b: {type: string, minLength: 3}\n  c: {type: string, minLength: 1}\n  d: {type: string, pattern: '^[a-z]*$'}\n  e: {type: string, enum: [x, y]}\n"
+            + "  f: {type: string, pattern: '^[a-z]+$'}\n  g: {type: string, format: email}\n  h: {type: string, enum: ['', x]}\n  i: {type: string, minLength: 3}", "[a, b, c, d, e, f, g, h]");
         var empty = cases.Where(c => c.Meta.Rule == TestRule.Empty).Select(c => c.Meta.Field).ToList();
-        Assert.That(empty, Is.EqualTo(new[] { "a" }), "b är valfritt, c har minLength (too_short täcker det), d:s mönster tillåter tom text, e har enum");
-        var a = cases.Single(c => c.Meta.Rule == TestRule.Empty);
-        Assert.That(a.Scenario.Body!["a"]!.GetValue<string>(), Is.Empty);
-        Assert.That(PlainLanguage.RulePhrase(a.Meta), Is.EqualTo("a är tom"));
+        Assert.That(empty, Is.EqualTo(new[] { "b", "e", "f", "g" }),
+            "a tillåter tom text, c får \"\" som för kort, d:s mönster matchar tom text, h har \"\" i enum, i är valfritt");
+        var b = cases.Single(c => c.Meta.Rule == TestRule.Empty && c.Meta.Field == "b");
+        Assert.That(b.Scenario.Body!["b"]!.GetValue<string>(), Is.Empty);
+        Assert.That(PlainLanguage.RulePhrase(b.Meta), Is.EqualTo("b är tom"));
     }
 }
 
@@ -525,7 +534,7 @@ public class OneOfTests
     public void Without_negative_cases_no_alternative_cases_are_created()
     {
         var ops = SpecText.Load(PaymentSpec());
-        var gen = new ScenarioGenerator(ops, new TestGenConfig { Seed = 1 });
+        var gen = new ScenarioGenerator(ops, new GeneratorOptions { Seed = 1 });
         Assert.That(gen.Generate(ops[0], includeNegatives: false), Has.Count.EqualTo(1));
     }
 }
@@ -550,7 +559,6 @@ public class BodyKindTests
     {
         var cases = SpecText.Cases(SpecText.Post("type: object\nproperties:\n  a: {type: string}"), 1, out _);
         Assert.That(cases.Select(c => c.Scenario.ContentType), Has.All.Null);
-        Assert.That(ScenarioJson.Serialize(cases[0].Scenario), Does.Not.Contain("contentType"));
     }
 
     [Test]
@@ -596,7 +604,7 @@ public class RunnerBodyTests : IDisposable
         var spec = Path.Combine(_dir, "s.yaml");
         File.WriteAllText(spec, yaml);
         var api = new Capture(answer);
-        var runner = new TestRunner(new RunOptions { Spec = spec, Api = "http://fake.test", Seed = 1 }, new StringWriter(), api);
+        var runner = new TestRunner(new RunOptions { Spec = spec, Api = "http://fake.test", Seed = 1 }, new StringWriter { NewLine = "\n" }, api);
         await runner.RunAsync();
         return (runner, api);
     }

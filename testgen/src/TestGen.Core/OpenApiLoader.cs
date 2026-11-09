@@ -1,17 +1,18 @@
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
+using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
+using Microsoft.OpenApi.YamlReader;
 using TestGen.Core.Run;
 
 namespace TestGen.Core;
 
-public sealed record ParamInfo(string Name, string In, bool Required, OpenApiSchema Schema);
+public sealed record ParamInfo(string Name, string In, bool Required, IOpenApiSchema Schema);
 
 public sealed record OperationInfo(
     string OperationId,
     string Method,
     string Path,
     IReadOnlyList<ParamInfo> Parameters,
-    OpenApiSchema? BodySchema,
+    IOpenApiSchema? BodySchema,
     IReadOnlyList<int> SuccessStatuses,
     /// <summary>
     /// Alternativ för inloggning (namn på securityScheman; alla i ett alternativ krävs tillsammans).
@@ -19,7 +20,7 @@ public sealed record OperationInfo(
     /// </summary>
     IReadOnlyList<IReadOnlyList<string>>? AuthAlternatives = null,
     /// <summary>Svarsschema (application/json) per statuskod ur specen (2xx, men även t.ex. 400/404/500 om specen beskriver innehållet). Saknas en kod finns inget schema att kontrollera mot.</summary>
-    IReadOnlyDictionary<int, OpenApiSchema>? ResponseSchemas = null,
+    IReadOnlyDictionary<int, IOpenApiSchema>? ResponseSchemas = null,
     /// <summary>Statuskoder som specen anger under responses (t.ex. "201", "400", "4xx"; "default" utelämnas), i spec-ordning.</summary>
     IReadOnlyList<string>? ResponseCodes = null,
     /// <summary>Operationens <c>summary</c> i specen (kort beskrivning), annars null.</summary>
@@ -32,7 +33,7 @@ public sealed record OperationInfo(
 /// <summary>Ett securityScheme ur specen. Kind: "bearer", "apiKey" (i header) eller "other" (stöds ej av --token).</summary>
 public sealed record SecuritySchemeInfo(string Name, string Kind, string? HeaderName);
 
-public sealed record ApiSpec(IReadOnlyList<OperationInfo> Operations, IReadOnlyList<SecuritySchemeInfo> Schemes);
+public sealed record ApiSpec(IReadOnlyList<OperationInfo> Operations, IReadOnlyList<SecuritySchemeInfo> Schemes, string? Title = null);
 
 public static class OpenApiLoader
 {
@@ -41,42 +42,38 @@ public static class OpenApiLoader
     public static ApiSpec LoadSpec(string specPathOrUrl)
     {
         var text = FriendlyErrors.Guard(SourceKind.Spec, specPathOrUrl, () => Sources.ReadText(specPathOrUrl));
-        var (doc, diag) = FriendlyErrors.Guard(SourceKind.Spec, specPathOrUrl, () =>
+        var (doc, diag) = FriendlyErrors.Guard(SourceKind.Spec, specPathOrUrl, () => Parse(text));
+        if (doc is null || diag is null || diag.Errors.Count > 0)
         {
-            var d = new OpenApiStringReader().Read(text, out var dg);
-            return (d, dg);
-        });
-        if (doc is null || diag.Errors.Count > 0)
-        {
-            var msgs = string.Join("; ", diag.Errors.Select(e => e.ToString()));
+            var msgs = string.Join("; ", diag?.Errors.Select(e => e.ToString()) ?? []);
             var shown = Sources.IsUrl(specPathOrUrl) ? specPathOrUrl : Path.GetFullPath(specPathOrUrl);
-            var line = System.Text.RegularExpressions.Regex.Match(msgs, @"Lin: (\d+)");
+            var line = System.Text.RegularExpressions.Regex.Match(msgs, @"Lin: (\d+)|LineNumber: (\d+)");
             var reason = line.Success
-                ? $"texten är trasig på rad {int.Parse(line.Groups[1].Value) + 1} (inte giltig YAML eller JSON)."
-                : $"innehållet följer inte OpenAPI-formatet ({diag.Errors.Count} fel).";
+                ? $"texten är trasig på rad {int.Parse(line.Groups[line.Groups[1].Success ? 1 : 2].Value) + 1} (inte giltig YAML eller JSON)."
+                : $"innehållet följer inte OpenAPI-formatet ({diag?.Errors.Count ?? 0} fel).";
             throw new SourceException(SourceKind.Spec, specPathOrUrl,
                 $"Kunde inte läsa OpenAPI-spec '{shown}': {reason}",
                 "Kontrollera specen i ett OpenAPI-verktyg, t.ex. editor.swagger.io. Kör igen med --verbose för felens exakta text.", msgs);
         }
 
-        var schemes = (doc.Components?.SecuritySchemes ?? new Dictionary<string, OpenApiSecurityScheme>())
+        var schemes = (doc.Components?.SecuritySchemes ?? new Dictionary<string, IOpenApiSecurityScheme>())
             .Select(kv => ToSchemeInfo(kv.Key, kv.Value)).ToList();
 
         var ops = new List<OperationInfo>();
         foreach (var (path, item) in doc.Paths)
         {
-            foreach (var (type, op) in item.Operations)
+            foreach (var (type, op) in item.Operations ?? [])
             {
                 var method = type.ToString().ToUpperInvariant();
                 var id = string.IsNullOrWhiteSpace(op.OperationId) ? Synthesize(method, path) : op.OperationId;
 
-                var parameters = item.Parameters.Concat(op.Parameters)
+                var parameters = (item.Parameters ?? []).Concat(op.Parameters ?? [])
                     .GroupBy(p => (p.In?.ToString() ?? "", p.Name)).Select(g => g.Last())
-                    .Select(p => new ParamInfo(p.Name, (p.In?.ToString() ?? "query").ToLowerInvariant(),
-                        p.Required || p.In == ParameterLocation.Path, p.Schema ?? new OpenApiSchema { Type = "string" }))
+                    .Select(p => new ParamInfo(p.Name ?? "", (p.In?.ToString() ?? "query").ToLowerInvariant(),
+                        p.Required || p.In == ParameterLocation.Path, p.Schema ?? new OpenApiSchema { Type = JsonSchemaType.String }))
                     .ToList();
 
-                OpenApiSchema? body = null;
+                IOpenApiSchema? body = null;
                 var bodyType = "application/json";
                 string? unsupported = null;
                 if (op.RequestBody?.Content is { Count: > 0 } content)
@@ -95,13 +92,14 @@ public static class OpenApiLoader
                     else unsupported = content.Keys.First();
                 }
 
-                var success = op.Responses.Keys
+                var responses = op.Responses ?? [];
+                var success = responses.Keys
                     .Select(k => int.TryParse(k, out var n) ? n : -1)
                     .Where(n => n is >= 200 and < 300).OrderBy(n => n).ToList();
                 if (success.Count == 0) success.Add(200);
 
-                var responseSchemas = new Dictionary<int, OpenApiSchema>();
-                foreach (var (code, response) in op.Responses)
+                var responseSchemas = new Dictionary<int, IOpenApiSchema>();
+                foreach (var (code, response) in responses)
                 {
                     if (!int.TryParse(code, out var n) || n is < 100 or > 599 || response.Content is not { Count: > 0 } rc) continue;
                     var media = rc.TryGetValue("application/json", out var json) ? json : rc.FirstOrDefault(kv => kv.Key.Contains("json")).Value;
@@ -109,16 +107,32 @@ public static class OpenApiLoader
                 }
 
                 ops.Add(new OperationInfo(id, method, path, parameters, body, success,
-                    AuthOf(op.Security is { Count: > 0 } ? op.Security : doc.SecurityRequirements), responseSchemas,
-                    op.Responses.Keys.Where(k => !string.Equals(k, "default", StringComparison.OrdinalIgnoreCase))
+                    AuthOf(op.Security is { Count: > 0 } ? op.Security : doc.Security), responseSchemas,
+                    responses.Keys.Where(k => !string.Equals(k, "default", StringComparison.OrdinalIgnoreCase))
                         .Select(k => k.Trim().ToLowerInvariant()).Distinct().ToList(),
                     string.IsNullOrWhiteSpace(op.Summary) ? null : op.Summary.Trim(), bodyType, unsupported));
             }
         }
-        return new ApiSpec(ops.OrderBy(o => o.OperationId, StringComparer.Ordinal).ToList(), schemes);
+        return new ApiSpec(ops.OrderBy(o => o.OperationId, StringComparer.Ordinal).ToList(), schemes,
+            string.IsNullOrWhiteSpace(doc.Info?.Title) ? null : doc.Info.Title.Trim());
     }
 
-    private static SecuritySchemeInfo ToSchemeInfo(string name, OpenApiSecurityScheme s) => s.Type switch
+    private static (OpenApiDocument? Doc, OpenApiDiagnostic? Diagnostic) Parse(string text)
+    {
+        var settings = new OpenApiReaderSettings();
+        settings.AddYamlReader();
+        try
+        {
+            var result = OpenApiDocument.Parse(text, text.TrimStart().StartsWith('{') ? "json" : "yaml", settings);
+            return (result.Document, result.Diagnostic);
+        }
+        catch (SharpYaml.YamlException e)
+        {
+            return (null, new OpenApiDiagnostic { Errors = [new OpenApiError("", e.Message)] });
+        }
+    }
+
+    private static SecuritySchemeInfo ToSchemeInfo(string name, IOpenApiSecurityScheme s) => s.Type switch
     {
         SecuritySchemeType.Http when string.Equals(s.Scheme, "bearer", StringComparison.OrdinalIgnoreCase) => new(name, "bearer", "Authorization"),
         SecuritySchemeType.OAuth2 or SecuritySchemeType.OpenIdConnect => new(name, "bearer", "Authorization"),

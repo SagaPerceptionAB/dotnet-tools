@@ -4,14 +4,14 @@ namespace TestGen.Core.Run;
 
 /// <summary>
 /// Avgör vilka header-värden som är hemliga och maskar dem som <c>***</c> i allt som skrivs ut.
-/// Alltid hemliga: Authorization, Proxy-Authorization, Cookie, Set-Cookie samt alla namn som <see cref="LooksSecret"/> (key, token, secret, auth, pass, cookie, signature, credential, session). Dessutom namn som anges vid skapandet
+/// Alltid hemliga: Authorization, Proxy-Authorization, Cookie, Set-Cookie samt alla namn som <see cref="Secrets.LooksSecret"/> (key, token, secret, auth, pass, cookie, signature, credential, session). Dessutom namn som anges vid skapandet
 /// (headers från apiKey-scheman, den header --token sätter, headers vars värde kommer från ${env:...}).
 /// Anropas med en vanlig header-dictionary: <c>mask.Mask(headers)</c>, <c>mask.Format(headers)</c> eller
 /// <c>mask.Value(namn, värde)</c>. <see cref="Scrub"/> döljer kända hemliga värden i fri text (t.ex. ett svar som ekar token).
 /// </summary>
 public sealed class HeaderMask
 {
-    public const string Hidden = "***";
+    public const string Hidden = Secrets.Hidden;
 
     private static readonly string[] AlwaysSecret = { "Authorization", "Proxy-Authorization", "Cookie", "Set-Cookie" };
     private readonly HashSet<string> _names = new(AlwaysSecret, StringComparer.OrdinalIgnoreCase);
@@ -43,14 +43,15 @@ public sealed class HeaderMask
         return mask;
     }
 
-    /// <summary>Ord i ett headernamn som visar att värdet är en hemlighet (skiftlägesokänsligt).</summary>
-    private static readonly string[] SecretWords = { "key", "token", "secret", "auth", "pass", "cookie", "signature", "credential", "session" };
+    /// <summary>En ny mask som döljer samma som den här och dessutom <paramref name="values"/>.</summary>
+    public HeaderMask WithSecretValues(IEnumerable<string> values)
+    {
+        var mask = new HeaderMask(_names, _values);
+        foreach (var v in values) mask.AddValue(v, "ett angivet hemligt värde");
+        return mask;
+    }
 
-    /// <summary>Sant om namnet tyder på en hemlighet, t.ex. <c>X-Api-Key</c>, <c>X-Auth-Token</c> eller <c>Session-Id</c>. Gäller även namn ingen angett som hemliga.</summary>
-    public static bool LooksSecret(string headerName) =>
-        SecretWords.Any(w => headerName.Contains(w, StringComparison.OrdinalIgnoreCase));
-
-    public bool IsSecret(string headerName) => _names.Contains(headerName.Trim()) || LooksSecret(headerName);
+    public bool IsSecret(string headerName) => _names.Contains(headerName.Trim()) || Secrets.LooksSecret(headerName);
 
     /// <summary>Inloggningsscheman som kan stå först i Authorization-värdet. Själva ordet är inte hemligt och behålls vid maskning.</summary>
     public static readonly string[] KnownSchemes =
@@ -109,7 +110,7 @@ public sealed class HeaderMask
         // "Bearer abc" => dölj även "abc" ensamt.
         if (SchemeOf(value) is { } scheme && value[(scheme.Length + 1)..].Trim() is { Length: > 0 } rest) { _values.Add(rest); secret = rest; }
         if (secret.Length < SafeLength)
-            _warnings.Add($"Varning: hemligheten i {label} är bara {secret.Length} tecken. Korta hemligheter kan inte döljas helt i fri text i utskrifter; använd helst minst {SafeLength} tecken.");
+            _warnings.Add($"hemligheten i {label} är bara {secret.Length} tecken. Korta hemligheter kan inte döljas helt i fri text i utskrifter; använd helst minst {SafeLength} tecken.");
         _values.Sort((a, b) => b.Length.CompareTo(a.Length));   // längst först så att delar inte lämnar rester
     }
 }

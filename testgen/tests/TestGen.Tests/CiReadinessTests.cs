@@ -8,12 +8,13 @@ using ClosedXML.Excel;
 using TestGen.Cli;
 using TestGen.Core;
 using TestGen.Core.Run;
+using TestGen.Core.Settings;
 
 namespace TestGen.Tests;
 
 /// <summary>
 /// CI-redo: JSON- och JUnit-rapport, exitkoder (inkl. 4), --fail-on, tomma körningar, tomma hemligheter, --seed, avbrott/--max-time,
-/// spec-URL som inte svarar och --jamfor.
+/// spec-URL som inte svarar och --baseline.
 /// </summary>
 public class CiReadinessTests
 {
@@ -66,10 +67,24 @@ public class CiReadinessTests
         tweak?.Invoke(b);
         return new RunOptions
         {
-            Spec = b.Spec ?? ShopSpec.Path, Api = "http://fake.test", Seed = 1, Token = Token,
-            Headers = new Dictionary<string, string> { ["X-Api-Key"] = ApiKey }, SecretHeaderNames = new[] { "X-Api-Key" },
-            Only = b.Only, Excel = b.Excel, ReportPaths = b.Reports, FailOn = b.FailOn, BaselinePath = b.Baseline, FailOnNew = b.FailOnNew,
-            AllowEmpty = b.AllowEmpty, MaxTimeSeconds = b.MaxTime, HandleInterrupt = b.HandleInterrupt, InterruptExitCode = b.InterruptExitCode, Tests = b.Tests,
+            Spec = b.Spec ?? ShopSpec.Path,
+            Api = "http://fake.test",
+            Seed = 1,
+            Token = Token,
+            Headers = new Dictionary<string, string> { ["X-Api-Key"] = ApiKey },
+            SecretHeaderNames = new[] { "X-Api-Key" },
+            Only = b.Only,
+            Excel = b.Excel,
+            Source = new ExcelTestSource(),
+            ReportPaths = b.Reports,
+            FailOn = b.FailOn,
+            BaselinePath = b.Baseline,
+            FailOnNew = b.FailOnNew,
+            AllowEmpty = b.AllowEmpty,
+            MaxTimeSeconds = b.MaxTime,
+            HandleInterrupt = b.HandleInterrupt,
+            InterruptExitCode = b.InterruptExitCode,
+            Tests = b.Tests,
         };
     }
 
@@ -86,7 +101,7 @@ public class CiReadinessTests
 
     private async Task<(int Exit, string Out)> Go(HttpMessageHandler h, Action<RunOptionsBuilder>? tweak = null, CancellationToken ct = default)
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var exit = await new TestRunner(Opts(tweak), sw, h).RunAsync(ct);
         return (exit, sw.ToString());
     }
@@ -96,7 +111,7 @@ public class CiReadinessTests
     private static (int Exit, string Out, string Err) Cli(params string[] args)
     {
         var (o, e) = (Console.Out, Console.Error);
-        var (so, se) = (new StringWriter(), new StringWriter());
+        var (so, se) = (new StringWriter { NewLine = "\n" }, new StringWriter { NewLine = "\n" });
         Console.SetOut(so); Console.SetError(se);
         try { return (Program.Main(args), so.ToString(), se.ToString()); }
         finally { Console.SetOut(o); Console.SetError(e); }
@@ -107,13 +122,15 @@ public class CiReadinessTests
         var xlsx = Path.Combine(dir, "t.xlsx");
         ExcelTemplate.Create(OpenApiLoader.Load(ShopSpec.Path), xlsx);
         using var wb = new XLWorkbook(xlsx);
-        var ws = wb.Worksheet(ExcelScenarioReader.SheetName);
+        var ws = wb.Worksheet(ExcelLayout.SheetName);
         foreach (var r in ws.RowsUsed().Skip(1).ToList()) r.Clear();
         for (var i = 0; i < rows.Length; i++)
             for (var c = 0; c < 6; c++) ws.Cell(2 + i, c + 1).Value = rows[i][c];
         wb.Save();
         return xlsx;
     }
+
+    private static TestEnvironment Local => TestGenSettings.Defaults.Environment("local");
 
     private static JsonObject Read(string path) => (JsonObject)JsonNode.Parse(File.ReadAllText(path))!;
 
@@ -127,73 +144,7 @@ public class CiReadinessTests
         throw new FileNotFoundException("docs/ci/testgen-result.schema.json");
     }
 
-    // --- Ett litet JSON-schema-kontrollerande (bara det som schemat använder; inget beroende) ---------------------
-
-    private static List<string> SchemaErrors(JsonNode? value, JsonObject root)
-    {
-        var errors = new List<string>();
-        Check(value, root, root, "$", errors);
-        return errors;
-    }
-
-    private static bool IsType(JsonNode? n, string type) => type switch
-    {
-        "null" => n is null,
-        "object" => n is JsonObject,
-        "array" => n is JsonArray,
-        "string" => n is not null && n.GetValueKind() == System.Text.Json.JsonValueKind.String,
-        "boolean" => n is not null && n.GetValueKind() is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False,
-        "number" => n is not null && n.GetValueKind() == System.Text.Json.JsonValueKind.Number,
-        "integer" => n is not null && n.GetValueKind() == System.Text.Json.JsonValueKind.Number && !n.ToJsonString().Any(ch => ch is '.' or 'e' or 'E'),
-        _ => throw new NotSupportedException(type),
-    };
-
-    private static void Check(JsonNode? n, JsonObject schema, JsonObject root, string path, List<string> errors)
-    {
-        if (schema["$ref"] is JsonValue r)
-        {
-            JsonNode? target = root;
-            foreach (var part in r.GetValue<string>().TrimStart('#', '/').Split('/')) target = target![part];
-            Check(n, (JsonObject)target!, root, path, errors);
-            return;
-        }
-        if (schema["oneOf"] is JsonArray alts)
-        {
-            if (!alts.OfType<JsonObject>().Any(a => { var e = new List<string>(); Check(n, a, root, path, e); return e.Count == 0; }))
-                errors.Add($"{path}: matchar inget alternativ i oneOf");
-            return;
-        }
-        if (schema["const"] is { } c && c.ToJsonString() != (n?.ToJsonString() ?? "null")) errors.Add($"{path}: väntade const {c.ToJsonString()}, fick {n?.ToJsonString() ?? "null"}");
-        if (schema["enum"] is JsonArray en && !en.Any(e => (e?.ToJsonString() ?? "null") == (n?.ToJsonString() ?? "null")))
-            errors.Add($"{path}: {n?.ToJsonString() ?? "null"} finns inte i enum {en.ToJsonString()}");
-        if (schema["type"] is { } t)
-        {
-            var types = t is JsonArray ta ? ta.Select(x => x!.GetValue<string>()).ToList() : new List<string> { t.GetValue<string>() };
-            if (!types.Any(x => IsType(n, x))) { errors.Add($"{path}: typen {string.Join("|", types)} väntades, fick {n?.ToJsonString() ?? "null"}"); return; }
-        }
-        if (n is JsonValue v)
-        {
-            if (schema["pattern"] is JsonValue p && v.TryGetValue<string>(out var s) && !System.Text.RegularExpressions.Regex.IsMatch(s, p.GetValue<string>())) errors.Add($"{path}: '{s}' följer inte mönstret");
-            if (schema["minimum"] is JsonValue m && v.GetValueKind() == System.Text.Json.JsonValueKind.Number
-                && double.Parse(v.ToJsonString(), CultureInfo.InvariantCulture) is var d && d < double.Parse(m.ToJsonString(), CultureInfo.InvariantCulture)) errors.Add($"{path}: {d} är under minimum");
-            if (schema["format"]?.GetValue<string>() == "date-time" && v.TryGetValue<string>(out var dt)
-                && !System.Text.RegularExpressions.Regex.IsMatch(dt, @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)$")) errors.Add($"{path}: '{dt}' är inte ISO 8601 med förskjutning");
-        }
-        if (n is JsonObject o)
-        {
-            var props = schema["properties"] as JsonObject;
-            foreach (var req in (schema["required"] as JsonArray)?.Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>())
-                if (!o.ContainsKey(req)) errors.Add($"{path}: obligatoriskt fält {req} saknas");
-            foreach (var (k, val) in o)
-            {
-                if (props is null) continue;
-                if (props[k] is JsonObject sub) Check(val, sub, root, path + "." + k, errors);
-                else errors.Add($"{path}.{k}: nyckeln finns i rapporten men inte i schemat (lägg till den i docs/ci/testgen-result.schema.json)");
-            }
-        }
-        if (n is JsonArray a && schema["items"] is JsonObject item)
-            for (var i = 0; i < a.Count; i++) Check(a[i], item, root, $"{path}[{i}]", errors);
-    }
+    private static List<string> SchemaErrors(JsonNode? value, JsonObject root) => JsonSchemaCheck.Errors(value, root);
 
     private static List<string> JUnitErrors(string xml)
     {
@@ -210,7 +161,11 @@ public class CiReadinessTests
     private static ReportInfo Info(Action<ReportInfo>? _ = null) =>
         new(new DateTime(2026, 11, 1, 21, 51, 43, DateTimeKind.Local), "http://x.test", null, 12345)
         {
-            Spec = "samples/shop.openapi.yaml", Version = "1.0.0", Duration = TimeSpan.FromSeconds(1.5), PossibleTotal = 7, TimeoutSeconds = 30,
+            Spec = "samples/shop.openapi.yaml",
+            Version = "1.0.0",
+            Duration = TimeSpan.FromSeconds(1.5),
+            PossibleTotal = 7,
+            TimeoutSeconds = 30,
         };
 
     private static ReportEntry Entry(string id, CaseResult r, string group = "Genererade tester", string op = "createOrder", ExcelStepInfo? step = null)
@@ -252,16 +207,16 @@ public class CiReadinessTests
         Assert.That(SchemaErrors(json, schema), Is.Empty);
 
         Assert.That(json["schemaVersion"]!.GetValue<int>(), Is.EqualTo(1));
-        Assert.That(json["totals"]!.ToJsonString(), Is.EqualTo("{\"tests\":7,\"ok\":1,\"fel\":5,\"hoppad\":1,\"warnings\":0}"));
+        Assert.That(json["totals"]!.ToJsonString(), Is.EqualTo("{\"tests\":7,\"passed\":1,\"failed\":5,\"skipped\":1,\"warnings\":0}"));
         Assert.That(json["verdictKind"]!.GetValue<string>(), Is.EqualTo("system"));
-        Assert.That(json["causes"]!.AsArray().Select(c => c!["code"]!.GetValue<string>()), Is.EqualTo(new[] { "system", "forvantan", "inloggning", "miljo", "testdata", "foljd" }), "bara orsaker som förekommer");
+        Assert.That(json["causes"]!.AsArray().Select(c => c!["code"]!.GetValue<string>()), Is.EqualTo(new[] { "system", "expectation", "auth", "environment", "test-data", "dependency" }), "bara orsaker som förekommer");
         Assert.That(json["startedAt"]!.GetValue<string>(), Does.Match(@"^2026-11-01T21:51:43\.000[+-]\d\d:\d\d$"));
         Assert.That(json["finishedAt"]!.GetValue<string>(), Does.Match(@"T21:51:44\.500[+-]\d\d:\d\d$"));
         Assert.That(json["durationSeconds"]!.GetValue<double>(), Is.EqualTo(1.5));
         var t = json["tests"]!.AsArray();
         Assert.That(t[1]!["cause"]!.GetValue<string>(), Is.EqualTo("system"));
         Assert.That(t[1]!["causeName"]!.GetValue<string>(), Is.EqualTo("Fel i systemet"));
-        Assert.That(t[1]!["rule"]!.GetValue<string>(), Is.EqualTo("minimum"));
+        Assert.That(t[1]!["rule"]!.GetValue<string>(), Is.EqualTo("below-minimum"));
         Assert.That(t[1]!["field"]!.GetValue<string>(), Is.EqualTo("quantity"));
         Assert.That(t[1]!["path"]!.GetValue<string>(), Is.EqualTo("/orders"));
         Assert.That(t[1]!["method"]!.GetValue<string>(), Is.EqualTo("POST"));
@@ -272,10 +227,10 @@ public class CiReadinessTests
         Assert.That(t[0]!["rerun"], Is.Null);
         Assert.That(t[5]!["rule"]!.GetValue<string>(), Is.EqualTo("excel"));
         Assert.That(t[5]!["scenario"]!.GetValue<string>(), Is.EqualTo("Flöde"));
-        Assert.That(t[5]!["cause"]!.GetValue<string>(), Is.EqualTo("forvantan"));
-        Assert.That(t[6]!["outcome"]!.GetValue<string>(), Is.EqualTo("HOPPAD"));
+        Assert.That(t[5]!["cause"]!.GetValue<string>(), Is.EqualTo("expectation"));
+        Assert.That(t[6]!["outcome"]!.GetValue<string>(), Is.EqualTo("skipped"));
         Assert.That(t[6]!["rootCauseTestId"]!.GetValue<string>(), Is.EqualTo("T-006"));
-        Assert.That(t[6]!["cause"]!.GetValue<string>(), Is.EqualTo("foljd"));
+        Assert.That(t[6]!["cause"]!.GetValue<string>(), Is.EqualTo("dependency"));
         Assert.That(t.Select(x => x!["key"]!.GetValue<string>()).Distinct().Count(), Is.EqualTo(7), "nycklarna är unika");
     }
 
@@ -301,9 +256,9 @@ public class CiReadinessTests
         Assert.That(PlainLanguage.Cause(entries[1].Info!, entries[1].Result), Is.EqualTo(FailureCause.Tool));
         Assert.That(PlainLanguage.CauseName(FailureCause.Tool), Is.EqualTo("Fel i testgen"));
         Assert.That(PlainLanguage.CauseExplanation(FailureCause.Tool), Does.Contain("Verktyget kunde inte bygga eller skicka testet").And.Contain("rapportera till den som underhåller testgen"));
-        Assert.That(CauseCodes.Code(FailureCause.Tool), Is.EqualTo("verktyg"));
+        Assert.That(CauseCodes.Code(FailureCause.Tool), Is.EqualTo("tool"));
         Assert.That(ExitPolicy.Decide(outcomes), Is.EqualTo(4), "osäkert, inte 1");
-        Assert.That(ExitPolicy.Decide(outcomes, CauseCodes.ParseFailOn("verktyg")), Is.EqualTo(1), "kan väljas med --fail-on");
+        Assert.That(ExitPolicy.Decide(outcomes, CauseCodes.ParseFailOn("tool")), Is.EqualTo(1), "kan väljas med --fail-on");
         Assert.That(VerdictKinds.Of(outcomes), Is.EqualTo("uncertain"));
         var verdict = PlainLanguage.Verdict(outcomes);
         Assert.That(verdict, Does.Contain("fel i testgen").And.Not.Contain("följdfel").And.Not.Contain("tidigare test"));
@@ -320,9 +275,9 @@ public class CiReadinessTests
         Assert.That(SchemaErrors(json, schema), Is.Empty);
         Assert.That(json["totals"]!["warnings"]!.GetValue<int>(), Is.EqualTo(2));
         Assert.That(json["verdictKind"]!.GetValue<string>(), Is.EqualTo("uncertain"));
-        Assert.That(json["causes"]!.AsArray().Select(c => c!["code"]!.GetValue<string>()), Is.EqualTo(new[] { "verktyg" }));
+        Assert.That(json["causes"]!.AsArray().Select(c => c!["code"]!.GetValue<string>()), Is.EqualTo(new[] { "tool" }));
         var t = json["tests"]!.AsArray();
-        Assert.That(t[1]!["cause"]!.GetValue<string>(), Is.EqualTo("verktyg"));
+        Assert.That(t[1]!["cause"]!.GetValue<string>(), Is.EqualTo("tool"));
         Assert.That(t[1]!["causeName"]!.GetValue<string>(), Is.EqualTo("Fel i testgen"));
         Assert.That(t[0]!["warnings"]!.AsArray().Select(w => w!.GetValue<string>()),
             Is.EqualTo(new[] { "svaret har extra fält som inte finns i specen: tillagt", "svaret har extra fält som inte finns i specen: annat" }), "utan intern markering");
@@ -352,7 +307,7 @@ public class CiReadinessTests
         Assert.That(PlainLanguage.Explain(entries[0].Info!, entries[0].Result).Explanation, Does.Not.Contain("Varning"), "varningarna visas separat, inte i förklaringen");
         Assert.That(html, Does.Contain("Fel i testgen"));
         var xlsx = Out("v.xlsx");
-        ReportWriter.Excel(xlsx, Info(), entries, Mask);
+        ReportWriter.Write(xlsx, Info(), entries, Mask);
         using var wb = new XLWorkbook(xlsx);
         var sum = wb.Worksheet("Sammanfattning").CellsUsed().Select(c => c.GetString()).ToList();
         Assert.That(sum, Has.Some.Contains("2 varningar – påverkar inte resultatet"));
@@ -408,14 +363,14 @@ public class CiReadinessTests
         });
         var json = Out("run.json"); var xml = Out("run.junit.xml"); var html = Out("run.html"); var xl = Out("run.xlsx");
         var (exit, output) = await Go(new FakeShop(), b => { b.Excel = xlsx; b.Reports.AddRange(new[] { json, xml, html, xl }); });
-        Assert.That(exit, Is.EqualTo(ExitCodes.TestFailed));
+        Assert.That(exit, Is.EqualTo(ExitCodes.Failed));
         Assert.That(output, Does.Not.Contain(Token).And.Not.Contain(ApiKey));
         var schema = (JsonObject)JsonNode.Parse(File.ReadAllText(SchemaPath()))!;
         var doc = Read(json);
         Assert.That(SchemaErrors(doc, schema), Is.Empty);
         Assert.That(doc["exitCode"]!.GetValue<int>(), Is.EqualTo(1));
         Assert.That(doc["tests"]!.AsArray().Count, Is.EqualTo(doc["totals"]!["tests"]!.GetValue<int>()));
-        Assert.That(doc["tests"]!.AsArray().Any(t => t!["outcome"]!.GetValue<string>() == "HOPPAD"), "Excel-flödet har ett hoppat steg");
+        Assert.That(doc["tests"]!.AsArray().Any(t => t!["outcome"]!.GetValue<string>() == "skipped"), "Excel-flödet har ett hoppat steg");
         foreach (var f in new[] { json, xml, html })
         {
             var text = File.ReadAllText(f);
@@ -450,10 +405,10 @@ public class CiReadinessTests
         Assert.That(Case("T-001").ChildNodes.Count, Is.EqualTo(0), "OK har inga barn");
         Assert.That(Case("T-002")["failure"]!.GetAttribute("type"), Is.EqualTo("system"));
         Assert.That(Case("T-002")["failure"]!.GetAttribute("message"), Is.EqualTo("väntade 400, fick 500 (Fel i systemet)"));
-        Assert.That(Case("T-003")["error"]!.GetAttribute("type"), Is.EqualTo("inloggning"));
-        Assert.That(Case("T-004")["error"]!.GetAttribute("type"), Is.EqualTo("testdata"));
-        Assert.That(Case("T-005")["error"]!.GetAttribute("type"), Is.EqualTo("miljo"));
-        Assert.That(Case("T-006")["failure"]!.GetAttribute("type"), Is.EqualTo("forvantan"));
+        Assert.That(Case("T-003")["error"]!.GetAttribute("type"), Is.EqualTo("auth"));
+        Assert.That(Case("T-004")["error"]!.GetAttribute("type"), Is.EqualTo("test-data"));
+        Assert.That(Case("T-005")["error"]!.GetAttribute("type"), Is.EqualTo("environment"));
+        Assert.That(Case("T-006")["failure"]!.GetAttribute("type"), Is.EqualTo("expectation"));
         Assert.That(Case("T-006").GetAttribute("name"), Is.EqualTo("T-006 Flöde, steg 1"));
         Assert.That(Case("T-007")["skipped"]!.GetAttribute("message"), Is.EqualTo("Följd av T-006"));
         Assert.That(Case("T-002")["system-out"]!.InnerText, Does.Contain("curl -X POST").And.Contain("kör om: ./testgen.sh run --spec samples/shop.openapi.yaml --api http://x.test --seed 12345 --test T-002"));
@@ -462,7 +417,7 @@ public class CiReadinessTests
         Assert.That(props["api"], Is.EqualTo("http://x.test"));
         Assert.That(props["exitCode"], Is.EqualTo("1"));
         Assert.That(props["verdict"], Is.EqualTo("system"));
-        Assert.That(props["testgen.version"], Is.EqualTo("1.0.0"));
+        Assert.That(props["toolVersion"], Is.EqualTo("1.0.0"));
     }
 
     [Test]
@@ -481,7 +436,7 @@ public class CiReadinessTests
         Assert.That(JUnitErrors(JUnitResult.Text(Info(), new List<ReportEntry>(), Mask)), Is.Empty);
         var failure = JUnitResult.TextFailure(Info(), "Kan inte nå API:et", "Starta det", Mask);
         Assert.That(JUnitErrors(failure), Is.Empty);
-        Assert.That(failure, Does.Contain("type=\"miljo\""));
+        Assert.That(failure, Does.Contain("type=\"environment\""));
         var json = JsonResult.BuildFailure(Info(), "Kan inte nå API:et", "Starta det", 3, Mask);
         Assert.That(SchemaErrors(json, (JsonObject)JsonNode.Parse(File.ReadAllText(SchemaPath()))!), Is.Empty);
         Assert.That(json["exitCode"]!.GetValue<int>(), Is.EqualTo(3));
@@ -510,7 +465,7 @@ public class CiReadinessTests
         var json = Out("a.json"); var xml = Out("a.junit.xml"); var html = Out("a.html");
         var down = new ThrowingApi();
         Assert.ThrowsAsync<ApiUnreachableException>(async () =>
-            await new TestRunner(Opts(b => { b.Reports.AddRange(new[] { json, xml, html }); }), new StringWriter(), down).RunAsync());
+            await new TestRunner(Opts(b => { b.Reports.AddRange(new[] { json, xml, html }); }), new StringWriter { NewLine = "\n" }, down).RunAsync());
         var doc = Read(json);
         Assert.That(doc["exitCode"]!.GetValue<int>(), Is.EqualTo(3));
         Assert.That(doc["verdictKind"]!.GetValue<string>(), Is.EqualTo("unreachable"));
@@ -553,11 +508,13 @@ public class CiReadinessTests
     [Test]
     public async Task Fail_on_controls_which_causes_give_exit_code_1()
     {
-        Assert.That((await Go(new Always(HttpStatusCode.Unauthorized), b => b.FailOn = CauseCodes.ParseFailOn("system,forvantan,inloggning"))).Exit, Is.EqualTo(1));
-        Assert.That((await Go(new Always(HttpStatusCode.Unauthorized), b => b.FailOn = CauseCodes.ParseFailOn("miljo"))).Exit, Is.EqualTo(4));
-        Assert.That((await Go(new Always(HttpStatusCode.InternalServerError), b => b.FailOn = CauseCodes.ParseFailOn("inloggning"))).Exit, Is.EqualTo(4),
+        Assert.That((await Go(new Always(HttpStatusCode.Unauthorized), b => b.FailOn = CauseCodes.ParseFailOn("system,expectation,auth"))).Exit, Is.EqualTo(1));
+        Assert.That((await Go(new Always(HttpStatusCode.Unauthorized), b => b.FailOn = CauseCodes.ParseFailOn("environment"))).Exit, Is.EqualTo(4));
+        Assert.That((await Go(new Always(HttpStatusCode.InternalServerError), b => b.FailOn = CauseCodes.ParseFailOn("auth"))).Exit, Is.EqualTo(4),
             "fel i systemet räknas inte om det inte står i --fail-on");
-        Assert.That((await Go(new Always(HttpStatusCode.BadGateway), b => b.FailOn = CauseCodes.ParseFailOn("miljö"))).Exit, Is.EqualTo(1), "å ä ö godtas");
+        Assert.That((await Go(new Always(HttpStatusCode.BadGateway), b => b.FailOn = CauseCodes.ParseFailOn("environment"))).Exit, Is.EqualTo(1));
+        Assert.Throws<UsageException>(() => CauseCodes.ParseFailOn("miljö"), "å, ä och ö tolkas inte");
+        Assert.Throws<UsageException>(() => CauseCodes.ParseFailOn("forvantan"), "svenska koder finns inte");
     }
 
     [Test]
@@ -565,9 +522,9 @@ public class CiReadinessTests
     {
         var e = Assert.Throws<UsageException>(() => CauseCodes.ParseFailOn("system,sysstem"))!;
         Assert.That(e.Message, Does.Contain("'sysstem' är ingen orsakskod").And.Contain("Menade du system?"));
-        Assert.That(e.Tip, Does.Contain("system, forvantan, inloggning, miljo, testdata, verktyg, foljd"));
+        Assert.That(e.Tip, Does.Contain("system, expectation, auth, environment, test-data, missing-data, test-user-rejected, rate-limited, tool, dependency"));
         Assert.Throws<UsageException>(() => CauseCodes.ParseFailOn(" , "));
-        Assert.That(CauseCodes.ParseFailOn("System, FORVANTAN"), Is.EquivalentTo(CauseCodes.DefaultFailOn));
+        Assert.That(CauseCodes.ParseFailOn("System, EXPECTATION"), Is.EquivalentTo(CauseCodes.DefaultFailOn));
     }
 
     [Test]
@@ -579,7 +536,7 @@ public class CiReadinessTests
         Assert.That(Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--max-time", "0").Exit, Is.EqualTo(2));
         Assert.That(Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--max-time", "abc").Err, Does.Contain("--max-time måste vara ett positivt antal sekunder"));
         var help = HelpText.For("run")!;
-        foreach (var word in new[] { "4  inget säkert svar", "--fail-on", "--jamfor", "--fail-on-new", "--seed ci", "--max-time", "--allow-empty", ".json", ".junit.xml", "130", "143" })
+        foreach (var word in new[] { "Osäkert resultat", "--fail-on", "--baseline", "--fail-on-new", "--seed ci", "--max-time", "--allow-empty", ".json", ".junit.xml", "130", "143" })
             Assert.That(help, Does.Contain(word), word);
     }
 
@@ -627,15 +584,15 @@ public class CiReadinessTests
     [Test]
     public void Empty_token_and_empty_header_are_errors_with_env_tip()
     {
-        var e = Assert.Throws<UsageException>(() => RunSettings.Resolve("http://x", Array.Empty<string>(), "", null, null, null))!;
+        var e = Assert.Throws<UsageException>(() => RunSettings.Resolve("http://x", Array.Empty<string>(), "", null, Local))!;
         Assert.That(e.Message, Is.EqualTo("--token är tom – saknas hemligheten i CI? Använd hellre --token '${env:TOKEN}' så får du ett tydligt fel om variabeln saknas."));
-        Assert.Throws<UsageException>(() => RunSettings.Resolve("http://x", Array.Empty<string>(), "   ", null, null, null));
-        var h = Assert.Throws<UsageException>(() => RunSettings.Resolve("http://x", new[] { "X-Api-Key: " }, null, null, null, null))!;
+        Assert.Throws<UsageException>(() => RunSettings.Resolve("http://x", Array.Empty<string>(), "   ", null, Local));
+        var h = Assert.Throws<UsageException>(() => RunSettings.Resolve("http://x", new[] { "X-Api-Key: " }, null, null, Local))!;
         Assert.That(h.Message, Does.Contain("\"X-Api-Key: \" har inget värde").And.Contain("--header 'X-Api-Key: ${env:X_API_KEY}'"));
         // ${env:} på en tom variabel är redan ett tydligt fel; ett vanligt värde och ingen token går bra.
-        Assert.Throws<ArgumentException>(() => RunSettings.Resolve("http://x", Array.Empty<string>(), "${env:SAKNAS}", null, null, null, _ => null));
-        Assert.DoesNotThrow(() => RunSettings.Resolve("http://x", new[] { "X-Api-Key: abc" }, "t", null, null, null));
-        Assert.DoesNotThrow(() => RunSettings.Resolve("http://x", Array.Empty<string>(), null, null, null, null));
+        Assert.Throws<ArgumentException>(() => RunSettings.Resolve("http://x", Array.Empty<string>(), "${env:SAKNAS}", null, Local, getEnv: _ => null));
+        Assert.DoesNotThrow(() => RunSettings.Resolve("http://x", new[] { "X-Api-Key: abc" }, "t", null, Local));
+        Assert.DoesNotThrow(() => RunSettings.Resolve("http://x", Array.Empty<string>(), null, null, Local));
     }
 
     [Test]
@@ -663,7 +620,8 @@ public class CiReadinessTests
         Assert.That(SeedSpec.Parse("12345678901").Seed, Is.EqualTo(big.Seed), "stabilt");
         Assert.That(SeedSpec.Parse("12345678902").Seed, Is.Not.EqualTo(big.Seed));
         Assert.That(SeedSpec.Parse("99999999999999999999999999").Seed, Is.GreaterThan(0), "längre än long går också");
-        Assert.That(SeedSpec.Parse("slumpa").Random);
+        Assert.That(SeedSpec.Parse("random").Random);
+        Assert.Throws<UsageException>(() => SeedSpec.Parse("slumpa"), "svenska ord tas inte emot");
         Assert.That(SeedSpec.Parse("RANDOM").Random);
         foreach (var bad in new[] { "hej", "12x", "1.5", "", "--1", "1e5" })
         {
@@ -694,9 +652,9 @@ public class CiReadinessTests
     [Test]
     public void Cli_seed_with_large_number_works_and_does_not_give_exit_2()
     {
-        var (exit, output, _) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--only", "getOrder", "--seed", "12345678901");
+        var (exit, _, err) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--only", "getOrder", "--seed", "12345678901");
         Assert.That(exit, Is.EqualTo(3), "API:et nås inte, men seeden godtogs");
-        Assert.That(output, Does.Contain("Talet 12345678901 är större än ett 32-bitars heltal"));
+        Assert.That(err, Does.Contain("Talet 12345678901 är större än ett 32-bitars heltal"));
         Assert.That(Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--seed", "hej").Exit, Is.EqualTo(2));
     }
 
@@ -704,7 +662,7 @@ public class CiReadinessTests
     public async Task Seed_note_is_written_to_terminal_and_json()
     {
         var json = Out("s.json");
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var big = SeedSpec.Parse("12345678901");
         var exit = await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Only = "getOrder", Seed = big.Seed, SeedNote = big.Note, ReportPaths = new[] { json } }, sw, new Always(HttpStatusCode.OK)).RunAsync();
         Assert.That(exit, Is.GreaterThanOrEqualTo(0));
@@ -742,7 +700,7 @@ public class CiReadinessTests
     public async Task Without_HandleInterrupt_abort_is_thrown_as_for_web_ui()
     {
         using var cts = new CancellationTokenSource();
-        var runner = new TestRunner(Opts(), new StringWriter(), new HangsAfter(2, () => cts.Cancel()));
+        var runner = new TestRunner(Opts(), new StringWriter { NewLine = "\n" }, new HangsAfter(2, () => cts.Cancel()));
         Assert.CatchAsync<OperationCanceledException>(async () => await runner.RunAsync(cts.Token));
         Assert.That(runner.Outcomes, Has.Count.EqualTo(2), "det som hunnit bli klart finns kvar");
         await Task.CompletedTask;
@@ -755,7 +713,7 @@ public class CiReadinessTests
         var started = DateTime.UtcNow;
         var (exit, output) = await Go(new HangsAfter(2), b => { b.MaxTime = 1; b.Reports.Add(json); });
         Assert.That(DateTime.UtcNow - started, Is.LessThan(TimeSpan.FromSeconds(10)));
-        Assert.That(exit, Is.EqualTo(ExitCodes.ApiUnreachable));
+        Assert.That(exit, Is.EqualTo(ExitCodes.Unreachable));
         Assert.That(output, Does.Contain("Obs: Körningen avbröts för att --max-time 1 s löpte ut").And.Contain("2 av de 34 planerade testerna hann köras"));
         var doc = Read(json);
         Assert.That(doc["abortKind"]!.GetValue<string>(), Is.EqualTo("max-time"));
@@ -826,11 +784,11 @@ public class CiReadinessTests
         var doc = Read(prev);
         var tests = doc["tests"]!.AsArray();
         // Gör om förra rapporten: ett fel lagas (var FEL, är nu OK), ett nytt fel (fanns inte), och alla id:n ändras.
-        var firstOk = tests.First(t => t!["outcome"]!.GetValue<string>() == "OK")!.AsObject();
-        var firstFail = tests.First(t => t!["outcome"]!.GetValue<string>() == "FEL")!.AsObject();
-        var secondFail = tests.Last(t => t!["outcome"]!.GetValue<string>() == "FEL")!.AsObject();
+        var firstOk = tests.First(t => t!["outcome"]!.GetValue<string>() == "passed")!.AsObject();
+        var firstFail = tests.First(t => t!["outcome"]!.GetValue<string>() == "failed")!.AsObject();
+        var secondFail = tests.Last(t => t!["outcome"]!.GetValue<string>() == "failed")!.AsObject();
         Assert.That(firstFail["key"]!.GetValue<string>(), Is.Not.EqualTo(secondFail["key"]!.GetValue<string>()));
-        firstOk["outcome"] = "FEL"; firstOk["cause"] = "system";
+        firstOk["outcome"] = "failed"; firstOk["cause"] = "system";
         var removed = secondFail["key"]!.GetValue<string>();
         tests.Remove(secondFail);
         foreach (var t in tests) t!["id"] = "T-9" + t["id"]!.GetValue<string>()[2..];   // andra id:n, samma nycklar
@@ -842,7 +800,7 @@ public class CiReadinessTests
         var cmp = Read(now)["comparison"]!;
         Assert.That(cmp["newFailures"]!.AsArray().Select(i => i!["key"]!.GetValue<string>()), Is.EqualTo(new[] { removed }));
         Assert.That(cmp["fixed"]!.AsArray().Select(i => i!["key"]!.GetValue<string>()), Is.EqualTo(new[] { firstOk["key"]!.GetValue<string>() }));
-        Assert.That(cmp["persisting"]!.AsArray().Count, Is.EqualTo(tests.Count(t => t!["outcome"]!.GetValue<string>() == "FEL") - 1));
+        Assert.That(cmp["persisting"]!.AsArray().Count, Is.EqualTo(tests.Count(t => t!["outcome"]!.GetValue<string>() == "failed") - 1));
         Assert.That(cmp["newFailures"]![0]!["previousId"], Is.Null, "fanns inte förra gången");
         Assert.That(cmp["persisting"]![0]!["previousId"]!.GetValue<string>(), Does.StartWith("T-9"), "id:t ändrades men testet kändes igen");
         Assert.That(output, Does.Contain("Jämförelse med ").And.Contain("Nya FEL sedan förra körningen: T-").And.Contain("Lagade sedan sist: T-").And.Contain("Kvar sedan tidigare: T-"));
@@ -877,7 +835,7 @@ public class CiReadinessTests
         // Ta bort ett fel ur förra rapporten: nu är det ett nytt FEL i systemet.
         var doc = Read(prev);
         var tests = doc["tests"]!.AsArray();
-        tests.Remove(tests.First(t => t!["outcome"]!.GetValue<string>() == "FEL"));
+        tests.Remove(tests.First(t => t!["outcome"]!.GetValue<string>() == "failed"));
         File.WriteAllText(prev, doc.ToJsonString());
         Assert.That((await Go(new FakeShop(), b => { b.Only = "createOrder"; b.Baseline = prev; b.FailOnNew = true; })).Exit, Is.EqualTo(1));
         // Nya FEL av osäker orsak (401 överallt) är inte 1 utan 4.
@@ -888,7 +846,7 @@ public class CiReadinessTests
     public async Task Fail_on_new_without_compare_is_a_usage_error()
     {
         var e = Assert.ThrowsAsync<UsageException>(async () => await Go(new FakeShop(), b => b.FailOnNew = true))!;
-        Assert.That(e.Message, Does.Contain("--fail-on-new").And.Contain("--jamfor"));
+        Assert.That(e.Message, Does.Contain("--fail-on-new").And.Contain("--baseline"));
         await Task.CompletedTask;
     }
 
@@ -896,7 +854,7 @@ public class CiReadinessTests
     public void Compare_gives_clear_error_for_missing_file_wrong_format_and_other_schema_version()
     {
         var missing = Assert.Throws<UsageException>(() => Baseline_Load(Out("finns-inte.json")))!;
-        Assert.That(missing.Message, Does.Contain("Hittar inte filen att jämföra med (--jamfor)"));
+        Assert.That(missing.Message, Does.Contain("Hittar inte filen att jämföra med (--baseline)"));
         Assert.That(FriendlyErrors.Translate(missing).ExitCode, Is.EqualTo(2));
 
         File.WriteAllText(Out("trasig.json"), "{ inte json");
@@ -917,13 +875,13 @@ public class CiReadinessTests
     private static TestGen.Core.Run.Baseline Baseline_Load(string path) => TestGen.Core.Run.Baseline.Load(path);
 
     [Test]
-    public void Cli_compare_with_missing_file_gives_exit_2_and_baseline_and_only_new_failures_aliases_work()
+    public void Cli_compare_with_missing_file_gives_exit_2_and_fail_on_new_needs_baseline()
     {
-        var (exit, _, err) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--jamfor", Out("nej.json"));
+        var (exit, _, err) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--baseline", Out("nej.json"));
         Assert.That(exit, Is.EqualTo(2));
         Assert.That(err, Does.Contain("Hittar inte filen att jämföra med"));
         Assert.That(Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--baseline", Out("nej.json")).Exit, Is.EqualTo(2));
-        var (e2, _, err2) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--bara-nya-fel");
+        var (e2, _, err2) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--fail-on-new");
         Assert.That(e2, Is.EqualTo(2));
         Assert.That(err2, Does.Contain("--fail-on-new"));
     }
@@ -964,7 +922,7 @@ public class CiReadinessTests
         var a = Entry("T-001", Res(400, true, verdict: "OK"));
         var b = Entry("T-009", Res(400, true, verdict: "OK"));
         var keys = TestKeys.For(new[] { a.Info!, b.Info! });
-        Assert.That(keys, Is.EqualTo(new[] { "createOrder|minimum|quantity", "createOrder|minimum|quantity#2" }));
-        Assert.That(TestKeys.Base("createOrder", "excel", null, "Flöde", 2), Is.EqualTo("createOrder|excel|Flöde|2"));
+        Assert.That(keys, Is.EqualTo(new[] { "api:createOrder:below-minimum:quantity", "api:createOrder:below-minimum:quantity#2" }));
+        Assert.That(TestKeys.Base("createOrder", "excel", null, "Flöde", 2), Is.EqualTo("api:createOrder:excel:Flöde:2"));
     }
 }

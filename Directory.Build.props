@@ -12,6 +12,16 @@
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 
+  <!-- Säkerhet: .NETs säkerhetsregler och sårbarhetskontroll av paket, också transitiva. Sårbarhetsvarningarna (NU1901-NU1904) stoppar
+       inte bygget, annars fäller en ny CVE orelaterade PR:er. CI-jobbet "audit" fäller i stället. -->
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisModeSecurity>Recommended</AnalysisModeSecurity>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+
   <!-- Paketmetadata. Paketprojekten sätter IsPackable=true, PackageId, Version (från eng/Versions.props), Description och PackageTags. README.md i projektkatalogen paketeras
        av Directory.Build.targets. -->
   <PropertyGroup>

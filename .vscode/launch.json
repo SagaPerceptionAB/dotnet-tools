@@ -11,12 +11,12 @@
       "console": "internalConsole"
     },
     {
-      "name": "testgen ui (webbgränssnitt, port 5100)",
+      "name": "testgen web (webbgränssnitt, port 5100)",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/testgen/src/TestGen.Cli/bin/Debug/net10.0/testgen.dll",
-      "args": ["ui", "--spec", "samples/shop.openapi.yaml", "--excel", "samples/tester.xlsx"],
+      "args": ["web", "--spec", "samples/shop.openapi.yaml", "--excel", "samples/tester.xlsx"],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "serverReadyAction": {
@@ -31,7 +31,7 @@
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/testgen/src/TestGen.Cli/bin/Debug/net10.0/testgen.dll",
-      "args": ["run", "--spec", "samples/shop.openapi.yaml", "--api", "http://localhost:5080", "--excel", "samples/tester.xlsx", "--klartext"],
+      "args": ["run", "--spec", "samples/shop.openapi.yaml", "--api", "http://localhost:5080", "--excel", "samples/tester.xlsx", "--explain"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     },
@@ -58,8 +58,8 @@
   ],
   "compounds": [
     {
-      "name": "ShopApi + testgen ui",
-      "configurations": ["ShopApi (exempel-API, port 5080)", "testgen ui (webbgränssnitt, port 5100)"],
+      "name": "ShopApi + testgen web",
+      "configurations": ["ShopApi (exempel-API, port 5080)", "testgen web (webbgränssnitt, port 5100)"],
       "stopAll": true
     }
   ],

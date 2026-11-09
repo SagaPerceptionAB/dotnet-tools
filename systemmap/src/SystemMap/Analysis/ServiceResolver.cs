@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -11,7 +12,7 @@ internal sealed record HttpClientInfo(string Name, string? ConfigKey);
 /// (<c>AddScoped&lt;IOrderService, OrderService&gt;()</c>, <c>AddHttpClient&lt;I, C&gt;</c>, formen med <c>typeof</c>); finns ingen
 /// registrering används den enda klassen i solutionen som implementerar gränssnittet.
 /// </summary>
-internal sealed class ServiceResolver
+internal sealed partial class ServiceResolver
 {
     private static readonly HashSet<string> RegistrationMethods =
     [
@@ -25,6 +26,17 @@ internal sealed class ServiceResolver
 
     private const string DbContext = "Microsoft.EntityFrameworkCore.DbContext";
 
+    /// <summary>Databasleverantörens metod i EF Core och koden som skrivs i kartan.</summary>
+    private static readonly Dictionary<string, string> Providers = new(StringComparer.Ordinal)
+    {
+        ["UseSqlServer"] = "sql-server",
+        ["UseNpgsql"] = "postgresql",
+        ["UseSqlite"] = "sqlite",
+        ["UseInMemoryDatabase"] = "in-memory",
+        ["UseMySql"] = "mysql",
+        ["UseCosmos"] = "cosmos",
+    };
+
     private readonly Dictionary<string, List<INamedTypeSymbol>> _registered = new(StringComparer.Ordinal);
     // Klasserna i solutionen per gränssnitt de implementerar, och överskuggningarna per virtuell metod. Byggs en gång,
     // vilket går mycket fortare än SymbolFinder (som indexerar alla paket första gången).
@@ -34,12 +46,23 @@ internal sealed class ServiceResolver
     private readonly Dictionary<string, HttpClientInfo> _namedClients = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _databases = new(StringComparer.Ordinal);
     private readonly HashSet<string> _reported = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _projectDirs = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Key, string? Project), string?> _settings = new();
 
     public List<string> Warnings { get; } = new();
 
-    public static ServiceResolver Build(IEnumerable<Project> projects, ModelCache models)
+    /// <summary>DbContext-registreringarna och HTTP-klienterna, med projektet där de registreras (för appens fakta).</summary>
+    public List<DbContextRegistration> DbContexts { get; } = new();
+    public List<HttpClientRegistration> HttpClients { get; } = new();
+
+    private readonly Origins _origins;
+    private string _project = "";
+
+    private ServiceResolver(Origins origins) => _origins = origins;
+
+    public static ServiceResolver Build(IEnumerable<Project> projects, ModelCache models, Origins origins)
     {
-        var resolver = new ServiceResolver();
+        var resolver = new ServiceResolver(origins);
         foreach (var compilation in models.Compilations)
             foreach (var type in SourceTypes(compilation.Assembly.GlobalNamespace))
                 resolver.Index(type);
@@ -47,11 +70,14 @@ internal sealed class ServiceResolver
             foreach (var tree in models.Trees(project))
             {
                 if (models.For(tree) is not { } model) continue;
+                resolver._project = project.Name;
+                if (project.FilePath is { } file) resolver._projectDirs[project.Name] = Path.GetDirectoryName(file) ?? "";
                 foreach (var invocation in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())
                 {
                     if (Symbols.InvokedName(invocation) is not { } name) continue;
                     if (RegistrationMethods.Contains(name)) resolver.Register(invocation, name, model);
                     else if (DbContextRegistrations.Contains(name)) resolver.RegisterDbContext(invocation, model);
+                    else if (name is "BindConfiguration" or "Bind" or "Configure") resolver.RegisterOptions(invocation, name, model);
                 }
                 foreach (var method in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
                     if (method.Identifier.ValueText == "OnConfiguring" && model.GetDeclaredSymbol(method)?.ContainingType is { } context && Symbols.Is(context, DbContext))
@@ -71,6 +97,30 @@ internal sealed class ServiceResolver
     /// <summary>HTTP-klienten för en typad klient (klassen som får en HttpClient) eller ett Refit-gränssnitt.</summary>
     public HttpClientInfo? HttpClientFor(ITypeSymbol type) =>
         Symbols.SelfAndBases(type).Select(t => _typedClients.GetValueOrDefault(Symbols.TypeKey(t))).FirstOrDefault(i => i is not null);
+
+    /// <summary>
+    /// Värdet för en konfigurationsnyckel i en <c>appsettings*.json</c>, först i projektet <paramref name="project"/> och sedan i de andra
+    /// projekten. Bara adresser visas: en absolut http(s)-adress utan användare och fråga, och aldrig för nycklar som ser ut som hemligheter.
+    /// </summary>
+    public string? AddressOf(string key, string? project)
+    {
+        if (SecretKey().IsMatch(key.Split(':')[^1])) return null;
+        // Filerna läses en gång per nyckel och projekt, inte för varje anrop som använder nyckeln.
+        if (!_settings.TryGetValue((key, project), out var value))
+        {
+            var dirs = (project is not null && _projectDirs.TryGetValue(project, out var own) ? [own] : Enumerable.Empty<string>())
+                .Concat(_projectDirs.OrderBy(d => d.Key, StringComparer.Ordinal).Select(d => d.Value));
+            _settings[(key, project)] = value = dirs.Select(d => ProjectFiles.ConfigValue(d, key)).FirstOrDefault(v => IsAddress(v));
+        }
+        value ??= _origins.Defaults.GetValueOrDefault(key);
+        return IsAddress(value) ? value : null;
+    }
+
+    private static bool IsAddress(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && uri.UserInfo.Length == 0 && uri.Query.Length == 0;
+
+    [GeneratedRegex("(Secret|Password|Passwd|Pwd|Key|Token)s?$", RegexOptions.IgnoreCase)]
+    private static partial Regex SecretKey();
 
     /// <summary>HTTP-klienten för <c>IHttpClientFactory.CreateClient("namn")</c>.</summary>
     public HttpClientInfo? NamedClient(string name) => _namedClients.GetValueOrDefault(name);
@@ -200,14 +250,43 @@ internal sealed class ServiceResolver
         var method = Symbols.Invoked(invocation, model);
         var context = (method?.TypeArguments.OfType<INamedTypeSymbol>().ToList() ?? SyntacticTypeArguments(invocation, model)).LastOrDefault();
         if (context is not null && context.TypeKind != TypeKind.Error)
-            foreach (var arguments in ChainArguments(invocation)) AddDatabase(context, arguments, model);
+        {
+            var chain = ChainArguments(invocation).ToList();
+            foreach (var arguments in chain) AddDatabase(context, arguments, model);
+            var provider = chain.SelectMany(a => a.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                .Select(i => Symbols.InvokedName(i) is { } n && Providers.TryGetValue(n, out var code) ? code : null).FirstOrDefault(c => c is not null);
+            DbContexts.Add(new DbContextRegistration(_project, context.Name, provider, chain.SelectMany(a => _origins.ConfigKeysIn(a, model)).FirstOrDefault()));
+        }
+    }
+
+    /// <summary>Sektionen en options-typ binds till: <c>AddOptions&lt;T&gt;().BindConfiguration("X")</c>, <c>.Bind(config.GetSection("X"))</c> och <c>Configure&lt;T&gt;(config.GetSection("X"))</c>.</summary>
+    private void RegisterOptions(InvocationExpressionSyntax invocation, string name, SemanticModel model)
+    {
+        var type = Symbols.Invoked(invocation, model)?.TypeArguments.FirstOrDefault() as INamedTypeSymbol
+                   ?? SyntacticTypeArguments(invocation, model).FirstOrDefault()
+                   ?? (Symbols.Receiver(invocation) is InvocationExpressionSyntax receiver ? SyntacticTypeArguments(receiver, model).FirstOrDefault() : null);
+        if (type is null || type.TypeKind == TypeKind.Error) return;
+        var allowConstant = name == "BindConfiguration" || (name == "Configure" && invocation.ArgumentList.Arguments.Count == 1);
+        var section = invocation.ArgumentList.Arguments.Select(a => SectionOf(a.Expression, model, allowConstant)).FirstOrDefault(s => s is not null);
+        if (section is not null) _origins.OptionSections.TryAdd(Symbols.TypeKey(type), section);
+    }
+
+    /// <summary>Sektionen i <c>"X"</c> (bara för BindConfiguration och <c>Configure&lt;T&gt;("X")</c>) eller <c>config.GetSection("X").GetSection("Y")</c>, som X:Y.</summary>
+    private static string? SectionOf(ExpressionSyntax expression, SemanticModel model, bool allowConstant)
+    {
+        if (expression is InvocationExpressionSyntax inv)
+        {
+            if (Symbols.InvokedName(inv) is not ("GetSection" or "GetRequiredSection") || Origins.FirstString(inv.ArgumentList, model) is not { } own) return null;
+            return Symbols.Receiver(inv) is InvocationExpressionSyntax outer && SectionOf(outer, model, false) is { } parent ? parent + ":" + own : own;
+        }
+        return allowConstant ? Symbols.ConstantString(expression, model) : null;
     }
 
     private void AddDatabase(ITypeSymbol context, SyntaxNode node, SemanticModel model)
     {
         var key = Symbols.TypeKey(context);
         if (_databases.ContainsKey(key)) return;
-        if (Origins.ConfigKeysIn(node, model).FirstOrDefault() is { } config)
+        if (_origins.ConfigKeysIn(node, model).FirstOrDefault() is { } config)
         {
             _databases[key] = Origins.NameFromConfigKey(config);
             return;
@@ -227,12 +306,13 @@ internal sealed class ServiceResolver
     private void RegisterHttpClient(InvocationExpressionSyntax invocation, List<INamedTypeSymbol> typeArguments, SemanticModel model)
     {
         // Adressen sätts i registreringens argument eller i en kedjad ConfigureHttpClient(...).
-        var key = ChainArguments(invocation).SelectMany(a => Origins.ConfigKeysIn(a, model)).FirstOrDefault();
+        var key = ChainArguments(invocation).SelectMany(a => _origins.ConfigKeysIn(a, model)).FirstOrDefault();
         var clientName = Origins.FirstString(invocation.ArgumentList, model);
         var typeName = typeArguments.LastOrDefault()?.Name;
         var info = new HttpClientInfo(clientName ?? (key is null ? null : Origins.NameFromConfigKey(key)) ?? typeName ?? "HTTP", key);
         foreach (var t in typeArguments) _typedClients.TryAdd(Symbols.TypeKey(t), info);
         if (clientName is not null) _namedClients.TryAdd(clientName, info);
+        HttpClients.Add(new HttpClientRegistration(_project, typeArguments.LastOrDefault()?.Name ?? clientName ?? info.Name, info));
     }
 
     /// <summary>Argumenten till anropet och till anrop som kedjas på det: <c>AddHttpClient&lt;X&gt;().ConfigureHttpClient(c =&gt; ...)</c>.</summary>
@@ -267,3 +347,9 @@ internal sealed class ServiceResolver
         if (list.All(i => Symbols.TypeKey(i) != implementationKey)) list.Add(implementation.OriginalDefinition);
     }
 }
+
+/// <summary>En <c>AddDbContext</c> i projektet <paramref name="Project"/>: kontexten, leverantören (kod, t.ex. <c>sqlite</c>) och nyckeln för anslutningssträngen.</summary>
+internal sealed record DbContextRegistration(string Project, string Context, string? Provider, string? ConfigKey);
+
+/// <summary>En registrerad HTTP-klient (<paramref name="Client"/> är klientens typ eller namn) i projektet <paramref name="Project"/>.</summary>
+internal sealed record HttpClientRegistration(string Project, string Client, HttpClientInfo Info);

@@ -100,10 +100,10 @@ public static class CodeMapMermaid
                 styled.Add((id, outside ? "externalarea" : "codearea"));
                 return;
             }
-            // Anropen in som flaggor, en databas som cylinder och andra integrationer med rundade hörn.
+            // Anropen in som flaggor (sidor som parallellogram), en databas som cylinder och andra integrationer med rundade hörn.
             lines.Add(indent + id + string.Format(n.Kind switch
             {
-                OverviewKind.Entry => ">\"{0}\"]",
+                OverviewKind.Entry => n.Ref is "razor-page" or "blazor-page" or "mvc-view" ? "[/\"{0}\"/]" : ">\"{0}\"]",
                 OverviewKind.Integration => IntegrationOf(n)?.Kind == IntegrationKind.Database ? "[(\"{0}\")]" : "(\"{0}\")",
                 _ => "[\"{0}\"]",
             }, Label(n)));

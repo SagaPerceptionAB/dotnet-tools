@@ -1,5 +1,3 @@
-using ClosedXML.Excel;
-
 namespace TestGen.Core.Run;
 
 /// <summary>
@@ -10,7 +8,7 @@ namespace TestGen.Core.Run;
 /// <param name="Scope">Miljön en Miljöer-rad hör till (null = gäller hela bladet).</param>
 public sealed record ExcelIssue(string Sheet, int Row, int Col, string? Header, string Message, bool IsError = true, string? Technical = null, string? Scope = null)
 {
-    public string Cell => $"{Sheet}!{XLHelper.GetColumnLetterFromNumber(Col)}{Row}";
+    public string Cell => $"{Sheet}!{ExcelLayout.ColumnLetter(Col)}{Row}";
     public string Text => Header is null ? $"{Cell}: {Message}" : $"{Cell} ({Header}): {Message}";
 
     /// <summary>Sorterar per rad och kolumn.</summary>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Testhjälp för SagaPerception-tjänster, oberoende av testramverk. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.Testing</PackageId>
+    <Version>$(SagaPerceptionTestingVersion)</Version>
+    <Description>Testhjälp för SagaPerception-tjänster: ApiFactory&lt;TProgram&gt; (WebApplicationFactory med miljön Testing, avstängd telemetriexport och WithSetting/WithServices) och TelemetryCapture som fångar spår och loggar i minnet.</Description>
+    <PackageTags>testing;integration-tests;opentelemetry;aspnetcore;sagaperception</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+</Project>

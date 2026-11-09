@@ -30,9 +30,13 @@ public sealed class OrderQueries(ShopDatabase database) : IOrderQueries
 
         public Order ToOrder() => new()
         {
-            Id = (int)Id, CustomerId = (int)CustomerId, ProductId = (int)ProductId, Quantity = (int)Quantity,
+            Id = (int)Id,
+            CustomerId = (int)CustomerId,
+            ProductId = (int)ProductId,
+            Quantity = (int)Quantity,
             CreatedAt = DateTime.Parse(CreatedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
-            DiscountPercent = (int)DiscountPercent, TotalPrice = TotalPrice,
+            DiscountPercent = (int)DiscountPercent,
+            TotalPrice = TotalPrice,
         };
     }
 }

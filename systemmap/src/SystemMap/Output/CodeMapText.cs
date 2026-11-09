@@ -21,10 +21,17 @@ public static class CodeMapText
             }
         }
 
-        foreach (var entry in map.EntryPoints)
+        if (map.Apps.Count > 0)
+        {
+            yield return "Appar:";
+            foreach (var app in map.Apps)
+                yield return "  " + AppLine(app);
+        }
+
+        foreach (var entry in CallGroups.Order(map.EntryPoints))
         {
             yield return "";
-            yield return $"{entry.Method} {entry.Path}{(entry.OperationId is null ? "" : $"  ({entry.OperationId})")}  {entry.Handler} [{entry.Project}]";
+            yield return $"{entry.Method} {entry.Path}{(entry.OperationId is null ? "" : $"  ({entry.OperationId})")}  {entry.Handler} [{entry.Project}]{(entry.Kind == EntryKind.Controller ? "" : $" {CodeMapJson.KindCode(entry.Kind)}")}";
             if (entry.Input is not null || entry.Output is not null)
                 yield return $"  in: {Shape(entry.Input) ?? "–"}   ut: {Shape(entry.Output) ?? "–"}";
             foreach (var line in StepLines(entry.Steps, map, 1)) yield return line;
@@ -40,9 +47,16 @@ public static class CodeMapText
                     ? $"  Bara i koden: {d.Method} {d.Path} ({d.Handler})"
                     : $"  Bara i specen: {d.Method} {d.Path}{(d.OperationId is null ? "" : $" ({d.OperationId})")}";
         }
+    }
 
-        if (map.Warnings.Count > 0) yield return "";
-        foreach (var warning in map.Warnings) yield return "Varning: " + warning;
+    /// <summary>"ShopWeb: web, anropar ShopApi via ShopApi:BaseUrl".</summary>
+    private static string AppLine(AppFacts app)
+    {
+        var parts = new List<string> { string.Join(" och ", app.Kinds.Select(k => k == AppKind.Api ? "api" : "web")) };
+        if (app.HealthPaths.Count > 0) parts.Add("hälsa " + string.Join(", ", app.HealthPaths));
+        parts.AddRange(app.Databases.Select(d => $"databas {d.Provider ?? "okänd"} ({d.Context}{(d.ConfigKey is null ? "" : $", {d.ConfigKey}")})"));
+        parts.AddRange(app.HttpClients.Select(c => $"{(c.TargetProject is null ? $"anropar {c.IntegrationId["http:".Length..]}" : $"anropar {c.TargetProject}")}{(c.ConfigKey is null ? "" : $" via {c.ConfigKey}")}"));
+        return $"{app.Project}: {string.Join("; ", parts.Where(p => p.Length > 0))}";
     }
 
     /// <summary>"Betaltjanst (HTTP, adressen i Betaltjanst:BaseUrl)".</summary>

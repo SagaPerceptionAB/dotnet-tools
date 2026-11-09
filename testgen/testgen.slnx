@@ -4,12 +4,19 @@
     <Project Path="../systemmap/src/SystemMap/SystemMap.csproj" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/TestGen.Scenarios/TestGen.Scenarios.csproj" />
     <Project Path="src/TestGen.Cli/TestGen.Cli.csproj" />
     <Project Path="src/TestGen.Core/TestGen.Core.csproj" />
+    <Project Path="src/TestGen.Excel/TestGen.Excel.csproj" />
+    <Project Path="src/TestGen.Browser/TestGen.Browser.csproj" />
+    <Project Path="src/TestGen.Mock/TestGen.Mock.csproj" />
+    <Project Path="src/SagaPerception.Testing.NUnit/SagaPerception.Testing.NUnit.csproj" />
+    <Project Path="src/TestGen.Views/TestGen.Views.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Api.Tests/Api.Tests.csproj" />
+    <Project Path="tests/TestGen.Browser.Tests/TestGen.Browser.Tests.csproj" />
+    <Project Path="tests/TestGen.Mock.Tests/TestGen.Mock.Tests.csproj" />
+    <Project Path="tests/SagaPerception.Testing.NUnit.Tests/SagaPerception.Testing.NUnit.Tests.csproj" />
+    <Project Path="tests/TestGen.Views.Tests/TestGen.Views.Tests.csproj" />
     <Project Path="tests/TestGen.Tests/TestGen.Tests.csproj" />
   </Folder>
 </Solution>

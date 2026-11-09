@@ -1,5 +1,4 @@
 using System.Net;
-using TestGen.Scenarios;
 using TestGen.Cli;
 using TestGen.Core;
 using TestGen.Core.Run;
@@ -25,7 +24,7 @@ public class ErrorTests
     private static (int Exit, string Out, string Err) Cli(params string[] args)
     {
         var (o, e) = (Console.Out, Console.Error);
-        var (so, se) = (new StringWriter(), new StringWriter());
+        var (so, se) = (new StringWriter { NewLine = "\n" }, new StringWriter { NewLine = "\n" });
         Console.SetOut(so); Console.SetError(se);
         try { return (Program.Main(args), so.ToString(), se.ToString()); }
         finally { Console.SetOut(o); Console.SetError(e); }
@@ -74,12 +73,10 @@ public class ErrorTests
     }
 
     [Test]
-    public void Excel_that_is_not_xlsx_gives_the_same_text_on_all_paths()
+    public void Excel_that_is_not_xlsx_gives_a_clear_error()
     {
         var f = File_("falsk.xlsx", "inte en excelfil");
         var a = Assert.Throws<SourceException>(() => ExcelScenarioReader.Read(f))!;
-        var b = Assert.Throws<SourceException>(() => EnvironmentSheet.Read(f))!;
-        Assert.That(b.Message, Is.EqualTo(a.Message));
         Assert.That(a.Message, Does.Contain("Excel-arbetsbok").And.Not.Contain("corrupted"));
     }
 
@@ -96,7 +93,7 @@ public class ErrorTests
     public void Unreachable_api_gives_exit_code_3()
     {
         var t = FriendlyErrors.Translate(new ApiUnreachableException("http://localhost:5999", ApiProblem.Refused, "Connection refused (localhost:5999)"));
-        Assert.That(t.ExitCode, Is.EqualTo(ExitCodes.ApiUnreachable));
+        Assert.That(t.ExitCode, Is.EqualTo(ExitCodes.Unreachable));
         Assert.That(t.What, Does.Not.Contain("Connection refused"));
         Assert.That(t.Technical, Does.Contain("Connection refused"));
     }
@@ -112,15 +109,16 @@ public class ErrorTests
     // --- Kommandoraden ------------------------------------------------------------------
 
     [Test]
-    public void Without_arguments_shows_help_with_exit_code_2_and_writes_no_files()
+    public void Help_flag_shows_help_on_stdout_with_exit_code_0_and_writes_no_files()
     {
         var before = Directory.GetCurrentDirectory();
         Directory.SetCurrentDirectory(_dir);
         try
         {
-            var (exit, o, _) = Cli();
-            Assert.That(exit, Is.EqualTo(2));
-            Assert.That(o, Does.Contain("Kommandon:").And.Contain("generate").And.Contain("Exitkoder:"));
+            var (exit, o, err) = Cli("--help");
+            Assert.That(exit, Is.EqualTo(0));
+            Assert.That(err, Is.Empty);
+            Assert.That(o, Does.Contain("Kommandon:").And.Contain("Exitkoder:"));
             Assert.That(Directory.GetFileSystemEntries(_dir), Is.Empty);
         }
         finally { Directory.SetCurrentDirectory(before); }
@@ -129,13 +127,13 @@ public class ErrorTests
     [Test]
     public void Help_per_command_and_default_values()
     {
-        foreach (var cmd in new[] { "run", "template", "ui", "generate" })
+        foreach (var cmd in new[] { "run", "template", "web" })
         {
             var (exit, o, _) = Cli(cmd, "--help");
             Assert.That(exit, Is.EqualTo(0), cmd);
-            Assert.That(o, Does.Contain($"testgen {cmd} -").And.Contain("dotnet run --project testgen/src/TestGen.Cli"), cmd);
+            Assert.That(o, Does.StartWith("Användning:\n  testgen " + cmd), cmd);
         }
-        Assert.That(Cli("run", "--help").Out, Does.Contain("default 12345").And.Contain("default 30").And.Contain("--config").And.Contain("Exitkoder"));
+        Assert.That(Cli("run", "--help").Out, Does.Contain("standard 12345").And.Contain("standard 30").And.Contain("--config").And.Contain("Exitkoder"));
     }
 
     [Test]
@@ -143,7 +141,7 @@ public class ErrorTests
     {
         var (exit, _, err) = Cli("rnu");
         Assert.That(exit, Is.EqualTo(2));
-        Assert.That(err, Does.StartWith("Kunde inte köra: ").And.Contain("Menade du 'run'?").And.Contain("run, template, ui, map, generate"));
+        Assert.That(err, Does.StartWith("Kunde inte köra: ").And.Contain("Menade du 'run'?").And.Contain(string.Join(", ", HelpText.Commands)));
     }
 
     [Test]
@@ -164,12 +162,12 @@ public class ErrorTests
     }
 
     [Test]
-    public void Old_style_without_command_points_to_generate()
+    public void Flags_without_command_ask_for_a_command()
     {
         var (exit, _, err) = Cli("--spec", "a.yaml", "--out", "ut");
         Assert.That(exit, Is.EqualTo(2));
         Assert.That(err, Does.Contain("Kommando saknas"));
-        Assert.That(Cli("--out", "ut").Err, Does.Contain("testgen generate"));
+        Assert.That(Cli("--out", "ut").Err, Does.Not.Contain("generate"));
     }
 
     [Test]
@@ -206,8 +204,9 @@ public class ErrorTests
         var report = Path.Combine(_dir, "ut", "r.html");
         var (exit, o, err) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--only", "getOrder", "--report", report);
         Assert.That(exit, Is.EqualTo(3));
-        Assert.That(err, Does.StartWith("Kunde inte köra: Kan inte nå API:et på http://127.0.0.1:1"));
-        Assert.That(o, Does.Contain("Rapport skriven"));
+        Assert.That(err, Does.Contain("Kunde inte köra: Kan inte nå API:et på http://127.0.0.1:1"));
+        Assert.That(err, Does.Contain("Skrev ").And.Contain("r.html (HTML-rapport, körningen kunde inte genomföras)"));
+        Assert.That(o, Does.Not.Contain("Skrev "), "bekräftelser går till stderr");
         Assert.That(WebUtility.HtmlDecode(File.ReadAllText(report)), Does.Contain("Körningen kunde inte genomföras").And.Contain("Kan inte nå API:et"));
     }
 
@@ -251,14 +250,14 @@ public class ErrorTests
     [Test]
     public void Auth_note_for_401_403()
     {
-        Assert.That(PlainLanguage.AuthNote(Enumerable.Repeat<int?>(401, 10)), Does.StartWith("Alla tester fick 401 – inloggning saknas eller är ogiltig.").And.Contain("--token").And.Contain("Miljöer"));
+        Assert.That(PlainLanguage.AuthNote(Enumerable.Repeat<int?>(401, 10)), Does.StartWith("Alla tester fick 401 – inloggning saknas eller är ogiltig.").And.Contain("--token").And.Contain("testgen.yaml"));
         Assert.That(PlainLanguage.AuthNote(Enumerable.Repeat<int?>(403, 4)), Does.StartWith("Alla tester fick 403"));
         Assert.That(PlainLanguage.AuthNote(Enumerable.Repeat<int?>(401, 9).Append(201)), Does.StartWith("9 av 10 tester fick 401 eller 403"));
         Assert.That(PlainLanguage.AuthNote(Enumerable.Repeat<int?>(401, 8).Concat(new int?[] { 201, 201 })), Is.Null);
         Assert.That(PlainLanguage.AuthNote(new int?[] { null, null }), Is.Null);
         Assert.That(PlainLanguage.AuthNote(Array.Empty<int?>()), Is.Null);
         var web = PlainLanguage.AuthNote(Enumerable.Repeat<int?>(401, 10), web: true);
-        Assert.That(web, Does.StartWith("Alla tester fick 401").And.Contain("fältet Token").And.Contain("Miljöer").And.Not.Contain("--token"));
+        Assert.That(web, Does.StartWith("Alla tester fick 401").And.Contain("fältet Token").And.Contain("testgen.yaml").And.Not.Contain("--token"));
     }
 
     private sealed class Always(HttpStatusCode code) : HttpMessageHandler
@@ -270,7 +269,7 @@ public class ErrorTests
     [Test]
     public async Task Summary_and_report_mention_login_in_plain_language()
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var report = Path.Combine(_dir, "a.html");
         var exit = await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Only = "createCustomer", Seed = 1, ReportPath = report },
             sw, new Always(HttpStatusCode.Unauthorized)).RunAsync();

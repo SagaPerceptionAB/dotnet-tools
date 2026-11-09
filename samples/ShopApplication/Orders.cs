@@ -34,9 +34,13 @@ public sealed class OrderService(
         var now = DateTime.UtcNow;
         var order = await orders.AddAsync(new Order
         {
-            CustomerId = customer.Id, ProductId = product.Id, Quantity = request.Quantity,
+            CustomerId = customer.Id,
+            ProductId = product.Id,
+            Quantity = request.Quantity,
             CreatedAt = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc),
-            DiscountPercent = price.DiscountPercent, TotalPrice = price.Total, PaymentId = payment.PaymentId,
+            DiscountPercent = price.DiscountPercent,
+            TotalPrice = price.Total,
+            PaymentId = payment.PaymentId,
         }, ct);
 
         await events.PublishAsync(new OrderPlaced(order.Id, customer.Id, product.Id, order.Quantity, order.TotalPrice), ct);

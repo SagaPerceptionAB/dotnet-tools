@@ -63,6 +63,8 @@
 
     public sealed class CustomerInput
     {
+        // Avsiktlig avvikelse i exemplet: specen tillåter högst 100 tecken i name, men formuläret begränsar inte längden.
+        // UI-testerna hittar den (samples/expected-failures.txt). Rättning: [StringLength(100)].
         [Required(ErrorMessage = "Namn måste fyllas i.")]
         public string Name { get; set; } = "";
 

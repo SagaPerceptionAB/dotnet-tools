@@ -95,7 +95,10 @@ internal sealed class DevMapRunner(string directory)
             System.IO.Directory.CreateDirectory(Path.GetDirectoryName(HtmlFile)!);
             var start = new ProcessStartInfo(dotnet)
             {
-                WorkingDirectory = projectDir, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+                WorkingDirectory = projectDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
             };
             foreach (var arg in new[] { "exec", tool }) start.ArgumentList.Add(arg);
             if (spec is not null) { start.ArgumentList.Add("--spec"); start.ArgumentList.Add(spec); }

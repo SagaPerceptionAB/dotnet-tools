@@ -1,15 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\TestGen.Scenarios\TestGen.Scenarios.csproj" />
     <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
-    <!-- Systemkartan (testgen map, kartan i testgen ui och vägen i testkorten). Beroendet går bara åt det här hållet:
+    <ProjectReference Include="..\TestGen.Browser\TestGen.Browser.csproj" />
+    <ProjectReference Include="..\TestGen.Excel\TestGen.Excel.csproj" />
+    <ProjectReference Include="..\TestGen.Mock\TestGen.Mock.csproj" />
+    <ProjectReference Include="..\TestGen.Views\TestGen.Views.csproj" />
+    <!-- Systemkartan (testgen map, kartan i testgen web och vägen i testkorten). Beroendet går bara åt det här hållet:
          systemkartan vet inget om testgen. -->
     <ProjectReference Include="..\..\..\systemmap\src\SystemMap\SystemMap.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Direkt referens, så att Playwrights installationsskript (testgen init installerar Chromium) hamnar bredvid programmet. -->
+    <PackageReference Include="Microsoft.Playwright" />
   </ItemGroup>
 
   <ItemGroup>
@@ -17,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Ui\index.html" LogicalName="TestGen.Ui.index.html" />
+    <EmbeddedResource Include="Web\index.html" LogicalName="TestGen.Web.index.html" />
     <!-- Cytoscape.js och layouten fcose (MIT) ritar systemkartan. De ligger i systemkartan och följer med i programmet,
          så att sidan inte hämtar något utifrån. -->
     <None Include="..\..\..\systemmap\src\SystemMap\Web\lib\*.LICENSE.txt" Pack="true" PackagePath="\licenses\" />
@@ -25,6 +30,22 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Paketversionerna som testgen init skriver i testprojektet: samma som repot själv använder. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PackageVersion:Microsoft.NET.Test.Sdk</_Parameter1>
+      <_Parameter2>@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.NET.Test.Sdk')->'%(Version)')</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PackageVersion:NUnit</_Parameter1>
+      <_Parameter2>@(PackageVersion->WithMetadataValue('Identity', 'NUnit')->'%(Version)')</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PackageVersion:NUnit3TestAdapter</_Parameter1>
+      <_Parameter2>@(PackageVersion->WithMetadataValue('Identity', 'NUnit3TestAdapter')->'%(Version)')</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
@@ -43,6 +64,8 @@
     <Version>$(SagaPerceptionTestGenVersion)</Version>
     <Description>Testar ett API utifrån dess OpenAPI-spec (ingen AI vid körning, samma indata ger samma resultat).</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Playwrights .ps1-skript följer med i verktyget (testgen init installerar Chromium med dem); NuGet varnar för skript utanför tools/. -->
+    <NoWarn>$(NoWarn);NU5111</NoWarn>
   </PropertyGroup>
 
 </Project>

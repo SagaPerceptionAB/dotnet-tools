@@ -31,7 +31,7 @@ public class CauseDisplayTests
 
     private async Task<(int Exit, string Out)> Run(HttpMessageHandler h, bool verbose = false, string? report = null, string? only = null, bool plainText = false)
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var exit = await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, Only = only, Verbose = verbose, ReportPath = report, PlainText = plainText },
             sw, h).RunAsync();
         return (exit, sw.ToString());
@@ -60,7 +60,7 @@ public class CauseDisplayTests
         var row = o.Split('\n').First(l => l.StartsWith("T-") && l.Contains("FEL"));
         Assert.That(row, Does.Contain("– Orsak: Testdata fanns redan"));
         Assert.That(o, Does.Contain("Testdata fanns redan (409): T-").And.Contain("säger inget om systemet"));
-        Assert.That(o, Does.Contain("Tips: kör igen med --seed slumpa"));
+        Assert.That(o, Does.Contain("Tips: kör igen med --seed random"));
     }
 
     [Test]
@@ -97,10 +97,10 @@ public class CauseDisplayTests
         await Run(new OneBroken(), report: report, only: "createCustomer");
         var html = WebUtility.HtmlDecode(File.ReadAllText(report));
         Assert.That(html, Does.Match("<title>Testrapport – inget säkert svar \\(testdata\\) – \\d{4}-\\d\\d-\\d\\d</title>"));
-        var verdictAt = html.IndexOf("<p class=\"klartext\">", StringComparison.Ordinal);
+        var verdictAt = html.IndexOf("<p class=\"plain\">", StringComparison.Ordinal);
         Assert.That(html.Substring(verdictAt, 120), Does.Contain("Inget säkert svar: "));
-        Assert.That(html, Does.Contain("<li class=\"cause-testdata\"><strong>Testdata fanns redan (409):</strong> <a href=\"#T-001\">T-001</a>"));
-        Assert.That(html, Does.Contain("<p class=\"orsak\"><strong>Orsak: Testdata fanns redan</strong></p>"));
+        Assert.That(html, Does.Contain("<li class=\"cause-test-data\"><strong>Testdata fanns redan (409):</strong> <a href=\"#T-001\">T-001</a>"));
+        Assert.That(html, Does.Contain("<p class=\"cause\"><strong>Orsak: Testdata fanns redan</strong></p>"));
         Assert.That(html, Does.Contain("<th>Orsak</th>"));
     }
 
@@ -165,7 +165,7 @@ public class CauseDisplayTests
     [TestCase("X-Session-Id")]
     public void Header_with_secret_name_is_masked_without_naming_it(string name)
     {
-        Assert.That(HeaderMask.LooksSecret(name));
+        Assert.That(Secrets.LooksSecret(name));
         var h = new Dictionary<string, string> { [name] = "hemlig123", ["X-Env"] = "test" };
         var mask = HeaderMask.For(h);
         Assert.That(mask.Format(h), Does.Not.Contain("hemlig123").And.Contain("X-Env: test"));
@@ -177,7 +177,7 @@ public class CauseDisplayTests
     [Test]
     public void Common_headers_are_not_secret_and_curl_gets_variable_for_custom_key()
     {
-        foreach (var n in new[] { "Accept", "Content-Type", "X-Env", "X-Correlation-Id", "User-Agent" }) Assert.That(HeaderMask.LooksSecret(n), Is.False, n);
+        foreach (var n in new[] { "Accept", "Content-Type", "X-Env", "X-Correlation-Id", "User-Agent" }) Assert.That(Secrets.LooksSecret(n), Is.False, n);
         var h = new Dictionary<string, string> { ["X-Api-Key"] = "hemlig123" };
         var curl = CurlCommand.Build(new Exchange("GET", "http://x/", HeaderMask.For(h).Mask(h), null, 200, "{}", 1));
         Assert.That(curl, Does.Contain("\"X-Api-Key: $X_API_KEY\""));
@@ -187,10 +187,15 @@ public class CauseDisplayTests
     public async Task Custom_key_via_header_never_shows_in_terminal_or_report()
     {
         var report = Path.Combine(_dir, "k.html");
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         await new TestRunner(new RunOptions
         {
-            Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, Only = "getOrder", Verbose = true, ReportPath = report,
+            Spec = ShopSpec.Path,
+            Api = "http://fake.test",
+            Seed = 1,
+            Only = "getOrder",
+            Verbose = true,
+            ReportPath = report,
             Headers = new Dictionary<string, string> { ["X-Api-Key"] = "hemlig123", ["X-Env"] = "test" },
             HeaderArgs = new[] { "X-Api-Key: hemlig123", "X-Env: test" },
         }, sw, new Always(HttpStatusCode.InternalServerError)).RunAsync();

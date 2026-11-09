@@ -1,7 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.TestGen.Core</PackageId>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+    <Description>Motorn i testgen: OpenAPI-spec, testdata, testfall, körning och rapporter. Används av SagaPerception.Testing.NUnit.</Description>
+  </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\TestGen.Scenarios\TestGen.Scenarios.csproj" />
+    <ProjectReference Include="..\..\..\shared\CommandLine\CommandLine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TestGen.Excel" />
+    <InternalsVisibleTo Include="TestGen.Views" />
+    <InternalsVisibleTo Include="TestGen.Views.Tests" />
+    <InternalsVisibleTo Include="TestGen.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -10,8 +24,8 @@
 
   <ItemGroup>
     <PackageReference Include="Bogus" />
-    <PackageReference Include="ClosedXML" />
-    <PackageReference Include="Microsoft.OpenApi.Readers" />
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 

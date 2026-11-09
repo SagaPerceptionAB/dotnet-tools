@@ -20,52 +20,16 @@ public sealed class LoadedSolution(MSBuildWorkspace workspace, Solution solution
 /// </summary>
 public static class SolutionLoader
 {
-    /// <summary>Filändelserna för en solution. Ett projekt (<see cref="ProjectExtension"/>) går också att läsa.</summary>
-    public static readonly string[] SolutionExtensions = [".sln", ".slnx"];
-    public const string ProjectExtension = ".csproj";
-
     /// <summary>Den fullständiga sökvägen, om den pekar på en solution eller ett projekt som finns. Annars ett fel att visa.</summary>
     public static string Check(string path)
     {
         var full = Path.GetFullPath(path);
         if (!File.Exists(full)) throw UsageException.MissingFile("solutionen", full);
         var extension = Path.GetExtension(full);
-        if (!SolutionExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) && !extension.Equals(ProjectExtension, StringComparison.OrdinalIgnoreCase))
+        if (!SolutionFinder.SolutionExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) && !extension.Equals(SolutionFinder.ProjectExtension, StringComparison.OrdinalIgnoreCase))
             throw new UsageException($"{full} är ingen solution eller projektfil.",
                 "Ange en .sln- eller .slnx-fil (eller en .csproj), t.ex. --solution samples/Shop.slnx.");
         return full;
-    }
-
-    /// <summary>
-    /// Solutionen i den här mappen eller närmaste mapp ovanför, till och med repots rot (där .git ligger): den visar hela
-    /// systemet. Finns ingen solution används närmaste projekt (.csproj). Flera i samma mapp: fel, så att kartan inte ritas
-    /// för fel system. <paramref name="see"/> är kommandot som visas i tipsen, t.ex. <c>dotnet systemmap</c>.
-    /// </summary>
-    public static string Find(string start, string see)
-    {
-        IReadOnlyList<FileInfo>? project = null;
-        for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
-        {
-            // Filändelsen jämförs själv: i Windows träffar mönstret *.sln även .slnx.
-            var files = dir.GetFiles();
-            var solutions = files.Where(f => SolutionExtensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase)).ToList();
-            if (solutions.Count > 0) return Pick(start, solutions, see);
-            if (project is null && files.Where(f => f.Extension.Equals(ProjectExtension, StringComparison.OrdinalIgnoreCase)).ToList() is { Count: > 0 } found)
-                project = found;
-            if (Path.Exists(Path.Combine(dir.FullName, ".git"))) break;
-        }
-        return project is not null ? Pick(start, project, see)
-            : throw new UsageException($"Hittade ingen solution (.sln, .slnx) eller .csproj i {start} eller mapparna ovanför.",
-                $"Gå till mappen där solutionen ligger, eller ange den: {see} --solution src/Butik.sln");
-    }
-
-    private static string Pick(string start, IReadOnlyList<FileInfo> found, string see)
-    {
-        if (found.Count == 1) return Path.GetRelativePath(start, found[0].FullName);
-        var names = found.Select(f => f.Name).Order(StringComparer.OrdinalIgnoreCase).ToList();
-        var dir = found[0].DirectoryName!;
-        throw new UsageException($"Det finns flera att välja på i {dir}: {string.Join(", ", names)}.",
-            $"Ange vilken kartan ska ritas för, t.ex. {see} --solution {Path.GetRelativePath(start, Path.Combine(dir, names[0]))}");
     }
 
     /// <param name="restore">
@@ -95,7 +59,7 @@ public static class SolutionLoader
         });
         try
         {
-            var solution = Path.GetExtension(full).Equals(ProjectExtension, StringComparison.OrdinalIgnoreCase)
+            var solution = Path.GetExtension(full).Equals(SolutionFinder.ProjectExtension, StringComparison.OrdinalIgnoreCase)
                 ? (await workspace.OpenProjectAsync(full, cancellationToken: ct)).Solution
                 : await workspace.OpenSolutionAsync(full, cancellationToken: ct);
             if (!solution.Projects.Any())
@@ -137,7 +101,7 @@ public static class SolutionLoader
     /// <summary>Sant om något projekt under solutionens katalog saknar obj/project.assets.json eller har ändrats sedan den skrevs.</summary>
     private static bool RestoreNeeded(string solution)
     {
-        var projects = Path.GetExtension(solution).Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+        var projects = Path.GetExtension(solution).Equals(SolutionFinder.ProjectExtension, StringComparison.OrdinalIgnoreCase)
             ? [solution]
             : SourceFiles(Path.GetDirectoryName(solution)!, ".csproj").Select(f => f.Path).ToList();
         return projects.Count == 0 || projects.Any(project =>

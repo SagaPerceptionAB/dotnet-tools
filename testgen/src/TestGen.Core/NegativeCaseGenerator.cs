@@ -1,7 +1,8 @@
-using TestGen.Scenarios;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
+using TestGen.Core;
+using TestGen.Core.Run;
 
 namespace TestGen.Core;
 
@@ -28,10 +29,10 @@ public static class NegativeCaseGenerator
 
     private static readonly HashSet<string> CheckedFormats = new(StringComparer.OrdinalIgnoreCase) { "email", "date", "date-time", "uuid", "guid", "uri", "url" };
 
-    public static List<NegativeCase> Generate(JsonNode valid, OpenApiSchema bodySchema) => Generate(valid, bodySchema, out _);
+    public static List<NegativeCase> Generate(JsonNode valid, IOpenApiSchema bodySchema) => Generate(valid, bodySchema, out _);
 
     /// <summary>Som ovan; <paramref name="capped"/> blir true om kappen på antal fall gjorde att fall utelämnades.</summary>
-    public static List<NegativeCase> Generate(JsonNode valid, OpenApiSchema bodySchema, out bool capped)
+    public static List<NegativeCase> Generate(JsonNode valid, IOpenApiSchema bodySchema, out bool capped)
     {
         var found = new List<(NegativeCase Case, int Depth)>();
         new Walker(valid, found).Visit(bodySchema, new List<object>(), valid, required: false);
@@ -98,7 +99,7 @@ public static class NegativeCaseGenerator
             found.Add((new NegativeCase(full, Mutate(root, path, value), new CaseMeta(rule, field, limit, CaseMeta.Json(value), exclusive)), path.Count));
         }
 
-        public void Visit(OpenApiSchema schema, List<object> path, JsonNode? valid, bool required)
+        public void Visit(IOpenApiSchema schema, List<object> path, JsonNode? valid, bool required)
         {
             if (path.Count > MaxDepth) return;
             schema = SchemaUtil.Effective(schema);
@@ -134,7 +135,7 @@ public static class NegativeCaseGenerator
             }
         }
 
-        private void ArrayRules(OpenApiSchema schema, List<object> path, JsonArray arr)
+        private void ArrayRules(IOpenApiSchema schema, List<object> path, JsonArray arr)
         {
             if (schema.MinItems is { } minItems && minItems > 0 && arr.Count > 0)
                 Add(path, "_too_few_items", Take(arr, minItems - 1), TestRule.TooFewItems, minItems.ToString());
@@ -142,7 +143,7 @@ public static class NegativeCaseGenerator
                 Add(path, "_too_many_items", Take(arr, maxItems + 1), TestRule.TooManyItems, maxItems.ToString());
         }
 
-        private void Rules(OpenApiSchema schema, string? type, List<object> path, JsonNode valid, bool required)
+        private void Rules(IOpenApiSchema schema, string? type, List<object> path, JsonNode valid, bool required)
         {
             var good = (valid as JsonValue)?.TryGetValue<string>(out var gs) == true ? gs : null;
 
@@ -156,21 +157,21 @@ public static class NegativeCaseGenerator
                 if (!string.IsNullOrEmpty(schema.Pattern) && PatternMismatch.Find(schema.Pattern, good, schema.MinLength, schema.MaxLength) is { } bad)
                     Add(path, "_pattern_mismatch", JsonValue.Create(bad), TestRule.PatternMismatch, schema.Pattern);
                 if (schema.Format is { } fmt && CheckedFormats.Contains(fmt) && BadFormatValue(fmt) is { } badFormat
-                    && string.IsNullOrEmpty(schema.Pattern) && schema.Enum.Count == 0)
+                    && string.IsNullOrEmpty(schema.Pattern) && schema.EnumValues().Count == 0)
                     Add(path, "_bad_format", JsonValue.Create(badFormat), TestRule.BadFormat, fmt.ToLowerInvariant());
-                if (required && (schema.MinLength ?? 0) == 0 && schema.Enum.Count == 0 && !MatchesEmpty(schema.Pattern))
+                if (required && ForbidsEmpty(schema) && schema.MinLength != 1)   // minLength 1 ger redan "" som för kort
                     Add(path, "_empty", JsonValue.Create(""), TestRule.Empty);
             }
             else if (type is "integer" or "number")
             {
-                if (schema.Minimum is { } mn)
-                    Add(path, "_below_min", Num(type, schema.ExclusiveMinimum == true ? mn : mn - 1), TestRule.BelowMinimum, N(mn), schema.ExclusiveMinimum == true);
-                if (schema.Maximum is { } mx)
-                    Add(path, "_above_max", Num(type, schema.ExclusiveMaximum == true ? mx : mx + 1), TestRule.AboveMaximum, N(mx), schema.ExclusiveMaximum == true);
+                if (schema.Lower() is var (mn, minExclusive))
+                    Add(path, "_below_min", Num(type, minExclusive ? mn : mn - 1), TestRule.BelowMinimum, N(mn), minExclusive);
+                if (schema.Upper() is var (mx, maxExclusive))
+                    Add(path, "_above_max", Num(type, maxExclusive ? mx : mx + 1), TestRule.AboveMaximum, N(mx), maxExclusive);
             }
             else if (type == "array" && valid is JsonArray arr) ArrayRules(schema, path, arr);
 
-            var enums = schema.Enum.Select(SchemaUtil.ToNode).Where(n => n is not null).ToList();
+            var enums = schema.EnumValues().Select(SchemaUtil.ToNode).Where(n => n is not null).ToList();
             if (enums.Count > 0)
             {
                 JsonNode outside = type is "integer" or "number"
@@ -179,7 +180,7 @@ public static class NegativeCaseGenerator
                 Add(path, "_not_in_enum", outside, TestRule.NotInEnum, string.Join(", ", enums.Select(CaseMeta.Json)));
             }
 
-            Add(path, "_wrong_type", WrongType(type), TestRule.WrongType, type ?? "string");
+            Add(path, "_wrong_type", WrongType(type, schema), TestRule.WrongType, type ?? "string");
         }
 
         /// <summary>De första <paramref name="count"/> elementen; är listan kortare upprepas första elementet.</summary>
@@ -189,6 +190,16 @@ public static class NegativeCaseGenerator
             for (var i = 0; i < count; i++) result.Add(source[i < source.Count ? i : 0]!.DeepClone());
             return result;
         }
+    }
+
+    /// <summary>Schemat förbjuder tom sträng: minLength 1 eller mer, ett mönster som inte matchar "", en enum utan "" eller ett format som kräver innehåll.</summary>
+    private static bool ForbidsEmpty(IOpenApiSchema s)
+    {
+        if ((s.MinLength ?? 0) >= 1) return true;
+        if (!string.IsNullOrEmpty(s.Pattern) && !MatchesEmpty(s.Pattern)) return true;
+        var enums = s.EnumValues().Select(SchemaUtil.ToNode).Where(n => n is not null).ToList();
+        if (enums.Count > 0) return !enums.Any(e => ResponseStore.ToText(e) == "");
+        return s.Format is { } f && CheckedFormats.Contains(f);
     }
 
     private static bool MatchesEmpty(string? pattern)
@@ -205,12 +216,16 @@ public static class NegativeCaseGenerator
         "date" => "2023-13-45",
         "date-time" => "2023-13-45T25:61:61Z",
         "uuid" or "guid" => "inte-ett-uuid",
-        "uri" or "url" => "abc",
+        "uri" or "url" => "http://",   // "abc" är en giltig relativ adress
         _ => null,
     };
 
     private static JsonNode Num(string type, decimal v) =>
         type == "integer" ? JsonValue.Create((long)Math.Round(v)) : JsonValue.Create((double)v);
+
+    /// <summary>Ett värde av en typ som schemat inte tillåter. Tillåter schemat text vid sidan av typen (3.1: <c>[integer, string]</c>) och saknar mönster blir det ett objekt.</summary>
+    private static JsonNode WrongType(string? type, IOpenApiSchema schema) =>
+        type != "string" && schema.Type is { } t && t.HasFlag(JsonSchemaType.String) && string.IsNullOrEmpty(schema.Pattern) ? new JsonObject() : WrongType(type);
 
     private static JsonNode WrongType(string? type) => type switch
     {

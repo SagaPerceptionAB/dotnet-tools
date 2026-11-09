@@ -45,12 +45,12 @@ public class RunControlTests
     {
         var api = new FlakyApi(0);
         var report = Path.Combine(_dir, "r.html");
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var runner = new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, TimeoutSeconds = 2, ReportPath = report }, sw, api);
         var e = Assert.ThrowsAsync<ApiUnreachableException>(() => runner.RunAsync())!;
         Assert.That(api.Calls, Is.EqualTo(3), "inte 34 anrop");
         Assert.That(e.Message, Does.Contain("API:et på http://fake.test svarar inte (inget svar inom 2 s på 3 anrop i rad)"));
-        Assert.That(FriendlyErrors.Translate(e).ExitCode, Is.EqualTo(ExitCodes.ApiUnreachable));
+        Assert.That(FriendlyErrors.Translate(e).ExitCode, Is.EqualTo(ExitCodes.Unreachable));
         Assert.That(File.ReadAllText(report), Does.Contain("Körningen kunde inte genomföras").And.Contain("svarar inte"));
     }
 
@@ -59,10 +59,10 @@ public class RunControlTests
     {
         var api = new FlakyApi(2);
         var report = Path.Combine(_dir, "r.html");
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var runner = new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, ReportPath = report }, sw, api);
         var exit = await runner.RunAsync();
-        Assert.That(exit, Is.EqualTo(ExitCodes.ApiUnreachable));
+        Assert.That(exit, Is.EqualTo(ExitCodes.Unreachable));
         Assert.That(runner.Outcomes, Has.Count.EqualTo(5), "2 med svar + 3 tidsgränser");
         Assert.That(runner.Notice, Does.Contain("avbröts efter 3 anrop i rad").And.Contain("29 av de 34 planerade testerna kördes inte"));
         Assert.That(sw.ToString(), Does.Contain("Obs: Körningen avbröts"));
@@ -88,7 +88,7 @@ public class RunControlTests
     private static (int Exit, string Out, string Err) Cli(params string[] args)
     {
         var (o, e) = (Console.Out, Console.Error);
-        var (so, se) = (new StringWriter(), new StringWriter());
+        var (so, se) = (new StringWriter { NewLine = "\n" }, new StringWriter { NewLine = "\n" });
         Console.SetOut(so); Console.SetError(se);
         try { return (Program.Main(args), so.ToString(), se.ToString()); }
         finally { Console.SetOut(o); Console.SetError(e); }
@@ -129,12 +129,18 @@ public class RunControlTests
     {
         var info = new ReportInfo(new DateTime(2026, 11, 1), "http://localhost:5080", null, 5)
         {
-            Spec = "s.yaml", Excel = "t.xlsx", UsesToken = true, TimeoutSeconds = 5, Only = "createOrder", ExcelOnly = true,
-            Scenarios = new[] { "Stam kund" }, RerunHeaders = new[] { "X-Api-Key: ${env:X_API_KEY}", "X-Team: qa" },
+            Spec = "s.yaml",
+            Excel = "t.xlsx",
+            UsesToken = true,
+            TimeoutSeconds = 5,
+            Only = "createOrder",
+            ExcelOnly = true,
+            Scenarios = new[] { "Stam kund" },
+            RerunHeaders = new[] { "X-Api-Key: ${env:X_API_KEY}", "X-Team: qa" },
         };
         var all = ReportWriter.RerunCommand(info)!;
         Assert.That(all, Is.EqualTo("./testgen.sh run --spec s.yaml --api http://localhost:5080 --excel t.xlsx --seed 5 --token '${env:TOKEN}' " +
-                                    "--header 'X-Api-Key: ${env:X_API_KEY}' --header 'X-Team: qa' --timeout 5 --bara-excel --scenario 'Stam kund' --only createOrder"));
+                                    "--header 'X-Api-Key: ${env:X_API_KEY}' --header 'X-Team: qa' --timeout 5 --excel-only --scenario 'Stam kund' --only createOrder"));
         Assert.That(ReportWriter.RerunCommand(info, "T-018"), Does.EndWith("--timeout 5 --test T-018").And.Not.Contain("--only").And.Not.Contain("--scenario"));
         var html = WebUtility.HtmlDecode(ReportWriter.Html(info, new List<ReportEntry>
         {
@@ -149,9 +155,13 @@ public class RunControlTests
     {
         var runner = new TestRunner(new RunOptions
         {
-            Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 1, Only = "getOrder",
+            Spec = ShopSpec.Path,
+            Api = "http://fake.test",
+            Seed = 1,
+            Only = "getOrder",
             Headers = new Dictionary<string, string> { ["X-Api-Key"] = "hemlig123", ["X-Team"] = "qa" },
-            HeaderArgs = new[] { "X-Api-Key: hemlig123", "X-Team: qa" }, TimeoutSeconds = 9,
+            HeaderArgs = new[] { "X-Api-Key: hemlig123", "X-Team: qa" },
+            TimeoutSeconds = 9,
         }, TextWriter.Null, new FlakyApi(100));
         await runner.RunAsync();
         var cmd = ReportWriter.RerunCommand(runner.ReportInfo!)!;
@@ -162,7 +172,7 @@ public class RunControlTests
 
     private static async Task<(TestRunner Runner, string Output)> Go(Func<RunOptions, RunOptions> change, FlakyApi? api = null)
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var runner = new TestRunner(change(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 3 }), sw, api ?? new FlakyApi(1000));
         await runner.RunAsync();
         return (runner, sw.ToString());
@@ -215,9 +225,8 @@ public class RunControlTests
     public async Task Header_and_summary_line_have_all_fields()
     {
         var (runner, output) = await Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Seed = o.Seed, Only = "getOrder", TimeoutSeconds = 12 });
-        Assert.That(output, Does.Contain("Kör 1 tester mot http://fake.test (seed 3)")
-            .And.Match(@"(?m)^Tid: \d{4}-\d\d-\d\d \d\d:\d\d \(UTC[+-]\d\d:\d\d\)$")
-            .And.Contain("Spec: ").And.Contain("Timeout: 12 s per anrop").And.Match(@"(?m)^testgen: version \S+$"));
+        Assert.That(output, Does.Match(@"(?m)^testgen \S+ – 1 test mot http://fake\.test \(spec \S+, seed 3, timeout 12 s\)$")
+            .And.Not.Contain("Tid:").And.Not.Contain("Timeout:").And.Not.Contain("testgen: version"));
         Assert.That(output, Does.Match(@"(?m)^Sammanfattning: 1 tester, 1 OK, 0 FEL, 0 HOPPAD, tid \d+,\d s$"));
         Assert.That(runner.Duration, Is.Not.Null);
         Assert.That(runner.ReportInfo!.Duration, Is.EqualTo(runner.Duration));
@@ -240,7 +249,7 @@ public class RunControlTests
         var xlsx = Path.Combine(_dir, "r.xlsx");
         var (_, output) = await Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Seed = o.Seed, Only = "getOrder", ReportPaths = new[] { html, xlsx } });
         Assert.That(File.Exists(html) && File.Exists(xlsx));
-        Assert.That(output, Does.Contain("Rapport skriven: " + html).And.Contain("Rapport skriven: " + xlsx));
+        Assert.That(output, Does.Contain($"Skrev {Terminal.Relative(html)} (HTML-rapport)").And.Contain($"Skrev {Terminal.Relative(xlsx)} (Excel-rapport)"));
         using var wb = new XLWorkbook(xlsx);
         var all = string.Join("|", wb.Worksheet("Sammanfattning").CellsUsed().Select(c => c.GetString()));
         Assert.That(all, Does.Contain("Delkörning").And.Contain("bara getOrder (1 av 34 möjliga tester)").And.Contain("Tid"));
@@ -261,26 +270,27 @@ public class RunControlTests
     {
         var (runner, output) = await Go(o => new RunOptions { Spec = o.Spec, Api = o.Api, Only = "getOrder", SeedRandom = true });
         Assert.That(runner.Seed, Is.GreaterThan(0));
-        Assert.That(output, Does.Contain($"(seed {runner.Seed})").And.Contain($"Upprepa körningen med --seed {runner.Seed}"));
+        Assert.That(output, Does.Contain($"seed {runner.Seed})").And.Contain($"Upprepa körningen med --seed {runner.Seed}"));
         Assert.That(runner.ReportInfo!.SeedRandom);
         Assert.That(ReportWriter.RerunCommand(runner.ReportInfo)!, Does.Contain($"--seed {runner.Seed}"));
     }
 
     [Test]
-    public void Seed_slumpa_and_random_are_accepted_on_the_command_line_but_not_other_text()
+    public void Seed_random_is_accepted_on_the_command_line_but_not_other_text()
     {
         var (exit, _, err) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--seed", "hej");
         Assert.That(exit, Is.EqualTo(2));
-        Assert.That(err, Does.Contain("heltal, ordet slumpa"));
-        var (e2, o2, _) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--only", "getOrder", "--seed", "random");
+        Assert.That(err, Does.Contain("heltal, ordet random"));
+        var (e2, o2, err2) = Cli("run", "--spec", ShopSpec.Path, "--api", "http://127.0.0.1:1", "--only", "getOrder", "--seed", "random");
         Assert.That(e2, Is.EqualTo(3));
-        Assert.That(o2, Does.Contain("Upprepa körningen med --seed").Or.Contain("Kör 1 tester"));
+        Assert.That(err2, Does.Contain("Slumpfröet valdes av verktyget. Upprepa körningen med --seed"));
+        Assert.That(o2, Does.Not.Contain("Slumpfröet"), "förloppet går till stderr");
     }
 
     [Test]
     public void Help_text_describes_the_new_flags()
     {
         var help = Cli("run", "--help").Out;
-        Assert.That(help, Does.Contain("--test <T-018>").And.Contain("slumpa").And.Contain("--force").And.Contain("--report r.html --report r.xlsx").And.Contain("3 anrop i rad"));
+        Assert.That(help, Does.Contain("--test <T-018>").And.Contain("random").And.Contain("--force").And.Contain("--report <fil>").And.Contain(".junit.xml"));
     }
 }

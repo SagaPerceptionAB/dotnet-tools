@@ -2,15 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace CommandLine;
 
-/// <summary>Exitkoderna som alla kommandon har. Ett kommando kan ha fler.</summary>
-public static class StandardExitCodes
-{
-    /// <summary>Klart.</summary>
-    public const int Ok = 0;
-    /// <summary>Fel i användning eller konfiguration (flaggor, filer).</summary>
-    public const int Usage = 2;
-}
-
 /// <summary>Fel i användningen. Meddelandet är redan på svenska och visas som det är.</summary>
 public sealed class UsageException(string message, string? tip = null, string? technical = null) : Exception(message)
 {
@@ -25,7 +16,7 @@ public sealed class UsageException(string message, string? tip = null, string? t
 
 /// <summary>Vad som hände, vad man kan göra och teknisk information (från systemet, ofta engelska) samt exitkod.</summary>
 /// <param name="Unexpected">Ett fel som inte borde hända: de tekniska detaljerna visas alltid, så att de kan skickas vidare.</param>
-public sealed partial record FriendlyError(string What, string Action, string? Technical, int ExitCode = StandardExitCodes.Usage, bool Unexpected = false)
+public sealed partial record FriendlyError(string What, string Action, string? Technical, int ExitCode = ExitCodes.Usage, bool Unexpected = false)
 {
     /// <summary>Text för terminalen: vad som hände, vad du kan göra och (om <paramref name="verbose"/>) tekniska detaljer.</summary>
     public IEnumerable<string> Lines(bool verbose, string prefix = "Kunde inte köra: ")
@@ -51,11 +42,11 @@ public sealed partial record FriendlyError(string What, string Action, string? T
                 UsageException.MissingFileTip, e.Message),
             UnauthorizedAccessException => new(path is null ? "Saknar behörighet till en fil eller katalog." : $"Saknar behörighet till: {path}",
                 "Välj en plats du har rättigheter i, eller be någon ändra rättigheterna.", e.Message),
-            OperationCanceledException => new("Körningen avbröts.", "Starta den igen när du är redo.", null),
+            OperationCanceledException => new("Körningen avbröts.", "Starta den igen när du är redo.", null, ExitCodes.Interrupted),
             IOException => new("Det gick inte att läsa eller skriva en fil.",
                 "Kontrollera att filen inte är öppen i ett annat program och att det finns plats på disken.", e.Message),
             _ => new($"Ett oväntat fel inträffade i {program}.", "Kör igen med --verbose och skicka utskriften till den som underhåller verktyget.",
-                $"{e.GetType().Name}: {e.Message}", Unexpected: true),
+                $"{e.GetType().Name}: {e.Message}", ExitCodes.Internal, Unexpected: true),
         };
     }
 

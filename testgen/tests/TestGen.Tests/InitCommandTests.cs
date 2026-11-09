@@ -93,6 +93,21 @@ public class InitCommandTests
     }
 
     [Test]
+    public async Task The_test_class_never_gets_the_name_of_its_base_class()
+    {
+        var (exit, _, e) = await InitAsync(Solution(Api("Api"), Api("View"), Api("ShopApi")));
+
+        Assert.That(exit, Is.EqualTo(0), e);
+        var tests = Path.Combine(_root, "tests", "My.Tests");
+        Assert.That(File.ReadAllText(Path.Combine(tests, "ApiProjectTests.cs")), Does.Contain("public sealed class ApiProjectTests() : ApiTests(\"Api\");"));
+        Assert.That(File.ReadAllText(Path.Combine(tests, "ViewProjectTests.cs")), Does.Contain("public sealed class ViewProjectTests() : ApiTests(\"View\");"));
+        Assert.That(File.Exists(Path.Combine(tests, "ShopApiTests.cs")));
+        Assert.That(File.Exists(Path.Combine(tests, "ApiTests.cs")), Is.False);
+        Assert.That(InitCommand.TestClassName("Api", "ApiTests"), Is.EqualTo("ApiProjectTests"));
+        Assert.That(InitCommand.TestClassName("Web", "ViewTests"), Is.EqualTo("WebViewTests"));
+    }
+
+    [Test]
     public async Task With_Microsoft_Testing_Platform_in_global_json_the_project_is_an_exe_and_the_commands_use_project()
     {
         Write("global.json", "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }");

@@ -95,7 +95,7 @@ internal static partial class InitCommand
         var ns = Namespace(Path.GetFileNameWithoutExtension(testProject));
         foreach (var (project, template) in apis.Select(x => (x, "ApiTests")).Concat(apps.Select(x => (x, "ViewTests"))))
         {
-            var className = Identifier(project.Name) + (template == "ApiTests" ? "Tests" : "ViewTests");
+            var className = TestClassName(project.Name, template);
             var file = Path.Combine(testDirectory, className + ".cs");
             if (File.Exists(file))
             {
@@ -203,6 +203,14 @@ internal static partial class InitCommand
         var newline = text.Contains("\r\n", StringComparison.Ordinal);
         File.WriteAllText(testProject, text.Insert(end, newline ? item.Replace("\n", "\r\n") : item));
         return true;
+    }
+
+    // Klassen får aldrig heta som basklassen (ApiTests, ViewTests): då ärver den sig själv eller skuggar basen i hela namnrymden.
+    internal static string TestClassName(string projectName, string template)
+    {
+        var suffix = template == "ApiTests" ? "Tests" : "ViewTests";
+        var name = Identifier(projectName);
+        return name + suffix is "ApiTests" or "ViewTests" ? name + "Project" + suffix : name + suffix;
     }
 
     private static string Identifier(string name) => NotIdentifier().Replace(name, "");

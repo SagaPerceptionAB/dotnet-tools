@@ -1,7 +1,7 @@
 # 0006. API och webbapp körs i testprocessen
 
 ## Status
-Antagen 2026-11-08 efter en spik på Windows. Spikens kod sparades inte. Linux verifieras i CI när `ApiTests` och `ViewTests` byggs (fas 7–8).
+Antagen 2026-11-08 efter en spik på Windows. Spikens kod sparades inte. Linux är verifierat i CI: NUnit-paketets tester körs på både ubuntu och windows, och `ApiTests` och `ViewTests` körs mot exemplet Shop på ubuntu.
 
 ## Beslut
 `dotnet test` startar allt själv, utan manuella steg:

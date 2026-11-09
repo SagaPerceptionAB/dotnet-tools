@@ -13,7 +13,7 @@ Antagen 2026-11-08, när fas 10 slutfördes. Gäller de beslut som togs medan pl
 
 **`testgen mock` avslutas med 0 (fas 4).** En server avslutas med Ctrl+C, och det är hur den används, inte ett avbrott.
 
-**Alla testgen-paket har samma version och ges ut på en tagg (fas 10).**
+**Alla testgen-paket har samma version och ges ut på en tagg (fas 10).** Paketavsnittet ersätts av [0010](0010-four-packages.md): modulerna är nu inbakade och `SagaPerception.Testing` är borttaget.
 - `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine` är egna paket, inte inbakade. `dotnet pack` gör dem utan handpåläggning och `SagaPerception.TestGen.NUnit` får dem som vanliga beroenden. Verktyget `SagaPerception.TestGen.Cli` är ett tool-paket och bär allt själv (ca 50 MB, mest Playwrights drivrutin). Playwrights `.ps1`-skript i verktyget ger NU5111, som stängs av för det projektet.
 - `SagaPerception.Testing` har en egen version men packas med på `testgen/v*`, eftersom NUnit-paketet beror på det.
 - Det långsamma init-testet använder fortfarande `TESTGEN_LIBRARY_PROJECT` (en `ProjectReference`) och inte en lokal feed. Paket med version 1.0.0 från en feed hamnar i användarens NuGet-cache och blir kvar, så nästa körning skulle testa gammal kod.

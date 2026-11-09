@@ -50,7 +50,14 @@ dotnet test
 
 Från installationen till klara tester tog det 2 minuter (122 s) på exemplet Shop utan testprojekt, med tom NuGet-cache och Chromium redan installerat; Chromium tar ungefär 40 s till första gången. `testgen init` ensam tog 39 s och `dotnet test` (bygge och 70 tester) 80 s. Exemplet har två avsiktliga fel, så två tester fallerar.
 
-`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Det som redan finns lämnas orört, och en andra körning ändrar inget. Resten av avsnittet visar webbgränssnittet och kommandoraden.
+`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Testprojektet använder NUnit, men du skriver ingen NUnit-kod. Det kan ligga bredvid xUnit- och MSTest-projekt. Det som redan finns lämnas orört, och en andra körning ändrar inget.
+
+| Flagga | Betydelse |
+|---|---|
+| `--solution <fil>` | Solution eller projekt (standard: den närmaste uppåt från aktuell katalog). |
+| `--no-restore` | Kör inte `dotnet restore` när vyerna läses. |
+
+Resten av avsnittet visar webbgränssnittet och kommandoraden.
 
 
 Starta exemplet i ett eget fönster (port 5080):
@@ -144,7 +151,7 @@ Webbappen körs på Kestrel (port 0) i testprocessen och dess API-anrop går til
 | `--excel-only` | Hoppa över de genererade testerna. |
 | `--explain` | Förklaring i klartext för varje test. |
 | `--verbose` | Visa anrop och svar för alla tester. |
-| `--report <fil>` | Rapport efter körningen: `.html`, `.xlsx`, `.json` eller `.xml` / `.junit.xml`. Får anges flera gånger. |
+| `--report <fil>` | Rapport efter körningen: `.html`, `.xlsx`, `.json` eller `.xml` (JUnit; även `.junit.xml`). Får anges flera gånger. |
 | `--baseline <fil>` | Jämför med en tidigare JSON-rapport (nya, lagade och kvarvarande FEL). |
 | `--fail-on <orsaker>` | Orsaker som ger exitkod 1 (se Köra i CI). |
 | `--config <fil>` | En annan testgen.yaml än den som hittas vid solutionen. |

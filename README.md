@@ -5,7 +5,9 @@ SagaPerception: .NET-verktyg med öppen källkod (MIT). Allt byggs och paketeras
 | | Vad det gör | Paket |
 |---|---|---|
 | [**testgen**](testgen/README.md) | API- och UI-tester i `dotnet test`, ur OpenAPI-specen och appens källkod. Mockar backend ur specen, kör tester mot ett API från kommandoraden, visar resultatet i en webbläsare och som rapport. Egna tester skrivs i Excel. | `SagaPerception.TestGen.Cli` (kommandot `testgen`), `SagaPerception.TestGen.NUnit` |
-| [**systemmap**](systemmap/README.md) | Ritar en karta över en .NET-solution: vägen från varje anrop genom projekten ut till databaser, andra system, köer, lagring och e-post. Som nätverk i webbläsaren, Mermaid, JSON och text. | `SagaPerception.SystemMap.Cli` (kommandot `systemmap`) |
+| [**systemmap**](systemmap/README.md) | Ritar en karta över en .NET-solution: vägen från varje anrop genom projekten ut till databaser, andra system, köer, lagring och e-post. Som nätverk i webbläsaren, Mermaid, JSON och text. | `SagaPerception.SystemMap.Cli` (kommandot `systemmap`), `SagaPerception.SystemMap.AspNetCore` |
+
+Mapparna `shared/`, `samples/`, `tests/`, `eng/` och `docs/` finns bara för att bygga, testa och prova verktygen. De ges inte ut.
 
 testgen visar också systemkartan (`testgen map`, kartan i webbgränssnittet och vägen genom koden i varje test). Det gör den
 genom att använda systemkartans bibliotek; systemkartan vet inget om testgen.
@@ -65,8 +67,8 @@ eng/              Versions.props (paketens versioner, se "Släppa en ny version"
 Directory.Build.props, Directory.Build.targets, Directory.Packages.props, global.json   gemensamma inställningar, paketversioner och SDK
 testgen/          testgen: src, tests, docs, testgen.slnx och README
 systemmap/        systemkartan: src, tests, SystemMap.slnx och README
-shared/           CommandLine: flaggorna, felen på enkel svenska och exitkoderna som verktygen använder
-samples/          exemplet Shop (ShopApi, ShopWeb, Shop.Tests och OpenAPI-specar) som testgen och systemmap provas mot
+shared/           CommandLine: kod som verktygen delar
+samples/          exemplet Shop, som verktygen provas mot
 tests/            Repository.Tests: arkitekturreglerna för hela repot
 docs/adr/         besluten bakom verktygen
 .github/workflows ci.yml (bygge, test, kodanalys och paketprov) och release.yml (ger ut paket vid tagg)

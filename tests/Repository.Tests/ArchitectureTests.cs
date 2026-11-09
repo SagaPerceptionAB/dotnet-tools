@@ -2,7 +2,7 @@ using System.Xml.Linq;
 
 namespace Repository.Tests;
 
-/// <summary>Modulgränserna (plan, avsnitt 3): läser alla .csproj i repot och kontrollerar referenserna mot regeltabellen.</summary>
+/// <summary>Modulgränserna (vilka projekt som får referera vilka): läser alla .csproj i repot och kontrollerar referenserna mot regeltabellen.</summary>
 public class ArchitectureTests
 {
     /// <summary>Ett projekt i repot. <see cref="Path"/> är relativt repots rot och använder snedstreck.</summary>

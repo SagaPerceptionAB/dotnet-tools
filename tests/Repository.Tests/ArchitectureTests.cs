@@ -34,10 +34,6 @@ public class ArchitectureTests
         new("systemmap är fristående: det får inte referera testgen.",
             p => p.Path.StartsWith("systemmap/src/"), IsTestGen, Never),
 
-        // Biblioteket ska fungera med vilket testramverk och vilket verktyg som helst, och paketeras utan dem.
-        new("SagaPerception.Testing ska vara oberoende av testramverk och verktyg: ingen referens till NUnit eller testgen.",
-            p => p.Path == "testing/src/SagaPerception.Testing/SagaPerception.Testing.csproj", IsTestGen, IsNUnit),
-
         // Mocken körs i testprocessen (och som ett eget kommando): den får inte dra in webbläsare, Roslyn eller något annat än Core.
         new("TestGen.Mock får bara referera TestGen.Core, och inte Playwright, Roslyn eller NUnit.",
             p => p.Path == "testgen/src/TestGen.Mock/TestGen.Mock.csproj", path => !path.EndsWith("/TestGen.Core.csproj"),
@@ -73,16 +69,16 @@ public class ArchitectureTests
                 || package.StartsWith("Microsoft.CodeAnalysis", StringComparison.OrdinalIgnoreCase)
                 || package.StartsWith("Microsoft.Playwright", StringComparison.OrdinalIgnoreCase)),
 
-        // Värden för testgens tester i dotnet test: den får bo på Core, Excel, Mock, Browser och SagaPerception.Testing, men inte på Roslyn, Cli eller Views.
-        new("SagaPerception.Testing.NUnit får bara referera TestGen.Core, Excel, Mock, Browser och SagaPerception.Testing, och inte Roslyn.",
-            p => p.Path == "testgen/src/SagaPerception.Testing.NUnit/SagaPerception.Testing.NUnit.csproj",
+        // Värden för testgens tester i dotnet test: den får bo på Core, Excel, Mock och Browser, men inte på Roslyn, Cli eller Views.
+        new("SagaPerception.TestGen.NUnit får bara referera TestGen.Core, Excel, Mock och Browser, och inte Roslyn, Cli eller Views.",
+            p => p.Path == "testgen/src/SagaPerception.TestGen.NUnit/SagaPerception.TestGen.NUnit.csproj",
             path => !(path.EndsWith("/TestGen.Core.csproj") || path.EndsWith("/TestGen.Excel.csproj") || path.EndsWith("/TestGen.Mock.csproj")
-                      || path.EndsWith("/TestGen.Browser.csproj") || path.EndsWith("/SagaPerception.Testing.csproj")),
+                      || path.EndsWith("/TestGen.Browser.csproj")),
             package => package.StartsWith("Microsoft.CodeAnalysis", StringComparison.OrdinalIgnoreCase)),
 
         // Produktkod som drar in NUnit tvingar användarna av paketet att få testramverket i sin utdata och sina beroenden.
-        new("Produktkod under src får inte referera NUnit (utom värden SagaPerception.Testing.NUnit). NUnit hör hemma i testprojekt.",
-            p => p.IsProduct && (p.Path.Contains("/src/") || p.Path.StartsWith("src/")) && p.Name != "SagaPerception.Testing.NUnit", Never, IsNUnit),
+        new("Produktkod under src får inte referera NUnit (utom värden SagaPerception.TestGen.NUnit). NUnit hör hemma i testprojekt.",
+            p => p.IsProduct && (p.Path.Contains("/src/") || p.Path.StartsWith("src/")) && p.Name != "SagaPerception.TestGen.NUnit", Never, IsNUnit),
 
         // Annars hamnar testkod (och dess testramverk) i det som levereras.
         new("Produktprojekt får inte referera ett testprojekt.",

@@ -24,9 +24,9 @@ Beroendena omfattas av respektive pakets egen licens. De viktigaste (se [Directo
 | YamlDotNet | 18.1.0 | MIT | `SagaPerception.TestGen.Core` |
 | ClosedXML (med ClosedXML.Parser, DocumentFormat.OpenXml, ExcelNumberFormat, RBush.Signed, SharpZipLib, SixLabors.Fonts 1.0.0 [Apache-2.0]) | 0.105.0 | MIT | `SagaPerception.TestGen.Excel` |
 | Microsoft.Playwright | 1.64.1 | MIT | `SagaPerception.TestGen.Browser`, `testgen` |
-| Microsoft.AspNetCore.Mvc.Testing | 10.0.14 | MIT | `SagaPerception.Testing` |
-| NUnit | 4.6.1 | MIT | `SagaPerception.Testing.NUnit` |
-| Testcontainers, Testcontainers.Azurite, .MsSql, .PostgreSql, .Redis (med Docker.DotNet.Enhanced, SSH.NET, BouncyCastle.Cryptography) | 4.16.0 | MIT | `SagaPerception.Testing.NUnit` |
+| Microsoft.AspNetCore.Mvc.Testing | 10.0.14 | MIT | `SagaPerception.TestGen.NUnit` |
+| NUnit | 4.6.1 | MIT | `SagaPerception.TestGen.NUnit` |
+| Testcontainers, Testcontainers.Azurite, .MsSql, .PostgreSql, .Redis (med Docker.DotNet.Enhanced, SSH.NET, BouncyCastle.Cryptography) | 4.16.0 | MIT | `SagaPerception.TestGen.NUnit` |
 | Microsoft.CodeAnalysis (Roslyn), Microsoft.Build.Framework, Microsoft.VisualStudio.SolutionPersistence | 5.9.0, 17.11.48, 1.0.52 | MIT | `testgen`, systemmap |
 
 Testprojekten i repot använder också NUnit, NUnit3TestAdapter, NUnit.Analyzers, Microsoft.NET.Test.Sdk och coverlet.collector (alla MIT).

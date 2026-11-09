@@ -3,10 +3,9 @@
   <!-- Enda källan till paketens versioner. Höj versionen här i en PR, merga och tagga sedan (se README, "Släppa en ny version").
        Varje paketprojekt läser sin version härifrån och release.yml kräver att taggen är samma version. -->
   <PropertyGroup>
-    <SagaPerceptionTestingVersion>0.1.0-preview.1</SagaPerceptionTestingVersion>
     <!-- Gäller både SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore. -->
     <SagaPerceptionSystemMapVersion>0.1.0-preview.1</SagaPerceptionSystemMapVersion>
-    <!-- Gäller alla testgen-paket: SagaPerception.TestGen.Cli, SagaPerception.Testing.NUnit, SagaPerception.TestGen.Core, .Excel, .Mock, .Browser och SagaPerception.CommandLine. -->
+    <!-- Gäller alla testgen-paket: SagaPerception.TestGen.Cli, SagaPerception.TestGen.NUnit, SagaPerception.TestGen.Core, .Excel, .Mock, .Browser och SagaPerception.CommandLine. -->
     <SagaPerceptionTestGenVersion>0.1.0-preview.1</SagaPerceptionTestGenVersion>
   </PropertyGroup>
 

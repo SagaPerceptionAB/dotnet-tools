@@ -4,9 +4,8 @@ SagaPerception: .NET-verktyg med öppen källkod (MIT). Allt byggs och paketeras
 
 | | Vad det gör | Paket |
 |---|---|---|
-| [**testgen**](testgen/README.md) | API- och UI-tester i `dotnet test`, ur OpenAPI-specen och appens källkod. Mockar backend ur specen, kör tester mot ett API från kommandoraden, visar resultatet i en webbläsare och som rapport. Egna tester skrivs i Excel. | `SagaPerception.TestGen.Cli` (kommandot `testgen`), `SagaPerception.Testing.NUnit` |
+| [**testgen**](testgen/README.md) | API- och UI-tester i `dotnet test`, ur OpenAPI-specen och appens källkod. Mockar backend ur specen, kör tester mot ett API från kommandoraden, visar resultatet i en webbläsare och som rapport. Egna tester skrivs i Excel. | `SagaPerception.TestGen.Cli` (kommandot `testgen`), `SagaPerception.TestGen.NUnit` |
 | [**systemmap**](systemmap/README.md) | Ritar en karta över en .NET-solution: vägen från varje anrop genom projekten ut till databaser, andra system, köer, lagring och e-post. Som nätverk i webbläsaren, Mermaid, JSON och text. | `SagaPerception.SystemMap.Cli` (kommandot `systemmap`) |
-| [**Testing**](testing/src/SagaPerception.Testing/README.md) | Testhjälp för ASP.NET Core-tjänster, oberoende av testramverk: `ApiFactory` och fångst av spår och loggar. testgens NUnit-paket bygger på den. | `SagaPerception.Testing` |
 
 testgen visar också systemkartan (`testgen map`, kartan i webbgränssnittet och vägen genom koden i varje test). Det gör den
 genom att använda systemkartans bibliotek; systemkartan vet inget om testgen.
@@ -61,7 +60,6 @@ eng/              Versions.props (paketens versioner, se "Släppa en ny version"
 Directory.Build.props, Directory.Build.targets, Directory.Packages.props, global.json   gemensamma inställningar, paketversioner och SDK
 testgen/          testgen: src, tests, docs, testgen.slnx och README
 systemmap/        systemkartan: src, tests, SystemMap.slnx och README
-testing/          SagaPerception.Testing (src, tests) och Testing.slnx
 shared/           CommandLine: flaggorna, felen på enkel svenska och exitkoderna som verktygen använder
 samples/          exemplet Shop (ShopApi, ShopWeb, Shop.Tests och OpenAPI-specar) som testgen och systemmap provas mot
 tests/            Repository.Tests: arkitekturreglerna för hela repot
@@ -87,18 +85,16 @@ dotnet build SagaPerception.Tools.slnx                 # allt, utan varningar (v
 dotnet test shared/Shared.slnx
 dotnet test testgen/testgen.slnx
 dotnet test systemmap/SystemMap.slnx
-dotnet test testing/Testing.slnx
 dotnet test tests/Repository.Tests
 
 dotnet pack testgen/src/TestGen.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.AspNetCore -c Release -o nupkg
-dotnet pack testing/src/SagaPerception.Testing -c Release -o nupkg
 ```
 
 UI-testerna kör Chromium. Installera den en gång med `playwright.ps1 install chromium` i ett testprojekts `bin`-mapp.
 
-`SagaPerception.Testing.NUnit` och dess beroenden (`SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser`, `SagaPerception.CommandLine`) packas på samma sätt, se [release.yml](.github/workflows/release.yml).
+`SagaPerception.TestGen.NUnit` och dess beroenden (`SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser`, `SagaPerception.CommandLine`) packas på samma sätt, se [release.yml](.github/workflows/release.yml).
 Paketens versioner kommer från [eng/Versions.props](eng/Versions.props); `-p:Version` behövs inte.
 
 ## Släppa en ny version
@@ -111,15 +107,12 @@ Versionerna står på ett ställe: [eng/Versions.props](eng/Versions.props). Var
 
 | Tagg | Paket |
 |---|---|
-| `testing/v0.1.0-preview.1` | `SagaPerception.Testing` |
-| `testgen/v0.1.0-preview.1` | `SagaPerception.TestGen.Cli`, `SagaPerception.Testing.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine` (samma version). `SagaPerception.Testing` följer med men har sin egen version. |
+| `testgen/v0.1.0-preview.1` | `SagaPerception.TestGen.Cli`, `SagaPerception.TestGen.NUnit`, `SagaPerception.TestGen.Core`, `.Excel`, `.Mock`, `.Browser` och `SagaPerception.CommandLine` (samma version). |
 | `systemmap/v0.1.0-preview.1` | `SagaPerception.SystemMap.Cli` och `SagaPerception.SystemMap.AspNetCore` (samma version) |
 
-Ge ut `testing` först, eftersom `SagaPerception.Testing.NUnit` beror på den versionen.
-
 ```
-git tag testing/v0.1.0-preview.1
-git push origin testing/v0.1.0-preview.1
+git tag testgen/v0.1.0-preview.1
+git push origin testgen/v0.1.0-preview.1
 ```
 
 Publiceringen använder trusted publishing mot nuget.org (GitHub OIDC), så det finns ingen API-nyckel i repot.

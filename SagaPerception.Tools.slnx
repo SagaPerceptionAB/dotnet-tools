@@ -17,13 +17,10 @@
     <Project Path="testgen/src/TestGen.Cli/TestGen.Cli.csproj" />
     <Project Path="testgen/src/TestGen.Core/TestGen.Core.csproj" />
     <Project Path="testgen/src/TestGen.Excel/TestGen.Excel.csproj" />
-    <Project Path="testgen/src/SagaPerception.Testing.NUnit/SagaPerception.Testing.NUnit.csproj" />
+    <Project Path="testgen/src/SagaPerception.TestGen.NUnit/SagaPerception.TestGen.NUnit.csproj" />
     <Project Path="testgen/src/TestGen.Browser/TestGen.Browser.csproj" />
     <Project Path="testgen/src/TestGen.Mock/TestGen.Mock.csproj" />
     <Project Path="testgen/src/TestGen.Views/TestGen.Views.csproj" />
-  </Folder>
-  <Folder Name="/tools/testing/">
-    <Project Path="testing/src/SagaPerception.Testing/SagaPerception.Testing.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Shop.Tests/Shop.Tests.csproj" />
@@ -35,12 +32,10 @@
   <Folder Name="/tests/">
     <Project Path="shared/tests/CommandLine.Tests/CommandLine.Tests.csproj" />
     <Project Path="systemmap/tests/SystemMap.Tests/SystemMap.Tests.csproj" />
-    <Project Path="testing/tests/SagaPerception.Testing.Tests/SagaPerception.Testing.Tests.csproj" />
-    <Project Path="testing/tests/TestApi/TestApi.csproj" />
     <Project Path="tests/Repository.Tests/Repository.Tests.csproj" />
     <Project Path="testgen/tests/TestGen.Browser.Tests/TestGen.Browser.Tests.csproj" />
     <Project Path="testgen/tests/TestGen.Mock.Tests/TestGen.Mock.Tests.csproj" />
-    <Project Path="testgen/tests/SagaPerception.Testing.NUnit.Tests/SagaPerception.Testing.NUnit.Tests.csproj" />
+    <Project Path="testgen/tests/SagaPerception.TestGen.NUnit.Tests/SagaPerception.TestGen.NUnit.Tests.csproj" />
     <Project Path="testgen/tests/TestGen.Views.Tests/TestGen.Views.Tests.csproj" />
     <Project Path="testgen/tests/TestGen.Tests/TestGen.Tests.csproj" />
   </Folder>

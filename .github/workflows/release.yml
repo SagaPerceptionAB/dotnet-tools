@@ -1,8 +1,6 @@
 # Ger ut paket till nuget.org när en tagg skjuts: <komponent>/v<semver>, t.ex. testgen/v0.1.0-preview.1.
-#   testing/v*   -> SagaPerception.Testing
-#   testgen/v*   -> SagaPerception.TestGen.Cli (verktyget) och SagaPerception.Testing.NUnit med SagaPerception.TestGen.Core, .Excel, .Mock, .Browser
-#                   och SagaPerception.CommandLine (samma version). SagaPerception.Testing, som NUnit-paketet beror på, packas med
-#                   men har sin egen version och tas inte med i versionskontrollen. Ge ut testing/v* först när den versionen är ny.
+#   testgen/v*   -> SagaPerception.TestGen.Cli (verktyget) och SagaPerception.TestGen.NUnit med SagaPerception.TestGen.Core, .Excel, .Mock, .Browser
+#                   och SagaPerception.CommandLine (samma version)
 #   systemmap/v* -> SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore (samma version)
 #
 # Publiceringen använder trusted publishing: ingen långlivad API-nyckel finns sparad. NuGet/login byter jobbets OIDC-token mot en
@@ -17,7 +15,6 @@ name: release
 on:
   push:
     tags:
-      - 'testing/v*'
       - 'testgen/v*'
       - 'systemmap/v*'
 
@@ -58,11 +55,9 @@ jobs:
             echo "::error::Taggen '$tag' har ingen giltig semver-version ('$version'). Exempel: $component/v1.2.3 eller $component/v1.2.3-beta.1"
             exit 1
           fi
-          extra=""
           browser=""
           case "$component" in
-            testing)       projects="testing/src/SagaPerception.Testing"; test="dotnet test testing/Testing.slnx" ;;
-            testgen)       projects="shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testgen/src/SagaPerception.Testing.NUnit testgen/src/TestGen.Cli"; extra="testing/src/SagaPerception.Testing"; browser="testgen/tests/TestGen.Browser.Tests"; test="dotnet test testgen/testgen.slnx" ;;
+            testgen)       projects="shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli"; browser="testgen/tests/TestGen.Browser.Tests"; test="dotnet test testgen/testgen.slnx" ;;
             systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore"; browser="systemmap/tests/SystemMap.Tests"; test="dotnet test systemmap/SystemMap.slnx" ;;
             *) echo "::error::Okänd komponent '$component'"; exit 1 ;;
           esac
@@ -70,7 +65,6 @@ jobs:
             echo "component=$component"
             echo "version=$version"
             echo "projects=$projects"
-            echo "extra=$extra"
             echo "browser=$browser"
             echo "test=$test"
           } >> "$GITHUB_OUTPUT"
@@ -105,7 +99,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in ${{ steps.tag.outputs.projects }} ${{ steps.tag.outputs.extra }}; do
+          for p in ${{ steps.tag.outputs.projects }}; do
             dotnet pack "$p" -c Release -o nupkg
           done
           ls -l nupkg
@@ -117,7 +111,7 @@ jobs:
           set -euo pipefail
           dotnet tool install --global CycloneDX --version 6.3.1
           mkdir sbom
-          for p in ${{ steps.tag.outputs.projects }} ${{ steps.tag.outputs.extra }}; do
+          for p in ${{ steps.tag.outputs.projects }}; do
             dotnet-CycloneDX "$p" -o sbom -fn "$(basename "$p").cdx.json" -F Json
           done
           ls -l sbom

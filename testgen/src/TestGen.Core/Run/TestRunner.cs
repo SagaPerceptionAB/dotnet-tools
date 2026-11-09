@@ -3,7 +3,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using TestGen.Scenarios;
+using TestGen.Core;
+using TestGen.Core.Run;
 
 namespace TestGen.Core.Run;
 
@@ -12,22 +13,45 @@ public sealed class RunOptions
     public required string Spec { get; init; }
     public required string Api { get; init; }
     public string? Excel { get; init; }
+    /// <summary>API-projektets namn när det är känt; skrivs i resultatet.</summary>
+    public string? Project { get; init; }
+    /// <summary>Bara planera: fyll <see cref="TestRunner.PlannedTests"/> och returnera utan att köra något.</summary>
+    public bool ListOnly { get; init; }
+    /// <summary>Planeringen från en tidigare körning med samma spec, Excel-fil och inställningar (<see cref="TestRunner.Prepared"/>): då läses och genereras inget om.</summary>
+    public PreparedPlan? Prepared { get; init; }
+    /// <summary>Läser filen i <see cref="Excel"/> (egna tester). Krävs när <see cref="Excel"/> är satt.</summary>
+    public ITestSource? Source { get; init; }
     public int? Seed { get; init; }
     public string? Only { get; init; }
     /// <summary>--scenario (kan anges flera gånger): kör bara dessa Excel-scenarier. Implicerar att de genererade testerna hoppas över.</summary>
     public IReadOnlyList<string>? Scenarios { get; init; }
-    /// <summary>--bara-excel: hoppa över de genererade testerna och kör bara raderna i Excel-filen.</summary>
+    /// <summary>--excel-only: hoppa över de genererade testerna och kör bara raderna i Excel-filen.</summary>
     public bool ExcelOnly { get; init; }
-    /// <summary>Varningar från inställningarna (t.ex. bladet Miljöer) som skrivs ut före körningen. Stoppar inte.</summary>
-    public IReadOnlyList<ExcelIssue>? Warnings { get; init; }
-    /// <summary>Anropas en gång med alla varningar (inställningar + Excel) innan testerna körs, om det finns några. Webbgränssnittet visar dem.</summary>
+    /// <summary>Anropas en gång med alla varningar (Excel) innan testerna körs, om det finns några. Webbgränssnittet visar dem.</summary>
     public Action<IReadOnlyList<ExcelIssue>>? OnWarnings { get; init; }
-    /// <summary>Valfri testgen.yaml (fältregler m.m.). Inget krav.</summary>
+    /// <summary>Sökvägen till testgen.yaml när den pekats ut med --config (för rapporten och "kör om"-kommandot).</summary>
     public string? Config { get; init; }
+    /// <summary>Inställningarna för testdatan (fältregler m.m.) ur testgen.yaml. Utan: standardvärden.</summary>
+    public GeneratorOptions? Generator { get; init; }
+    /// <summary>Miljön är skrivskyddad: tester som skulle skicka POST, PUT, PATCH eller DELETE HOPPAS över (orsak read-only).</summary>
+    public bool ReadOnly { get; init; }
     /// <summary>Globala headers som skickas på alla anrop (även förberedande). Redan ersatta ${env:...}.</summary>
     public IReadOnlyDictionary<string, string>? Headers { get; init; }
     /// <summary>--token: blir rätt header utifrån specens securityScheme (se <see cref="AuthSchemes.TokenHeader"/>).</summary>
     public string? Token { get; init; }
+    /// <summary>Token är testgens egen testanvändare (appen körs i testprocessen): ett giltigt anrop som nekas (401/403) hoppas över med orsaken test-user-rejected.</summary>
+    public bool UsesTestUser { get; init; }
+    /// <summary>Appen körs i testprocessen: ett 502/503/504 förklaras som att appen saknar en tjänst, inte som att miljön är nere.</summary>
+    public bool InProcess { get; init; }
+    /// <summary>Värdarna som appens utgående anrop blockerats mot hittills, i ordning; ett test visar dem som fått nya under körningen.</summary>
+    public Func<IReadOnlyList<string>>? BlockedHosts { get; init; }
+    /// <summary>
+    /// Inloggningssteget ger token: får ett anrop 401 anropas detta med den token som nekades och ger en ny, och anropet skickas en gång till.
+    /// Anrop till <see cref="LoginOperation"/> och anrop som själva sätter sin inloggning rörs inte.
+    /// </summary>
+    public Func<string, CancellationToken, Task<string>>? Relogin { get; init; }
+    /// <summary>Inloggningsoperationen (operationId): den testar inloggningen och hoppas inte över som nekad testanvändare.</summary>
+    public string? LoginOperation { get; init; }
     /// <summary>Headers som ska maskas i utskrifter utöver de som alltid är hemliga (se <see cref="HeaderMask"/>).</summary>
     public IEnumerable<string>? SecretHeaderNames { get; init; }
     public int TimeoutSeconds { get; init; } = RunSettings.DefaultTimeoutSeconds;
@@ -42,18 +66,18 @@ public sealed class RunOptions
     public bool ForceReport { get; init; }
     /// <summary>--test T-018 (kan anges flera gånger): kör bara dessa tester, med deras ursprungliga id och testdata.</summary>
     public IReadOnlyList<string>? Tests { get; init; }
-    /// <summary>--seed slumpa: välj ett slumpfrö (om <see cref="Seed"/> inte är satt) och skriv ut det.</summary>
+    /// <summary>--seed random: välj ett slumpfrö (om <see cref="Seed"/> inte är satt) och skriv ut det.</summary>
     public bool SeedRandom { get; init; }
     /// <summary>--header exakt som de skrevs (före ${env:...}-ersättning), för "kör om"-kommandot. Hemliga värden skrivs aldrig dit.</summary>
     public IReadOnlyList<string>? HeaderArgs { get; init; }
     /// <summary>Så många tidsgränser i rad avbryter körningen (API:et svarar inte). 0 = aldrig.</summary>
     public int MaxConsecutiveTimeouts { get; init; } = DefaultMaxConsecutiveTimeouts;
     public const int DefaultMaxConsecutiveTimeouts = 3;
-    /// <summary>--klartext: skriv rubrik och förklaring i klartext i stället för den tekniska raden.</summary>
+    /// <summary>--explain: skriv rubrik och förklaring i klartext i stället för den tekniska raden.</summary>
     public bool PlainText { get; init; }
     /// <summary>Orsakerna som ger exitkod 1 (--fail-on). Null = standard: Fel i systemet och Förväntan i testet stämmer inte.</summary>
     public IReadOnlySet<FailureCause>? FailOn { get; init; }
-    /// <summary>--jamfor: JSON-rapport från en tidigare körning att jämföra med (nya FEL, lagade, kvar).</summary>
+    /// <summary>--baseline: JSON-rapport från en tidigare körning att jämföra med (nya FEL, lagade, kvar).</summary>
     public string? BaselinePath { get; init; }
     /// <summary>--fail-on-new: exitkod 1 bara om det finns NYA FEL (jämfört med <see cref="BaselinePath"/>) av orsak i <see cref="FailOn"/>.</summary>
     public bool FailOnNew { get; init; }
@@ -97,6 +121,10 @@ public sealed record CaseResult(int? Status, bool Ok, bool Skipped, string Verdi
     public string? RootCauseText { get; init; }
     /// <summary>Förklaring (klartext) när testet HOPPADes av en annan orsak än ett tidigare fel: bodytypen stöds inte, eller internt fel.</summary>
     public string? SkipNote { get; init; }
+    /// <summary>Orsaken när testet HOPPADes av en annan orsak än Följdfel eller Fel i testgen, t.ex. <see cref="FailureCause.ReadOnly"/>.</summary>
+    public FailureCause? SkipCause { get; init; }
+    /// <summary>Värdarna som appens utgående anrop blockerades mot under testet (värdpolicyn), när appen körs i testprocessen.</summary>
+    public IReadOnlyList<string> BlockedHosts { get; init; } = [];
     /// <summary>
     /// Varningar från svarskontrollen (t.ex. extra fält som inte finns i specen). De ändrar aldrig utfallet:
     /// ett test kan vara OK och ändå ha varningar. Antal: <c>Warnings.Count</c>.
@@ -145,6 +173,9 @@ public sealed partial class TestRunner
         "Verktyget kunde inte bygga testet (internt fel): " + e.Message + " Rapportera till den som underhåller testgen.",
         e.GetType().Name);
 
+    /// <summary>Anropet skulle skriva i en skrivskyddad miljö och skickades därför inte.</summary>
+    private sealed class ReadOnlyException(string method) : Exception($"Miljön är skrivskyddad, så {method} skickades inte. Det säger inget om systemet.");
+
     private sealed class SetupFailedException(string message, int status, string operation, string name) : Exception(message)
     {
         public int Status { get; } = status;
@@ -159,7 +190,8 @@ public sealed partial class TestRunner
     public IReadOnlyList<TestOutcome> Outcomes => _outcomes;
 
     private readonly RunOptions _opt;
-    private readonly TextWriter _out;
+    private readonly Terminal _term;
+    private TextWriter _out => _term.Out;
     private HttpClient _http = null!;
     private ScenarioGenerator _gen = null!;
     private Dictionary<string, OperationInfo> _ops = null!;
@@ -184,10 +216,16 @@ public sealed partial class TestRunner
     /// <summary>Allmänt om körningen, för rapporter. Starttid är när planen började köras.</summary>
     public ReportInfo? ReportInfo { get; private set; }
 
+    /// <summary>Alla möjliga tester i planens ordning, före urval (satt när planen är gjord).</summary>
+    public IReadOnlyList<TestInfo> PlannedTests { get; private set; } = [];
+
+    /// <summary>Det dyra i planen, att ge vidare i <see cref="RunOptions.Prepared"/>. Satt när planen är gjord.</summary>
+    public PreparedPlan? Prepared { get; private set; }
+
     /// <summary>Antal tester en full körning har (före urval). Satt när planen är gjord.</summary>
     public int PossibleTotal { get; private set; }
 
-    /// <summary>Sant om färre tester planerades än de möjliga (--only, --scenario, --bara-excel eller --test).</summary>
+    /// <summary>Sant om färre tester planerades än de möjliga (--only, --scenario, --excel-only eller --test).</summary>
     public bool Partial { get; private set; }
 
     /// <summary>Urvalet i ord, t.ex. "bara createProduct", "scenario Stamkund", "bara Excel-testerna", "T-018". Null utan urval.</summary>
@@ -219,11 +257,16 @@ public sealed partial class TestRunner
     [GeneratedRegex(@"\{([^{}$]+)\}")]
     private static partial Regex PathParam();
 
-    /// <param name="handler">Valfri HTTP-handler; tester använder en fejkad så att inget nät behövs.</param>
+    /// <summary>Båda strömmarna skrivs till <paramref name="output"/>, som med 2&gt;&amp;1.</summary>
     public TestRunner(RunOptions options, TextWriter output, HttpMessageHandler? handler = null)
+        : this(options, new Terminal(output, output, false), handler) { }
+
+    /// <param name="terminal">Resultat och sammanfattning går till <see cref="Terminal.Out"/>; rubrik, förlopp, varningar och bekräftelser till <see cref="Terminal.Err"/>.</param>
+    /// <param name="handler">Valfri HTTP-handler; tester använder en fejkad så att inget nät behövs.</param>
+    public TestRunner(RunOptions options, Terminal terminal, HttpMessageHandler? handler = null)
     {
         _opt = options;
-        _out = output;
+        _term = terminal;
         _handler = handler;
     }
 
@@ -239,7 +282,7 @@ public sealed partial class TestRunner
         if (maxTime is not null) { maxTime.CancelAfter(TimeSpan.FromSeconds(_opt.MaxTimeSeconds!.Value)); _ct = maxTime.Token; }
         bool MaxTimeHit() => maxTime is { IsCancellationRequested: true } && !cancellationToken.IsCancellationRequested;
         if (_opt.FailOnNew && _opt.BaselinePath is null)
-            throw new UsageException("--fail-on-new (--bara-nya-fel) behöver --jamfor <fil> att jämföra med.", "Lägg till --jamfor forra.json (en JSON-rapport från en tidigare körning), eller ta bort --fail-on-new.");
+            throw new UsageException("--fail-on-new behöver --baseline <fil> att jämföra med.", "Lägg till --baseline forra.json (en JSON-rapport från en tidigare körning), eller ta bort --fail-on-new.");
         var baseline = _opt.BaselinePath is null ? null : Baseline.Load(_opt.BaselinePath);   // läses före körningen: samma fil får gärna skrivas om av --report
         var reports = new List<string>();
         if (_opt.ReportPath is not null) reports.Add(_opt.ReportPath);
@@ -247,13 +290,13 @@ public sealed partial class TestRunner
         // Fel typ, otillgänglig katalog eller en rapport som skulle skriva över indata ska stoppa innan körningen startar.
         foreach (var rp in reports) { ReportWriter.Validate(rp); ReportWriter.EnsureWritable(rp); }
         ReportWriter.CheckTargets(reports, new (string, string?)[] { ("--excel", _opt.Excel), ("--spec", _opt.Spec), ("--config", _opt.Config) }, _opt.ForceReport);
-        var cfg = TestGenConfig.Load(_opt.Config);
+        var cfg = _opt.Generator ?? new GeneratorOptions();
         var randomSeed = false;
         if (_opt.Seed is { } seed) cfg.Seed = seed;
         else if (_opt.SeedRandom) { cfg.Seed = Random.Shared.Next(1, 1_000_000_000); randomSeed = true; }
         _seed = cfg.Seed;
 
-        var apiSpec = OpenApiLoader.LoadSpec(_opt.Spec);
+        var apiSpec = _opt.Prepared?.Spec ?? OpenApiLoader.LoadSpec(_opt.Spec);
         var ops = apiSpec.Operations.ToList();
         SetUpHeaders(apiSpec);
         _ops = ops.ToDictionary(o => o.OperationId);
@@ -262,23 +305,18 @@ public sealed partial class TestRunner
             throw new ArgumentException($"--only: okänd operation '{_opt.Only}'. Finns: {string.Join(", ", _ops.Keys)}");
 
         // Excel-filen kontrolleras helt mot specen innan något test körs: alla fel samlas och stoppar körningen (exit 2).
-        var warnings = new List<ExcelIssue>(_opt.Warnings ?? Array.Empty<ExcelIssue>());
+        var warnings = new List<ExcelIssue>();
         List<ExcelScenario> excelScenarios = new();
         List<ExcelScenario> chosenScenarios = new();
         if (_opt.Excel is null)
         {
             if (_opt.Scenarios is { Count: > 0 }) throw new UsageException("--scenario kräver --excel <fil> (scenarierna finns i bladet Tester).", "Lägg till --excel <fil>, eller ta bort --scenario.");
-            if (_opt.ExcelOnly) throw new UsageException("--bara-excel kräver --excel <fil>.", "Lägg till --excel <fil>, eller ta bort --bara-excel.");
+            if (_opt.ExcelOnly) throw new UsageException("--excel-only kräver --excel <fil>.", "Lägg till --excel <fil>, eller ta bort --excel-only.");
         }
         else
         {
-            List<ExcelScenario> read; List<ExcelIssue> excelWarnings;
-            try { (read, excelWarnings) = ExcelScenarioReader.ReadAndCheck(_opt.Excel, ops); }
-            catch (ExcelValidationException x) when (warnings.Count > 0)
-            {
-                // Varningar från inställningarna (t.ex. token i klartext i Miljöer) hör ihop med felen i samma fil: visa dem tillsammans.
-                throw new ExcelValidationException(_opt.Excel, x.Errors, warnings.Concat(x.Warnings));
-            }
+            var (read, excelWarnings) = _opt.Prepared is { } prepared ? (prepared.ExcelScenarios, prepared.ExcelWarnings)
+                : (_opt.Source ?? throw new InvalidOperationException("RunOptions.Source saknas: --excel behöver en ITestSource.")).ReadAndCheck(_opt.Excel, ops);
             warnings.AddRange(excelWarnings);
             excelScenarios = read;
             chosenScenarios = SelectScenarios(read, _opt.Scenarios);
@@ -287,38 +325,52 @@ public sealed partial class TestRunner
 
         ReportInfo MakeInfo(DateTime when, IReadOnlyList<string> ids, int possible, bool partial) => new(when, _opt.Api, _opt.EnvName, cfg.Seed)
         {
-            Spec = _opt.Spec, Excel = _opt.Excel, Config = _opt.Config, UsesToken = _opt.Token is not null,
+            Spec = _opt.Spec,
+            Excel = _opt.Excel,
+            Config = _opt.Config,
+            UsesToken = _opt.Token is not null,
             ExtraHeaders = _opt.EnvName is null && (_opt.Headers?.Count ?? 0) > 0,
-            PossibleTotal = possible, Partial = partial, FilterDescription = FilterDescription,
-            TimeoutSeconds = _opt.TimeoutSeconds, Version = Version, SeedRandom = randomSeed, SeedNote = _opt.SeedNote,
-            Only = _opt.Only, Scenarios = _opt.Scenarios is { Count: > 0 } ? chosenScenarios.Select(sc => sc.Name).ToList() : Array.Empty<string>(),
-            ExcelOnly = _opt.ExcelOnly, TestIds = ids,
+            PossibleTotal = possible,
+            Partial = partial,
+            FilterDescription = FilterDescription,
+            TimeoutSeconds = _opt.TimeoutSeconds,
+            Version = Version,
+            Project = _opt.Project,
+            SeedRandom = randomSeed,
+            SeedNote = _opt.SeedNote,
+            Only = _opt.Only,
+            Scenarios = _opt.Scenarios is { Count: > 0 } ? chosenScenarios.Select(sc => sc.Name).ToList() : Array.Empty<string>(),
+            ExcelOnly = _opt.ExcelOnly,
+            TestIds = ids,
             RerunHeaders = RerunHeaderList(),
         };
         // Inga tester alls är nästan alltid ett misstag (fel spec, filter som inte matchar): exitkod 2, om inte --allow-empty.
         int EmptyRun(string what, IReadOnlyList<string> ids, int possible, bool partial)
         {
             if (!_opt.AllowEmpty)
-                throw new UsageException(what, "Kontrollera att --spec pekar på rätt fil och att filtren (--only, --scenario, --bara-excel, --test) stämmer. Vill du att en körning utan tester ska räknas som OK (exitkod 0): lägg till --allow-empty.");
-            _out.WriteLine("Inga tester att köra.");
+                throw new UsageException(what, "Kontrollera att --spec pekar på rätt fil och att filtren (--only, --scenario, --excel-only, --test) stämmer. Vill du att en körning utan tester ska räknas som OK (exitkod 0): lägg till --allow-empty.");
+            _term.Err.WriteLine("Inga tester att köra.");
             var when = DateTime.Now;
             Duration = TimeSpan.Zero;
             ReportInfo = MakeInfo(when, ids, possible, partial) with { Duration = Duration, ExitCode = ExitCodes.Ok, Comparison = baseline?.Compare(_outcomes) };
-            foreach (var rp in reports) _out.WriteLine($"Rapport skriven: {ReportWriter.Write(rp, ReportInfo, Array.Empty<ReportEntry>(), _mask)}");
+            foreach (var rp in reports) _term.Confirm(ReportWriter.Write(rp, ReportInfo, Array.Empty<ReportEntry>(), _mask), ReportWriter.Describe(rp));
             return ExitCodes.Ok;
         }
 
         var plan = new List<Planned>();
-        // Planen innehåller alla möjliga tester; urvalet (--only, --scenario, --bara-excel, --test) markeras bara, så att id och data inte ändras.
-        foreach (var op in ops.Where(o => !cfg.SkipOperations.Contains(o.OperationId)))
-            foreach (var (s, meta) in _gen.GenerateCases(op).Select(c => (c.Scenario, c.Meta)))
-            {
-                var sig = $"{op.Method} {op.Path}";
-                var info = new TestInfo("", "Genererade tester", sig, op.Method, op.OperationId, op.Summary, Describe(meta),
-                    Expectations(s.ExpectedStatus), meta);
-                plan.Add(new Planned(sig, info.Description, ctx => RunGenerated(ctx, op, s.Name, s.ExpectedStatus), info.Group, info,
-                    Selected: !skipGenerated && (_opt.Only is null || op.OperationId == _opt.Only)));
-            }
+        // Planen innehåller alla möjliga tester; urvalet (--only, --scenario, --excel-only, --test) markeras bara, så att id och data inte ändras.
+        var generated = _opt.Prepared?.Cases ?? ops.Where(o => !cfg.SkipOperations.Contains(o.OperationId))
+            .SelectMany(op => _gen.GenerateCases(op).Select(c => (op, c))).ToList();
+        Prepared = new PreparedPlan(apiSpec, generated, excelScenarios, warnings.ToList());
+        foreach (var (op, generatedCase) in generated)
+        {
+            var (s, meta) = (generatedCase.Scenario, generatedCase.Meta);
+            var sig = $"{op.Method} {op.Path}";
+            var info = new TestInfo("", "Genererade tester", sig, op.Method, op.OperationId, op.Summary, Describe(meta),
+                Expectations(s.ExpectedStatus), meta);
+            plan.Add(new Planned(sig, info.Description, ctx => RunGenerated(ctx, op, s.Name, s.ExpectedStatus), info.Group, info,
+                Selected: !skipGenerated && (_opt.Only is null || op.OperationId == _opt.Only)));
+        }
 
         var excelCount = 0;
         if (_opt.Excel is not null)
@@ -359,9 +411,7 @@ public sealed partial class TestRunner
 
         if (warnings.Count > 0)
         {
-            _out.WriteLine(warnings.Count == 1 ? "Varning (körningen fortsätter):" : "Varningar (körningen fortsätter):");
-            foreach (var w in warnings) _out.WriteLine("  " + _mask.Scrub(w.Text));
-            _out.WriteLine();
+            foreach (var w in warnings) _term.Warning(_mask.Scrub(w.Text));
             _opt.OnWarnings?.Invoke(warnings);
         }
         if (plan.Count == 0)
@@ -369,7 +419,9 @@ public sealed partial class TestRunner
                 new List<string>(), 0, false);
 
         // Löpnummer i den fulla planens ordning: samma spec/seed/Excel ger samma id:n, med eller utan urval.
-        plan = plan.Select((p, i) => p with { Id = $"T-{i + 1:000}", Info = p.Info with { Id = $"T-{i + 1:000}" } }).ToList();
+        plan = plan.Select((p, i) => p with { Id = $"T-{i + 1:000}", Info = p.Info with { Id = $"T-{i + 1:000}", Names = Names } }).ToList();
+        PlannedTests = plan.Select(p => p.Info).ToList();
+        if (_opt.ListOnly) return ExitCodes.Ok;
         var testIds = new List<string>();
         foreach (var raw in _opt.Tests ?? Array.Empty<string>())
         {
@@ -398,21 +450,19 @@ public sealed partial class TestRunner
         var w1 = run.Max(p => p.Signature.Length);
         var w2 = Math.Min(run.Max(p => p.Description.Length), 60);
         var started = DateTime.Now;
-        _out.WriteLine($"Kör {run.Count} tester mot {_opt.Api} (seed {cfg.Seed})");
-        if (Partial) _out.WriteLine($"Delkörning: {FilterDescription} ({run.Count} av {PossibleTotal} möjliga tester)");
-        else if (FilterDescription is not null) _out.WriteLine($"Urval: {FilterDescription} (alla {PossibleTotal} möjliga tester)");
-        if (randomSeed) _out.WriteLine($"Slumpfröet valdes av verktyget. Upprepa körningen med --seed {cfg.Seed}");
-        if (_opt.SeedNote is not null) _out.WriteLine(_opt.SeedNote);
-        _out.WriteLine($"Tid: {ReportWriter.HtmlStamp(started)}");
-        _out.WriteLine($"Spec: {_opt.Spec}");
-        if (_opt.Excel is not null) _out.WriteLine($"Excel: {_opt.Excel}");
-        if (_opt.EnvName is not null) _out.WriteLine($"Miljö: {_opt.EnvName}");
-        _out.WriteLine($"Timeout: {_opt.TimeoutSeconds} s per anrop");
-        _out.WriteLine($"testgen: version {Version}");
-        if (_globalHeaders.Count > 0) _out.WriteLine($"Headers: {_mask.Format(_globalHeaders)}");
-        if (AuthSchemes.MissingLoginNote(apiSpec, _globalHeaders.Keys) is { } note) _out.WriteLine(note);
+        var details = new List<string> { $"spec {(Sources.IsUrl(_opt.Spec) ? _opt.Spec : Terminal.Relative(_opt.Spec))}", $"seed {cfg.Seed}" };
+        if (_opt.Excel is not null) details.Add($"excel {Terminal.Relative(_opt.Excel)}");
+        if (_opt.EnvName is not null) details.Add($"miljö {_opt.EnvName}");
+        if (_opt.TimeoutSeconds != RunSettings.DefaultTimeoutSeconds) details.Add($"timeout {_opt.TimeoutSeconds} s");
+        _term.Err.WriteLine($"testgen {Version} – {run.Count} {(run.Count == 1 ? "test" : "tester")} mot {_opt.Api} ({string.Join(", ", details)})");
+        if (Partial) _term.Err.WriteLine($"Delkörning: {FilterDescription} ({run.Count} av {PossibleTotal} möjliga tester)");
+        else if (FilterDescription is not null) _term.Err.WriteLine($"Urval: {FilterDescription} (alla {PossibleTotal} möjliga tester)");
+        if (randomSeed) _term.Err.WriteLine($"Slumpfröet valdes av verktyget. Upprepa körningen med --seed {cfg.Seed}");
+        if (_opt.SeedNote is not null) _term.Err.WriteLine(_opt.SeedNote);
+        if (_globalHeaders.Count > 0) _term.Err.WriteLine($"Headers: {_mask.Format(_globalHeaders)}");
+        if (AuthSchemes.MissingLoginNote(apiSpec, _globalHeaders.Keys) is { } note) _term.Err.WriteLine(note);
 
-        _http = new HttpClient(_handler ?? new HttpClientHandler(), disposeHandler: _handler is null) { BaseAddress = new Uri(_opt.Api.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(_opt.TimeoutSeconds) };
+        _http = CreateHttpClient();
         int ok = 0, fail = 0, skipped = 0, excelRan = 0;
         string? group = null;
         var entries = new List<ReportEntry>();
@@ -428,7 +478,7 @@ public sealed partial class TestRunner
             foreach (var rp in reports)
             {
                 var written = ReportWriter.WriteFailure(rp, ReportInfo! with { Duration = clock.Elapsed }, u.Message, u.Tip, entries.Count, _mask);
-                _out.WriteLine($"Rapport skriven (körningen kunde inte genomföras): {written}");
+                _term.Confirm(written, ReportWriter.Describe(rp) + ", körningen kunde inte genomföras");
             }
             return u;
         }
@@ -437,6 +487,7 @@ public sealed partial class TestRunner
             foreach (var p in run)
             {
                 _ct.ThrowIfCancellationRequested();
+                _term.Progress(entries.Count + 1, run.Count, $"{p.Id} {p.Signature}");
                 if (p.Group != group)
                 {
                     group = p.Group;
@@ -444,14 +495,20 @@ public sealed partial class TestRunner
                     _out.WriteLine(group);
                 }
                 CaseResult r;
+                var blockedBefore = _opt.BlockedHosts?.Invoke().Count ?? 0;
                 var ctx = new CaseContext { TestId = p.Id };
                 _saltBase = int.Parse(p.Id[2..]) * 1000;
                 _saltN = 0;
                 try { r = await p.Run(ctx); }
+                catch (SetupFailedException e) when (e.Status is 401 or 403 && IdentityIsOurs && e.Failure.Operation != _opt.LoginOperation)
+                {
+                    r = RejectedIdentity(e.Status, $"HOPPAD (förberedande anrop {e.Failure.Operation} nekades)", $"Det förberedande anropet {e.Failure.Operation} fick {e.Status}");
+                }
                 catch (SetupFailedException e) { r = new CaseResult(null, false, false, $"FEL ({e.Message})", new(), e.Status == 409) { Setup = e.Failure }; }
                 catch (InvalidOperationException e) { r = new CaseResult(null, false, false, "FEL", new() { e.Message }); }
                 catch (ArgumentException e) { r = new CaseResult(null, false, false, "FEL", new() { e.Message }); }
                 catch (TaskCanceledException) when (!_ct.IsCancellationRequested) { r = new CaseResult(null, false, false, "FEL (timeout)", new()) { TimedOut = true }; }
+                catch (ReadOnlyException e) { r = new CaseResult(null, false, true, "HOPPAD (miljön är skrivskyddad)", new()) { SkipNote = e.Message, SkipCause = FailureCause.ReadOnly }; }
                 catch (ToolLimitException e) { r = new CaseResult(null, false, true, e.Verdict, e.Detail is null ? new() : new() { e.Detail }) { SkipNote = e.Message }; }
                 catch (Exception e) when (e is not (OperationCanceledException or HttpRequestException or ExcelValidationException or UsageException or SourceException))
                 {
@@ -459,7 +516,7 @@ public sealed partial class TestRunner
                     r = new CaseResult(null, false, true, t.Verdict, new() { t.Detail! }) { SkipNote = t.Message };
                 }
 
-                r = r with { Exchanges = ctx.Exchanges };
+                r = r with { Exchanges = ctx.Exchanges, BlockedHosts = BlockedSince(blockedBefore) };
                 r = WithRootCause(p.Info, r);
                 var entry = new ReportEntry(p.Id, p.Group, p.Signature, p.Description, r) { Info = p.Info };
                 entries.Add(entry);
@@ -505,7 +562,6 @@ public sealed partial class TestRunner
             }
             if (timeoutAbort && !responded)
             {
-                _out.WriteLine();
                 throw Unreachable($"API:et på {_opt.Api} svarar inte (inget svar inom {_opt.TimeoutSeconds} s på {consecutiveTimeouts} anrop i rad). Körningen avbröts.",
                     ApiProblem.Timeout, null);
             }
@@ -516,7 +572,6 @@ public sealed partial class TestRunner
         }
         catch (HttpRequestException e)
         {
-            _out.WriteLine();
             var problem = e.HttpRequestError switch
             {
                 HttpRequestError.ConnectionError => ApiProblem.Refused,
@@ -544,16 +599,14 @@ public sealed partial class TestRunner
                 ? $"Körningen avbröts för att --max-time {_opt.MaxTimeSeconds} s löpte ut. {left}"
                 : $"Körningen avbröts (signal). {left}";
             ReportInfo = ReportInfo! with { Notice = Notice, AbortKind = abortKind };
-            _out.WriteLine();
-            _out.WriteLine("Obs: " + Notice);
+            _term.Err.WriteLine("Obs: " + Notice);
         }
         if (timeoutAbort)
         {
             Notice = $"Körningen avbröts efter {consecutiveTimeouts} anrop i rad utan svar (inget svar inom {_opt.TimeoutSeconds} s). " +
                      $"{run.Count - entries.Count} av de {run.Count} planerade testerna kördes inte. Resultaten gäller bara de {entries.Count} testerna som hann köras.";
             ReportInfo = ReportInfo! with { Notice = Notice, AbortKind = abortKind };
-            _out.WriteLine();
-            _out.WriteLine("Obs: " + Notice);
+            _term.Err.WriteLine("Obs: " + Notice);
         }
 
         PrintGroupTails();
@@ -567,9 +620,9 @@ public sealed partial class TestRunner
         var causes = PlainLanguage.CauseSummary(_outcomes);
         foreach (var line in causes) _out.WriteLine("  " + line.ListText);
         if (PlainLanguage.EnvironmentNote(results) is { } envNote) _out.WriteLine(envNote);
-        if (PlainLanguage.AuthNote(results) is { } authNote) _out.WriteLine(authNote);
+        if (PlainLanguage.AuthNote(results, names: Names) is { } authNote) _out.WriteLine(authNote);
         if (causes.Any(c => c.Cause == FailureCause.TestData))
-            _out.WriteLine("Tips: kör igen med --seed slumpa (eller ett annat tal), eller be någon nollställa testsystemet.");
+            _out.WriteLine("Tips: kör igen med --seed random (eller ett annat tal), eller be någon nollställa testsystemet.");
         var comparison = baseline?.Compare(_outcomes);
         if (comparison is not null)
         {
@@ -578,13 +631,12 @@ public sealed partial class TestRunner
         }
         // 130/143 vid signal, 3 när API:et inte svarar eller --max-time löpte ut, annars 0/1/4 efter orsakerna.
         var exit = interrupted && !maxHit ? _opt.InterruptExitCode?.Invoke() ?? ExitCodes.Interrupted
-            : timeoutAbort || maxHit ? ExitCodes.ApiUnreachable
+            : timeoutAbort || maxHit ? ExitCodes.Unreachable
             : ExitPolicy.Decide(_outcomes, _opt.FailOn, comparison, _opt.FailOnNew);
         ReportInfo = ReportInfo! with { ExitCode = exit, Comparison = comparison };
         foreach (var rp in reports)
         {
-            var path = ReportWriter.Write(rp, ReportInfo!, entries, _mask);
-            _out.WriteLine($"Rapport skriven: {path}");
+            _term.Confirm(ReportWriter.Write(rp, ReportInfo!, entries, _mask), ReportWriter.Describe(rp));
         }
         return exit;
     }
@@ -633,7 +685,7 @@ public sealed partial class TestRunner
 
     private const int WrapAt = 100;
 
-    /// <summary>--klartext: id, OK/FEL och rubrik på en rad, sedan förklaring och tolkning (radbrutna och indragna).</summary>
+    /// <summary>--explain: id, OK/FEL och rubrik på en rad, sedan förklaring och tolkning (radbrutna och indragna).</summary>
     private void PrintPlain(string id, string outcome, PlainText text, string? causeLabel = null, bool brief = false)
     {
         if (brief) { _out.WriteLine(_mask.Scrub($"{id}  {outcome,-6}  {text.Title}  – {causeLabel}")); return; }
@@ -719,6 +771,8 @@ public sealed partial class TestRunner
         _globalHeaders = new Dictionary<string, string>(_opt.Headers ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
         var secretNames = (_opt.SecretHeaderNames ?? Enumerable.Empty<string>()).Concat(AuthSchemes.SecretHeaderNames(spec)).ToList();
         var secretValues = new List<string>();
+        _spec = spec;
+        _token = _opt.Token;
         if (_opt.Token is { Length: > 0 } token)
         {
             var (name, value) = AuthSchemes.TokenHeader(spec, token);
@@ -727,7 +781,7 @@ public sealed partial class TestRunner
             secretValues.Add(token);
         }
         _mask = HeaderMask.For(_globalHeaders, secretNames, secretValues);
-        foreach (var w in _mask.Warnings) Console.Error.WriteLine(w);
+        foreach (var w in _mask.Warnings) _term.Warning(w);
     }
 
     // --- Genererade fall ----------------------------------------------------------------
@@ -740,6 +794,24 @@ public sealed partial class TestRunner
         catch (Exception e) when (e is not OperationCanceledException) { throw Internal(e); }
         var (status, body, _) = await ExecuteAsync(ctx, scenario);
         var check = CheckResponse(op, status, body);
+        // 429 efter att Retry-After följts (eller utan den): systemet orkar inte ta emot testet, så det säger inget om funktionen.
+        if (status == 429 && !expected.Contains(429))
+            return new CaseResult(status, false, true, "HOPPAD (för många anrop)", new())
+            {
+                SkipCause = FailureCause.RateLimited,
+                SkipNote = PlainNames.Fill("Systemet svarade 429 (för många anrop), även om testgen väntade enligt Retry-After när det angavs, så anropet kunde inte testas. Höj gränsen i miljön som testas, eller kör igen om en stund.", Names),
+            };
+        // Testanvändaren som testgen loggar in som godtogs inte: appen slår troligen upp användaren själv.
+        // Gäller även negativa fall: ett nekat anrop är lika lite testbart. Inloggningsoperationen själv testar inloggningen och rörs inte.
+        if (IdentityIsOurs && status is 401 or 403 && !expected.Contains(status) && op.OperationId != _opt.LoginOperation)
+            return RejectedIdentity(status, _opt.Relogin is null ? "HOPPAD (testanvändaren godtogs inte)" : "HOPPAD (inloggningen godtogs inte)", $"Appen svarade {status}");
+        // Ett dokumenterat 404 på ett giltigt anrop som ingen förberedelse skapat något åt: värdet vi hittade på finns inte, så testet är osäkert.
+        if (status == 404 && scenario.Kind != "negative" && !expected.Contains(404) && (op.ResponseCodes ?? []).Contains("404") && ctx.Exchanges.All(x => x.Preparation is null))
+            return new CaseResult(status, false, true, "HOPPAD (värdet finns inte)", new())
+            {
+                SkipCause = FailureCause.MissingData,
+                SkipNote = PlainNames.Fill("Systemet svarade 404 (dokumenterat i specen) på ett värde som testgen hittade på, så anropet kunde inte testas. Ange ett värde som finns under apis.<api>.bindings i testgen.yaml.", Names),
+            };
         if (expected.Contains(status))
         {
             return !check.HasErrors
@@ -748,6 +820,29 @@ public sealed partial class TestRunner
         }
         return new CaseResult(status, false, false, $"FEL (väntade {string.Join("/", expected)})", ExtraSpecInfo(status, check)) { Warnings = check.Warnings };
     }
+
+    /// <summary>Testgen står själv för identiteten (testanvändaren eller inloggningssteget).</summary>
+    private bool IdentityIsOurs => _opt.UsesTestUser || _opt.Relogin is not null;
+
+    private CaseResult RejectedIdentity(int status, string verdict, string what) => new(status, false, true, verdict, new())
+    {
+        SkipCause = FailureCause.TestUserRejected,
+        SkipNote = PlainNames.Fill(_opt.Relogin is null
+            ? $"{what} på ett anrop som testgen skickade som sin testanvändare, så anropet kunde inte testas. Appen slår troligen upp användaren själv. Ange claims under apis.<api>.auth.claims, eller ett inloggningssteg under apis.<api>.login i testgen.yaml."
+            : $"{what} på ett anrop som testgen skickade med inloggningen från apis.<api>.login, även efter ny inloggning, så anropet kunde inte testas. Kontrollera att användaren från inloggningen får göra anropet.", Names),
+    };
+
+    private PlainNames Names => new(_opt.Project, _opt.EnvName, _opt.InProcess);
+
+    private List<string> BlockedSince(int before) =>
+        _opt.BlockedHosts?.Invoke().Skip(before).Distinct().ToList() ?? [];
+
+    private HttpClient CreateHttpClient() =>
+        new(new RateLimitHandler(_handler ?? new HttpClientHandler(), disposeInner: _handler is null), disposeHandler: true)
+        {
+            BaseAddress = new Uri(_opt.Api.TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(_opt.TimeoutSeconds),
+        };
 
     /// <summary>
     /// Kontrollerar svaret mot specens svarsschema för den faktiska statuskoden (om specen har ett). Gäller alla koder, även när
@@ -782,7 +877,7 @@ public sealed partial class TestRunner
     {
         foreach (var dep in s.Setup) await EnsureAsync(ctx, dep);
         await EnsureDependenciesAsync(ctx, s.Path, s.Body, s.Query, s.Headers);
-        return await SendAsync(ctx, s.Method, s.Path, s.Query, s.Headers, s.Body, s.ContentType);
+        return await SendAsync(ctx, s.Method, s.Path, s.Query, s.Headers, s.Body, s.ContentType, s.OperationId);
     }
 
     /// <summary>Kör operationen (giltigt fall, färsk data) och sparar svaret under operationId.</summary>
@@ -866,7 +961,7 @@ public sealed partial class TestRunner
             }
 
             await EnsureDependenciesAsync(ctx, path, body, query, headers);
-            var (status, response, _) = await SendAsync(ctx, s.Method, path, query, headers, body ?? otherBody, s.ContentType);
+            var (status, response, _) = await SendAsync(ctx, s.Method, path, query, headers, body ?? otherBody, s.ContentType, op.OperationId);
 
             ctx.Responses.Save(st.SaveAs ?? st.Operation, response);
             if (st.SaveAs is not null && status is >= 200 and <= 299) ctx.Responses.Save(st.Operation, response);
@@ -974,8 +1069,9 @@ public sealed partial class TestRunner
     }
 
     private async Task<(int Status, JsonNode? Body, string Raw)> SendAsync(CaseContext ctx, string method, string path,
-        IDictionary<string, string> query, IDictionary<string, string> headers, JsonNode? rawBody, string? contentType = null)
+        IDictionary<string, string> query, IDictionary<string, string> headers, JsonNode? rawBody, string? contentType = null, string? operationId = null, bool retried = false)
     {
+        if (_opt.ReadOnly && !IsReadingMethod(method)) throw new ReadOnlyException(method.ToUpperInvariant());
         var store = ctx.Responses;
         var startedAt = DateTimeOffset.Now;
         var body = rawBody is null ? null : store.Substitute(rawBody.DeepClone());
@@ -1019,11 +1115,37 @@ public sealed partial class TestRunner
         HttpResponseMessage resp;
         try { resp = await _http.SendAsync(req, _ct); }
         catch (TaskCanceledException) { Record(null, null, clock.ElapsedMilliseconds, null); throw; }
-        using var _ = resp;
         var raw = await resp.Content.ReadAsStringAsync(_ct);
         Record((int)resp.StatusCode, raw, clock.ElapsedMilliseconds, resp);
-        return ((int)resp.StatusCode, ResponseStore.ParseBody(raw), raw);
+        var status = (int)resp.StatusCode;
+        resp.Dispose();
+        // Inloggningen kan ha upphört (t.ex. efter en utloggning): logga in igen och skicka anropet en gång till.
+        if (status == 401 && !retried && await TryReloginAsync(headers, operationId))
+            return await SendAsync(ctx, method, path, query, headers, rawBody, contentType, operationId, retried: true);
+        return (status, ResponseStore.ParseBody(raw), raw);
     }
+
+    private ApiSpec? _spec;
+    private string? _token;
+
+    /// <summary>Hämtar en ny token när den nuvarande nekades och byter den i de globala headers. Falskt om anropet inte ska göras om.</summary>
+    private async Task<bool> TryReloginAsync(IDictionary<string, string> callHeaders, string? operationId)
+    {
+        if (_opt.Relogin is not { } relogin || _token is not { } stale || _spec is null || operationId == _opt.LoginOperation) return false;
+        var (name, _) = AuthSchemes.TokenHeader(_spec, stale);
+        if (callHeaders.Keys.Contains(name, StringComparer.OrdinalIgnoreCase)) return false;   // anropet bär sin egen inloggning
+        string fresh;
+        try { fresh = await relogin(stale, _ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { return false; }
+        if (fresh.Length == 0) return false;
+        var (headerName, headerValue) = AuthSchemes.TokenHeader(_spec, fresh);
+        _globalHeaders[headerName] = headerValue;
+        _mask = _mask.WithSecretValues([fresh]);
+        _token = fresh;
+        return true;
+    }
+
+    private static bool IsReadingMethod(string method) => method.ToUpperInvariant() is "GET" or "HEAD" or "OPTIONS";
 
     /// <summary>Svarshuvudena som maskad lista: Set-Cookie m.fl. hemliga blir ***, kända hemliga värden utbytta.</summary>
     private IReadOnlyDictionary<string, string> ResponseHeaders(HttpResponseMessage resp) =>

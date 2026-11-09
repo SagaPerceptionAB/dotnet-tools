@@ -1,0 +1,8 @@
+# Testerna i samples/Shop.Tests som ska falla, en nyckel per rad. CI fäller jobbet om fler eller färre faller.
+# Rader som börjar med # är kommentarer.
+
+# ShopApi ger medvetet 500 när quantity är 0 (en bugg i exemplet som testgen ska hitta).
+api:createOrder:below-minimum:quantity
+
+# ShopWebs kundformulär begränsar inte namnets längd, men specen har maxLength 100 (avsiktlig avvikelse, se CustomerCreate.razor).
+ui:/customers/create:boundary-max-length:Name

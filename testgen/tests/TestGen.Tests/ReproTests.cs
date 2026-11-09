@@ -46,7 +46,7 @@ public class ReproTests : IDisposable
     private async Task<TestRunner> RunOrders(string? token = Token)
     {
         var runner = new TestRunner(new RunOptions { Spec = Spec(), Api = "http://fake.test", Token = token, Only = "createOrder", Seed = 1, TimeoutSeconds = 20 },
-            new StringWriter(), new Api());
+            new StringWriter { NewLine = "\n" }, new Api());
         await runner.RunAsync();
         return runner;
     }

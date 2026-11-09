@@ -1,0 +1,46 @@
+openapi: 3.0.1
+info:
+  title: Betaltjänst
+  version: 1.0.0
+  description: Betaltjänsten som ShopApi anropar (Betaltjanst:BaseUrl). testgen mockar den ur den här specen (hosts i testgen.yaml).
+paths:
+  /payments:
+    post:
+      operationId: charge
+      summary: Dra en betalning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '201':
+          description: Betalningen godkändes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResult'
+components:
+  schemas:
+    PaymentRequest:
+      type: object
+      required: [customerId, amount, currency]
+      properties:
+        customerId:
+          type: integer
+        amount:
+          type: number
+        currency:
+          type: string
+          example: SEK
+    PaymentResult:
+      type: object
+      required: [paymentId, status]
+      properties:
+        paymentId:
+          type: string
+          example: pay-0001
+        status:
+          type: string
+          example: godkänd

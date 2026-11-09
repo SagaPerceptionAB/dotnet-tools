@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>SagaPerception.TestGen.Browser</PackageId>
+    <Version>$(SagaPerceptionTestGenVersion)</Version>
+    <Description>Webbläsardelen av testgens UI-tester (Playwright, Chromium).</Description>
+  </PropertyGroup>
+
+  <!-- Webbläsardelen av UI-testerna: Chromium, felinsamling, lokaliserare, formulärvärden, tillgänglighet och bildjämförelse. Ingen NUnit eller Roslyn. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
+    <ProjectReference Include="..\TestGen.Mock\TestGen.Mock.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\axe.min.js" LogicalName="axe.min.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TestGen.Browser.Tests" />
+  </ItemGroup>
+
+</Project>

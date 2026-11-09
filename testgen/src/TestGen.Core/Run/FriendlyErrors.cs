@@ -2,25 +2,6 @@ using System.Net.Http;
 
 namespace TestGen.Core.Run;
 
-/// <summary>Exitkoder för kommandoraden (dokumenterade i --help och README). 0 och 2 är desamma som i CommandLine (StandardExitCodes).</summary>
-public static class ExitCodes
-{
-    /// <summary>Alla tester OK.</summary>
-    public const int Ok = StandardExitCodes.Ok;
-    /// <summary>Minst ett FEL med orsak Fel i systemet eller Förväntan (eller de orsaker som --fail-on anger).</summary>
-    public const int TestFailed = 1;
-    /// <summary>Fel i användning eller konfiguration (flaggor, filer, spec, Excel, miljö).</summary>
-    public const int Usage = StandardExitCodes.Usage;
-    /// <summary>API:et eller specens webbadress gick inte att nå eller svarade inte (även: --max-time löpte ut).</summary>
-    public const int ApiUnreachable = 3;
-    /// <summary>"Inget säkert svar": inga FEL i systemet eller i förväntan, men FEL/HOPPAD av osäker orsak (inloggning, testdata, miljö, följdfel).</summary>
-    public const int Inconclusive = 4;
-    /// <summary>Körningen avbröts med Ctrl+C (SIGINT). 128 + 2, som skal brukar ange.</summary>
-    public const int Interrupted = 130;
-    /// <summary>Körningen avbröts med SIGTERM (t.ex. CI som avbryter jobbet). 128 + 15.</summary>
-    public const int Terminated = 143;
-}
-
 public enum ApiProblem { Refused, NameNotFound, Timeout, Tls, Other }
 
 /// <summary>API:et som ska testas gick inte att nå (exitkod 3).</summary>
@@ -132,22 +113,22 @@ public static class FriendlyErrors
         switch (kind)
         {
             case SourceKind.Spec:
-            {
-                var (reason, tip) = SpecReason(e, url);
-                // Adressen svarar inte alls (nätverksfel, tidsgräns): det är miljön, inte specen, och ger exitkod 3 (inte 2).
-                if (url && (e is TaskCanceledException || e is HttpRequestException { StatusCode: null }))
-                    return new SpecUnreachableException($"Kan inte hämta OpenAPI-spec från {shown}: {reason}", tip, e.Message);
-                return new SourceException(kind, location, $"Kunde inte läsa OpenAPI-spec '{shown}': {reason}", tip, e.Message);
-            }
+                {
+                    var (reason, tip) = SpecReason(e, url);
+                    // Adressen svarar inte alls (nätverksfel, tidsgräns): det är miljön, inte specen, och ger exitkod 3 (inte 2).
+                    if (url && (e is TaskCanceledException || e is HttpRequestException { StatusCode: null }))
+                        return new SpecUnreachableException($"Kan inte hämta OpenAPI-spec från {shown}: {reason}", tip, e.Message);
+                    return new SourceException(kind, location, $"Kunde inte läsa OpenAPI-spec '{shown}': {reason}", tip, e.Message);
+                }
             case SourceKind.Excel:
                 return new SourceException(kind, location, $"Filen går inte att läsa som en Excel-arbetsbok (.xlsx): {shown}",
                     "Välj en .xlsx-fil, t.ex. en mall skapad med 'testgen template'. Filer från andra program måste sparas som .xlsx.", e.Message);
             default:
-            {
-                var where = e is YamlDotNet.Core.YamlException y ? $" (rad {y.Start.Line})" : "";
-                return new SourceException(kind, location, $"Konfigurationsfilen går inte att läsa{where}: {shown}",
-                    "Kontrollera att filen är giltig YAML (indrag med mellanslag, kolon följt av mellanslag), eller kör utan --config.", e.Message);
-            }
+                {
+                    var where = e is YamlDotNet.Core.YamlException y ? $" (rad {y.Start.Line})" : "";
+                    return new SourceException(kind, location, $"Konfigurationsfilen går inte att läsa{where}: {shown}",
+                        "Kontrollera att filen är giltig YAML (indrag med mellanslag, kolon följt av mellanslag), eller kör utan --config.", e.Message);
+                }
         }
     }
 
@@ -167,10 +148,8 @@ public static class FriendlyErrors
                 return ("det gick inte att hämta adressen.", "Kontrollera adressen och din nätverksanslutning, eller hämta filen och ange sökvägen i stället.");
             case TaskCanceledException:
                 return ("servern svarade inte i tid.", "Kontrollera adressen och din nätverksanslutning.");
-            case Microsoft.OpenApi.Readers.Exceptions.OpenApiUnsupportedSpecVersionException:
+            case Microsoft.OpenApi.OpenApiUnsupportedSpecVersionException:
                 return ("versionen saknas eller stöds inte (OpenAPI 2 och 3 stöds).", generic);
-            case YamlDotNet.Core.YamlException y:
-                return ($"texten är trasig på rad {y.Start.Line} (inte giltig YAML eller JSON).", generic);
             default:
                 return (url ? "adressen visar ingen giltig OpenAPI-spec." : "innehållet är ingen giltig OpenAPI-spec.", generic);
         }
@@ -182,6 +161,9 @@ public static class FriendlyErrors
     public static FriendlyError Translate(Exception e, ErrorContext? ctx = null)
     {
         ctx ??= new ErrorContext();
+        if (IsOpenApiVersionConflict(e))
+            return new("Appen och testgen använder olika huvudversioner av Microsoft.OpenApi, och båda kan inte laddas i samma testprocess.",
+                "Låt appen använda Microsoft.OpenApi 2: AddOpenApi() i .NET 10, eller Swashbuckle 10 eller senare.", Describe(e));
         switch (e)
         {
             case UsageException u:
@@ -189,26 +171,26 @@ public static class FriendlyErrors
             case ExcelValidationException x:
                 return new(x.Message, ExcelValidationException.Action(x.FileName), x.Technical);
             case ApiUnreachableException a:
-                return new(a.Message, a.Tip, a.Technical, ExitCodes.ApiUnreachable);
+                return new(a.Message, a.Tip, a.Technical, ExitCodes.Unreachable);
             case SpecUnreachableException su:
-                return new(su.Message, su.Tip, su.Technical, ExitCodes.ApiUnreachable);
+                return new(su.Message, su.Tip, su.Technical, ExitCodes.Unreachable);
             case MissingSourceException m:
                 return new(m.Message, UsageException.MissingFileTip, null);
             case SourceException s:
                 return new(s.Message, s.Tip, s.Technical);
             case FileNotFoundException or DirectoryNotFoundException when FriendlyError.PathOf(e) is var p && (p is not null || ctx.Report is not null):
-            {
-                var full = p is null ? null : Path.GetFullPath(p);
-                var kind = KindOf(full, ctx);
-                if (kind == SourceKind.Report || (kind is null && ctx.Report is not null && e is DirectoryNotFoundException))
-                    return new($"Rapporten kan inte skrivas: katalogen finns inte och går inte att skapa ({Path.GetDirectoryName(Path.GetFullPath(ctx.Report ?? full ?? "."))}).",
-                        "Välj en annan plats för --report, t.ex. en katalog som du har skrivrättigheter i.", e.Message);
-                if (kind is { } k) return new($"Hittar inte {Label(k)}: {full}", UsageException.MissingFileTip, e.Message);
-                return FriendlyError.From(e, "testgen");
-            }
+                {
+                    var full = p is null ? null : Path.GetFullPath(p);
+                    var kind = KindOf(full, ctx);
+                    if (kind == SourceKind.Report || (kind is null && ctx.Report is not null && e is DirectoryNotFoundException))
+                        return new($"Rapporten kan inte skrivas: katalogen finns inte och går inte att skapa ({Path.GetDirectoryName(Path.GetFullPath(ctx.Report ?? full ?? "."))}).",
+                            "Välj en annan plats för --report, t.ex. en katalog som du har skrivrättigheter i.", e.Message);
+                    if (kind is { } k) return new($"Hittar inte {Label(k)}: {full}", UsageException.MissingFileTip, e.Message);
+                    return FriendlyError.From(e, "testgen");
+                }
             case HttpRequestException h:
                 return new($"Anslutningen misslyckades{(ctx.Api is null ? "" : " mot " + ctx.Api)}.",
-                    "Kontrollera adressen och din nätverksanslutning.", h.Message, ExitCodes.ApiUnreachable);
+                    "Kontrollera adressen och din nätverksanslutning.", h.Message, ExitCodes.Unreachable);
             case ArgumentException { ParamName: null } or InvalidOperationException:
                 return new(e.Message, TipFor(e.Message), null);
             default:
@@ -216,11 +198,28 @@ public static class FriendlyErrors
         }
     }
 
+    /// <summary>Ett typ-, metod- eller filladdningsfel som gäller Microsoft.OpenApi, direkt eller längre ner i felkedjan: appen har en annan huvudversion än testgen.</summary>
+    public static bool IsOpenApiVersionConflict(Exception e) => Conflicting(e) is not null;
+
+    private static Exception? Conflicting(Exception? e) => e switch
+    {
+        null => null,
+        TypeLoadException or MissingMemberException or FileLoadException or BadImageFormatException when Mentions(e) => e,
+        AggregateException a => a.InnerExceptions.Select(Conflicting).FirstOrDefault(x => x is not null),
+        _ => Conflicting(e.InnerException),
+    };
+
+    private static bool Mentions(Exception e) =>
+        e.Message.Contains("Microsoft.OpenApi", StringComparison.Ordinal) || (e as FileLoadException)?.FileName?.Contains("Microsoft.OpenApi", StringComparison.Ordinal) == true;
+
+    private static string Describe(Exception e) =>
+        Conflicting(e)! is var c && c is FileLoadException { FileName: { } file } ? $"{c.GetType().Name}: {c.Message} ({file})" : $"{c!.GetType().Name}: {c.Message}";
+
     public const string DefaultTip = "Kontrollera inställningarna och försök igen. Se: testgen --help";
 
     private static string TipFor(string msg)
     {
-        if (msg.StartsWith("Miljövariabeln")) return "Sätt miljövariabeln innan du startar testgen (för webbgränssnittet: innan 'testgen ui'), eller skriv värdet direkt i fältet Token (--token).";
+        if (msg.StartsWith("Miljövariabeln")) return "Sätt variabeln i skalet, eller som hemlighet i CI-systemet. I webbgränssnittet: sätt den innan du startar testgen web, eller skriv värdet i fältet Token.";
         if (msg.StartsWith("Okänd miljö")) return "Välj en av miljöerna som visas, eller ange API-adressen själv.";
         if (msg.StartsWith("--only:")) return "Välj ett av anropen som visas.";
         return DefaultTip;

@@ -9,8 +9,8 @@ namespace TestGen.Core.Run;
 /// PublishTestResults, Jenkins, GitLab). En <c>testsuite</c> per grupp (Genererade tester, Excel-tester), <c>classname</c> = operationId,
 /// <c>name</c> = "T-020 quantity för lågt (under minimum)", <c>time</c> i sekunder med punkt.
 /// <list type="bullet">
-/// <item><c>failure</c> (type system eller forvantan): FEL med orsak Fel i systemet / Förväntan i testet stämmer inte.</item>
-/// <item><c>error</c> (type inloggning, testdata eller miljo): FEL som inte säger något säkert om systemet.</item>
+/// <item><c>failure</c> (type system eller expectation): FEL med orsak Fel i systemet / Förväntan i testet stämmer inte.</item>
+/// <item><c>error</c> (type auth, test-data eller environment): FEL som inte säger något säkert om systemet.</item>
 /// <item><c>skipped</c> ("Följd av T-001"): HOPPAD och följdfel. Fel i testgen (orsak verktyg) är också skipped, med meddelandet
 /// "Fel i testgen: ...", eftersom det inte säger något om systemet.</item>
 /// </list>
@@ -68,7 +68,7 @@ public static class JUnitResult
             {
                 w.WriteStartElement("properties");
                 void P(string name, string? value) { if (value is null) return; w.WriteStartElement("property"); w.WriteAttributeString("name", name); w.WriteAttributeString("value", S(value)); w.WriteEndElement(); }
-                P("testgen.version", info.Version);
+                P("toolVersion", info.Version);
                 P("api", info.Api);
                 P("environment", info.Env);
                 P("seed", info.Seed.ToString(CultureInfo.InvariantCulture));
@@ -164,7 +164,7 @@ public static class JUnitResult
         return Declaration + sb;
     }
 
-    /// <summary>Körningen kunde inte genomföras: ett enda test som är ett fel av typen miljo, så att CI-systemet visar det i testlistan.</summary>
+    /// <summary>Körningen kunde inte genomföras: ett enda test som är ett fel av typen environment, så att CI-systemet visar det i testlistan.</summary>
     public static string TextFailure(ReportInfo info, string what, string action, HeaderMask mask)
     {
         string S(string? s) => Clean(mask.Scrub(s ?? ""));
@@ -183,7 +183,7 @@ public static class JUnitResult
             w.WriteAttributeString("time", time);
             w.WriteAttributeString("timestamp", info.When.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture));
             w.WriteStartElement("properties");
-            foreach (var (n, v) in new[] { ("testgen.version", info.Version ?? ""), ("api", info.Api), ("seed", info.Seed.ToString(CultureInfo.InvariantCulture)), ("verdict", "unreachable"), ("exitCode", ExitCodes.ApiUnreachable.ToString(CultureInfo.InvariantCulture)) })
+            foreach (var (n, v) in new[] { ("toolVersion", info.Version ?? ""), ("api", info.Api), ("seed", info.Seed.ToString(CultureInfo.InvariantCulture)), ("verdict", "unreachable"), ("exitCode", ExitCodes.Unreachable.ToString(CultureInfo.InvariantCulture)) })
             {
                 w.WriteStartElement("property"); w.WriteAttributeString("name", n); w.WriteAttributeString("value", S(v)); w.WriteEndElement();
             }
@@ -193,7 +193,7 @@ public static class JUnitResult
             w.WriteAttributeString("name", S($"Körning mot {info.Api}"));
             w.WriteAttributeString("time", time);
             w.WriteStartElement("error");
-            w.WriteAttributeString("type", "miljo");
+            w.WriteAttributeString("type", "environment");
             w.WriteAttributeString("message", S("Körningen kunde inte genomföras: " + what));
             w.WriteString(S(what + "\nGör så här: " + action));
             w.WriteEndElement();

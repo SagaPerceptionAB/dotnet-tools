@@ -2,8 +2,9 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.OpenApi.Models;
-using TestGen.Scenarios;
+using Microsoft.OpenApi;
+using TestGen.Core;
+using TestGen.Core.Run;
 
 namespace TestGen.Core.Run;
 
@@ -15,7 +16,7 @@ public sealed record SchemaCheckResult(List<string> Errors, List<string> Warning
 }
 
 /// <summary>
-/// Kontrollerar ett JSON-svar mot specens svarsschema. Reglerna kommer enbart från specen.
+/// Kontrollerar ett JSON-svar (eller ett anrop, se <see cref="Check"/>) mot specens schema. Reglerna kommer enbart från specen.
 /// Hårda fel: obligatoriskt fält saknas (writeOnly räknas inte), fel JSON-typ (heltal får inte vara decimaltal), värde utanför enum,
 /// format som inte går att tolka (date, date-time enligt RFC 3339, uuid, email, uri), null där fältet inte är nullable,
 /// writeOnly-fält i svaret, minItems/maxItems/minLength/maxLength/minimum/maximum och pattern.
@@ -29,10 +30,14 @@ public static class ResponseSchemaCheck
     public const int MaxMessages = 10;
     private const int MaxDepth = 40;
 
-    public static SchemaCheckResult Check(JsonNode? body, OpenApiSchema? schema)
+    /// <summary>
+    /// Kontrollerar <paramref name="body"/> mot <paramref name="schema"/>. <paramref name="root"/> är namnet i meddelandena ("svar.id saknas").
+    /// Med <paramref name="request"/> kontrolleras ett anrop i stället för ett svar: writeOnly-fält är tillåtna och obligatoriska, readOnly-fält krävs inte.
+    /// </summary>
+    public static SchemaCheckResult Check(JsonNode? body, IOpenApiSchema? schema, string root = "svar", bool request = false)
     {
         if (body is null || schema is null) return SchemaCheckResult.Empty;
-        var r = Validate(body, schema, "svar", 0, false);
+        var r = Validate(body, schema, root, 0, false, request);
         return new SchemaCheckResult(Cap(Distinct(r.Errors, collapseIndexes: false)), Cap(Distinct(r.Warnings, collapseIndexes: true)));
     }
 
@@ -58,39 +63,39 @@ public static class ResponseSchemaCheck
 
     private sealed class Merged
     {
-        public List<OpenApiSchema> Parts { get; } = new();
-        public Dictionary<string, OpenApiSchema> Props { get; } = new(StringComparer.Ordinal);
+        public List<IOpenApiSchema> Parts { get; } = new();
+        public Dictionary<string, IOpenApiSchema> Props { get; } = new(StringComparer.Ordinal);
         public HashSet<string> Required { get; } = new(StringComparer.Ordinal);
         public bool Strict { get; set; }
-        public OpenApiSchema? ExtraSchema { get; set; }
+        public IOpenApiSchema? ExtraSchema { get; set; }
         public bool Nullable { get; set; }
         public string? Type { get; set; }
-        public OpenApiSchema? Items { get; set; }
+        public IOpenApiSchema? Items { get; set; }
         /// <summary>Varje grupp är en oneOf/anyOf: något alternativ i gruppen ska passa.</summary>
-        public List<List<OpenApiSchema>> Alternatives { get; } = new();
+        public List<List<IOpenApiSchema>> Alternatives { get; } = new();
     }
 
-    private static Merged Merge(OpenApiSchema schema)
+    private static Merged Merge(IOpenApiSchema schema)
     {
         var m = new Merged();
         Collect(schema, m, 0);
         return m;
     }
 
-    private static void Collect(OpenApiSchema s, Merged m, int depth)
+    private static void Collect(IOpenApiSchema s, Merged m, int depth)
     {
         if (depth > 12 || m.Parts.Contains(s)) return;
         m.Parts.Add(s);
-        foreach (var a in s.AllOf) Collect(a, m, depth + 1);
-        foreach (var (k, v) in s.Properties) m.Props.TryAdd(k, v);
-        foreach (var r in s.Required) m.Required.Add(r);
+        foreach (var a in s.AllOfs()) Collect(a, m, depth + 1);
+        foreach (var (k, v) in s.Props()) m.Props.TryAdd(k, v);
+        foreach (var r in s.RequiredNames()) m.Required.Add(r);
         if (!s.AdditionalPropertiesAllowed) m.Strict = true;
         if (s.AdditionalProperties is { } ap) m.ExtraSchema ??= ap;
-        if (s.Nullable) m.Nullable = true;
-        if (m.Type is null && !string.IsNullOrEmpty(s.Type)) m.Type = s.Type;
+        if (SchemaUtil.IsNullable(s)) m.Nullable = true;
+        if (m.Type is null && s.TypeName() is { } typeName) m.Type = typeName;
         if (s.Items is not null) m.Items ??= s.Items;
-        if (s.OneOf.Count > 0) m.Alternatives.Add(s.OneOf.ToList());
-        if (s.AnyOf.Count > 0) m.Alternatives.Add(s.AnyOf.ToList());
+        if (s.OneOfs().Count > 0) m.Alternatives.Add(s.OneOfs().ToList());
+        if (s.AnyOfs().Count > 0) m.Alternatives.Add(s.AnyOfs().ToList());
     }
 
     /// <summary>Alla egenskapsnamn som något alternativ (oneOf/anyOf) känner till: de räknas inte som extra fält.</summary>
@@ -107,11 +112,11 @@ public static class ResponseSchemaCheck
     }
 
     private static bool IsNullable(Merged m, int depth = 0) =>
-        m.Nullable || (depth < 6 && m.Alternatives.Any(g => g.Any(a => a.Type == "null" || IsNullable(Merge(a), depth + 1))));
+        m.Nullable || (depth < 6 && m.Alternatives.Any(g => g.Any(a => SchemaUtil.IsNullable(a) && a.TypeName() is null || IsNullable(Merge(a), depth + 1))));
 
     // --- Validering -----------------------------------------------------------------------
 
-    private static Issues Validate(JsonNode? node, OpenApiSchema schema, string path, int depth, bool inAlternative)
+    private static Issues Validate(JsonNode? node, IOpenApiSchema schema, string path, int depth, bool inAlternative, bool request)
     {
         var issues = new Issues();
         if (depth > MaxDepth) return issues;
@@ -119,7 +124,7 @@ public static class ResponseSchemaCheck
 
         if (node is null)
         {
-            var hasRules = m.Type is not null || m.Props.Count > 0 || m.Parts.Any(p => p.Enum.Count > 0) || m.Alternatives.Count > 0;
+            var hasRules = m.Type is not null || m.Props.Count > 0 || m.Parts.Any(p => p.EnumValues().Count > 0) || m.Alternatives.Count > 0;
             if (hasRules && !IsNullable(m))
                 issues.Errors.Add($"{path} är null men fältet får inte vara null (enligt specen)");
             return issues;
@@ -136,31 +141,31 @@ public static class ResponseSchemaCheck
 
         switch (node)
         {
-            case JsonObject obj: CheckObject(obj, m, path, depth, inAlternative, issues); break;
-            case JsonArray arr: CheckArray(arr, m, path, depth, issues); break;
+            case JsonObject obj: CheckObject(obj, m, path, depth, inAlternative, request, issues); break;
+            case JsonArray arr: CheckArray(arr, m, path, depth, request, issues); break;
         }
 
-        foreach (var group in m.Alternatives) CheckAlternatives(node, group, path, depth, issues);
+        foreach (var group in m.Alternatives) CheckAlternatives(node, group, path, depth, request, issues);
         return issues;
     }
 
-    private static void CheckAlternatives(JsonNode node, List<OpenApiSchema> group, string path, int depth, Issues issues)
+    private static void CheckAlternatives(JsonNode node, List<IOpenApiSchema> group, string path, int depth, bool request, Issues issues)
     {
         Issues? best = null;
         foreach (var alt in group)
         {
-            var r = Validate(node, alt, path, depth + 1, true);
+            var r = Validate(node, alt, path, depth + 1, true, request);
             if (r.Errors.Count == 0) { issues.Warnings.AddRange(r.Warnings); return; }
             if (best is null || r.Errors.Count < best.Errors.Count) best = r;
         }
         if (best is not null) issues.Errors.AddRange(best.Errors);
     }
 
-    private static void CheckObject(JsonObject obj, Merged m, string path, int depth, bool inAlternative, Issues issues)
+    private static void CheckObject(JsonObject obj, Merged m, string path, int depth, bool inAlternative, bool request, Issues issues)
     {
         foreach (var name in m.Required.OrderBy(n => n, StringComparer.Ordinal))
         {
-            if (m.Props.TryGetValue(name, out var ps) && ps.WriteOnly) continue;   // writeOnly skickas aldrig tillbaka
+            if (m.Props.TryGetValue(name, out var ps) && (request ? ps.ReadOnly : ps.WriteOnly)) continue;   // readOnly krävs inte i anrop, writeOnly skickas aldrig tillbaka
             if (!obj.ContainsKey(name)) issues.Errors.Add($"{Child(path, name)} saknas (obligatoriskt enligt specen)");
         }
 
@@ -169,14 +174,14 @@ public static class ResponseSchemaCheck
         {
             if (m.Props.TryGetValue(name, out var ps))
             {
-                if (ps.WriteOnly)
+                if (ps.WriteOnly && !request)
                 {
                     issues.Errors.Add($"{Child(path, name)} skickas tillbaka – fältet är writeOnly och ska aldrig finnas i svaret");
                     continue;
                 }
-                issues.Add(Validate(child, ps, Child(path, name), depth + 1, false));
+                issues.Add(Validate(child, ps, Child(path, name), depth + 1, false, request));
             }
-            else if (m.ExtraSchema is { } es) issues.Add(Validate(child, es, Child(path, name), depth + 1, false));
+            else if (m.ExtraSchema is { } es) issues.Add(Validate(child, es, Child(path, name), depth + 1, false, request));
             else extra.Add(name);
         }
 
@@ -191,7 +196,7 @@ public static class ResponseSchemaCheck
             issues.Warnings.Add($"{path} har extra fält som inte finns i specen: {string.Join(", ", extra)} (varning)");
     }
 
-    private static void CheckArray(JsonArray arr, Merged m, string path, int depth, Issues issues)
+    private static void CheckArray(JsonArray arr, Merged m, string path, int depth, bool request, Issues issues)
     {
         foreach (var part in m.Parts)
         {
@@ -199,7 +204,7 @@ public static class ResponseSchemaCheck
             if (part.MaxItems is { } mx && arr.Count > mx) issues.Errors.Add($"{path} har {arr.Count} {Poster(arr.Count)} men ska ha högst {mx}");
         }
         if (m.Items is null) return;
-        for (var i = 0; i < arr.Count; i++) issues.Add(Validate(arr[i], m.Items, $"{path}[{i}]", depth + 1, false));
+        for (var i = 0; i < arr.Count; i++) issues.Add(Validate(arr[i], m.Items, $"{path}[{i}]", depth + 1, false, request));
     }
 
     private static string Poster(int n) => n == 1 ? "post" : "poster";
@@ -208,11 +213,11 @@ public static class ResponseSchemaCheck
 
     // --- Skalära regler -------------------------------------------------------------------
 
-    private static void CheckScalar(JsonNode node, OpenApiSchema s, JsonValueKind kind, string path, Issues issues)
+    private static void CheckScalar(JsonNode node, IOpenApiSchema s, JsonValueKind kind, string path, Issues issues)
     {
-        if (s.Enum.Count > 0 && node is JsonValue)
+        if (s.EnumValues().Count > 0 && node is JsonValue)
         {
-            var allowed = s.Enum.Select(SchemaUtil.ToNode).Where(n => n is not null).Select(n => n!).ToList();
+            var allowed = s.EnumValues().Select(SchemaUtil.ToNode).Where(n => n is not null).Select(n => n!).ToList();
             if (allowed.Count > 0 && !allowed.Any(a => SameValue(a, node)))
                 issues.Errors.Add($"{path} {Show(node)} finns inte bland tillåtna värden ({string.Join(", ", allowed.Select(PlainValue))})");
         }
@@ -230,10 +235,10 @@ public static class ResponseSchemaCheck
         }
         else if (kind == JsonValueKind.Number && decimal.TryParse(node.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var n))
         {
-            if (s.Minimum is { } min && (s.ExclusiveMinimum == true ? n <= min : n < min))
-                issues.Errors.Add($"{path} är {Num(n)} men ska vara {(s.ExclusiveMinimum == true ? "större än" : "minst")} {Num(min)}");
-            if (s.Maximum is { } max && (s.ExclusiveMaximum == true ? n >= max : n > max))
-                issues.Errors.Add($"{path} är {Num(n)} men ska vara {(s.ExclusiveMaximum == true ? "mindre än" : "högst")} {Num(max)}");
+            if (s.Lower() is var (min, minExclusive) && (minExclusive ? n <= min : n < min))
+                issues.Errors.Add($"{path} är {Num(n)} men ska vara {(minExclusive ? "större än" : "minst")} {Num(min)}");
+            if (s.Upper() is var (max, maxExclusive) && (maxExclusive ? n >= max : n > max))
+                issues.Errors.Add($"{path} är {Num(n)} men ska vara {(maxExclusive ? "mindre än" : "högst")} {Num(max)}");
         }
     }
 

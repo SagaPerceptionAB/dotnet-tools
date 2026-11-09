@@ -39,12 +39,25 @@ public sealed record TestInfo(
     CaseMeta? Case = null,
     ExcelStepInfo? Step = null)
 {
+    /// <summary>Testets stabila nyckel när den är given på förhand (UI-tester, <c>ui:/products:smoke</c>). Annars byggs den ur operation, regel och fält (<see cref="TestKeys"/>).</summary>
+    public string? Key { get; init; }
+
+    /// <summary>Projektet och miljön som platshållarna <c>&lt;api&gt;</c> och <c>&lt;miljö&gt;</c> i vägledningen byts mot, när motorn känner dem.</summary>
+    public PlainNames? Names { get; init; }
+
     /// <summary>Operationens namn i klartext: summary om den finns, annars operationId.</summary>
     public string OperationName => string.IsNullOrWhiteSpace(Summary) ? OperationId : Summary;
 
     /// <summary>Minimalt TestInfo för ett test där bara den tekniska raden är känd.</summary>
     public static TestInfo Basic(string id, string group, string call, string description) =>
         new(id, group, call, call.Split(' ')[0], "", null, description, Array.Empty<StatusExpectation>());
+}
+
+/// <summary>Namnen som platshållarna i vägledningen (<c>apis.&lt;api&gt;.bindings</c>, <c>environments.&lt;miljö&gt;...</c>) byts mot. Saknas ett namn står platshållaren kvar.</summary>
+public sealed record PlainNames(string? Project, string? Environment, bool InProcess = false)
+{
+    public static string Fill(string text, PlainNames? names) =>
+        names is null ? text : text.Replace("<api>", names.Project ?? "<api>", StringComparison.Ordinal).Replace("<miljö>", names.Environment ?? "<miljö>", StringComparison.Ordinal);
 }
 
 /// <summary>Ett tests rubrik och förklaring i klartext (svenska). Hemligheter är redan maskade.</summary>
@@ -56,13 +69,16 @@ public sealed record PlainText(string Title, string Explanation, string? Hint, F
 
 /// <summary>
 /// Översätter ett testresultat till klartext för personer som inte kan HTTP. Ren funktion utan I/O:
-/// samma text används i terminalen (<c>--klartext</c>), HTML-rapporten, Excel-rapporten och webbgränssnittet.
+/// samma text används i terminalen (<c>--explain</c>), HTML-rapporten, Excel-rapporten och webbgränssnittet.
 /// All text går genom <see cref="HeaderMask.Scrub"/>.
 /// </summary>
 public static partial class PlainLanguage
 {
     /// <summary>Längsta visade värde (tecken) i en mening.</summary>
     public const int MaxValueChars = 60;
+
+    /// <summary>Nyckeln för token i testgen.yaml.</summary>
+    private const string TokenKey = "environments.<miljö>.apis.<api>.token";
 
     // --- Statuskoder ---------------------------------------------------------------------
 
@@ -106,7 +122,9 @@ public static partial class PlainLanguage
         var title = TitleOf(test);
         var (explanation, hint) = Body(test, result);
         explanation += SpecAdditions(test, result);
-        return new PlainText(mask.Scrub(title), mask.Scrub(explanation), hint is null ? null : mask.Scrub(hint), Cause(test, result));
+        var names = test.Names;
+        return new PlainText(mask.Scrub(PlainNames.Fill(title, names)), mask.Scrub(PlainNames.Fill(explanation, names)),
+            hint is null ? null : mask.Scrub(PlainNames.Fill(hint, names)), Cause(test, result));
     }
 
     /// <summary>
@@ -162,7 +180,10 @@ public static partial class PlainLanguage
     /// Gäller terminal, webbgränssnitt och rapporter; <paramref name="web"/> byter bara hänvisningen från flaggan till fältet i sidan.
     /// <paramref name="tokenSent"/> sant om en token skickades: då står det att token nekades i stället för att be om en token.
     /// </summary>
-    public static string? AuthNote(IEnumerable<int?> statuses, bool web = false, bool tokenSent = false)
+    public static string? AuthNote(IEnumerable<int?> statuses, bool web = false, bool tokenSent = false, PlainNames? names = null) =>
+        AuthNoteText(statuses, web, tokenSent) is { } text ? PlainNames.Fill(text, names) : null;
+
+    private static string? AuthNoteText(IEnumerable<int?> statuses, bool web, bool tokenSent)
     {
         var all = statuses.Where(s => s is not null).Select(s => s!.Value).ToList();
         if (all.Count == 0) return null;
@@ -170,10 +191,10 @@ public static partial class PlainLanguage
         var n403 = all.Count(s => s == 403);
         var denied = n401 + n403;
         if (denied * 10 < all.Count * 9) return null;
-        var what = web ? "Skriv in en token i fältet Token, eller fyll i bladet Miljöer i Excel-filen."
-                       : "Ange en token (--token, eller fältet Token i webbgränssnittet) eller fyll i bladet Miljöer.";
-        var again = web ? "Skriv in en ny token i fältet Token, eller kontrollera bladet Miljöer i Excel-filen."
-                        : "Ange en ny token (--token, eller fältet Token i webbgränssnittet) eller kontrollera bladet Miljöer.";
+        var what = web ? "Skriv in en token i fältet Token, eller sätt token i testgen.yaml."
+                       : $"Sätt token i testgen.yaml ({TokenKey}), eller ange --token för testgen run.";
+        var again = web ? "Skriv in en ny token i fältet Token, eller kontrollera token i testgen.yaml."
+                        : $"Kontrollera token i testgen.yaml ({TokenKey}), eller ange en ny med --token för testgen run.";
         var rejected401 = "Token skickades men nekades (401) – den kan vara fel eller ha gått ut.";
         if (denied == all.Count)
         {
@@ -187,11 +208,11 @@ public static partial class PlainLanguage
     }
 
     /// <summary>Som <see cref="AuthNote(IEnumerable{int?}, bool, bool)"/> men läser också om en token skickades (ur anropens headers).</summary>
-    public static string? AuthNote(IEnumerable<CaseResult> results, bool web = false)
+    public static string? AuthNote(IEnumerable<CaseResult> results, bool web = false, PlainNames? names = null)
     {
         var list = results.ToList();
         var sent = list.Any(r => r.Status is 401 or 403 && TokenWasSent(r));
-        return AuthNote(list.Select(r => r.Status), web, sent);
+        return AuthNote(list.Select(r => r.Status), web, sent, names);
     }
 
     // --- Orsaker -------------------------------------------------------------------------
@@ -204,12 +225,19 @@ public static partial class PlainLanguage
         FailureCause.Auth => "Inloggning",
         FailureCause.Environment => "Miljön svarar inte",
         FailureCause.TestData => "Testdata fanns redan",
+        FailureCause.MissingData => "Testdata saknas",
+        FailureCause.TestUserRejected => "Testanvändaren godtogs inte",
+        FailureCause.RateLimited => "För många anrop",
         FailureCause.Tool => "Fel i testgen",
+        FailureCause.ReadOnly => "Skrivskyddad miljö",
         _ => "Följdfel",
     };
 
     /// <summary>Kort förklaring av orsaken (en–två meningar). För Inloggning kan variant anges.</summary>
-    public static string CauseExplanation(FailureCause cause, AuthVariant? variant = null) => cause switch
+    public static string CauseExplanation(FailureCause cause, AuthVariant? variant = null, PlainNames? names = null) =>
+        PlainNames.Fill(CauseExplanationText(cause, variant), names);
+
+    private static string CauseExplanationText(FailureCause cause, AuthVariant? variant) => cause switch
     {
         FailureCause.System => "Systemet svarade med ett fel (5xx), med en annan status än specen anger eller med ett svar som inte följer specen.",
         FailureCause.Expectation => "Testet väntade sig något annat än systemet svarade, men systemets svar följer specen. Felet ligger antingen i systemet eller i Excel-raden.",
@@ -221,7 +249,11 @@ public static partial class PlainLanguage
         },
         FailureCause.Environment => "Systemet svarade inte (timeout, ingen kontakt eller svaren 502/503/504 från en gateway). Det säger inget om systemets funktioner.",
         FailureCause.TestData => "Uppgifterna fanns redan (409), oftast från en tidigare körning. Det säger inget om systemet.",
+        FailureCause.MissingData => "Testet behöver ett värde som finns i systemet (till exempel ett id), men testgen kan inte hitta på ett. Ange det under apis.<api>.bindings i testgen.yaml. Det säger inget om systemet.",
+        FailureCause.TestUserRejected => "Appen godtog inte testanvändaren som testgen loggar in som (401/403). Appen slår troligen upp användaren själv. Ange claims under apis.<api>.auth.claims, eller ett inloggningssteg under apis.<api>.login i testgen.yaml. Det säger inget om funktionen som testas.",
+        FailureCause.RateLimited => "Systemet svarade 429 (för många anrop), även om testgen väntade enligt Retry-After när det angavs. Höj gränsen i miljön som testas, eller kör igen om en stund. Det säger inget om funktionen som testas.",
         FailureCause.Tool => "Verktyget kunde inte bygga eller skicka testet – rapportera till den som underhåller testgen. Det säger inget om systemet.",
+        FailureCause.ReadOnly => "Miljön är skrivskyddad, så anrop som skriver (POST, PUT, PATCH, DELETE) skickades inte. Det säger inget om systemet.",
         _ => "Testet kunde inte köras eller hoppades över eftersom ett tidigare steg föll. Åtgärda det tidigare felet först.",
     };
 
@@ -231,7 +263,7 @@ public static partial class PlainLanguage
     /// </summary>
     public static FailureCause? Cause(TestInfo test, CaseResult result)
     {
-        if (result.Skipped) return result.SkipNote is not null ? FailureCause.Tool : FailureCause.Cascade;
+        if (result.Skipped) return result.SkipCause ?? (result.SkipNote is not null ? FailureCause.Tool : FailureCause.Cascade);
         if (result.Ok) return null;
         if (result.TimedOut) return FailureCause.Environment;
         if (result.Setup is { } setup) return FromStatus(setup.Status) ?? FailureCause.Cascade;
@@ -246,6 +278,7 @@ public static partial class PlainLanguage
     private static FailureCause? FromStatus(int status) => status switch
     {
         409 => FailureCause.TestData,
+        429 => FailureCause.RateLimited,
         401 or 403 => FailureCause.Auth,
         502 or 503 or 504 => FailureCause.Environment,   // gateway/överbelastad: miljön, inte funktionen som testas
         >= 500 => FailureCause.System,
@@ -285,7 +318,8 @@ public static partial class PlainLanguage
             var ids = group.Select(o => o.Id).ToList();
             var shown = ids.Take(10).ToList();
             var idsText = ids.Count > shown.Count ? string.Join(", ", shown) + $" och {ids.Count - shown.Count} till" : string.Join(", ", shown);
-            lines.Add(new CauseLine(cause, CauseName(cause), group.Count, shown, ids.Count - shown.Count, CauseSentence(cause, group, idsText)));
+            lines.Add(new CauseLine(cause, CauseName(cause), group.Count, shown, ids.Count - shown.Count,
+                PlainNames.Fill(CauseSentence(cause, group, idsText), group.Select(o => o.Test.Names).FirstOrDefault(n => n is not null))));
         }
         return lines;
     }
@@ -314,8 +348,12 @@ public static partial class PlainLanguage
         FailureCause.Auth => " – säger inget om funktionen som testas",
         FailureCause.Environment => " – säger inget om systemets funktioner",
         FailureCause.TestData => " – säger inget om systemet",
+        FailureCause.MissingData => " – ange värdet under bindings i testgen.yaml",
+        FailureCause.TestUserRejected => " – ange claims eller ett inloggningssteg i testgen.yaml",
+        FailureCause.RateLimited => " – hoppades över, säger inget om funktionen som testas",
         FailureCause.Tool => " – säger inget om systemet, rapportera till den som underhåller testgen",
         FailureCause.Cascade => " – följer av ett tidigare fel",
+        FailureCause.ReadOnly => " – hoppades över, säger inget om systemet",
         _ => "",
     };
 
@@ -332,7 +370,7 @@ public static partial class PlainLanguage
     {
         var list = outcomes.ToList();
         if (list.Count == 0) return "inga tester kördes";
-        var lines = CauseSummary(list);
+        var lines = CauseSummary(list).Where(l => l.Cause != FailureCause.ReadOnly).ToList();
         if (lines.Count == 0) return list.Count == 1 ? "testet gick som väntat" : $"alla {list.Count} tester gick som väntat";
         var parts = new List<string>();
         foreach (var l in lines.Where(l => IsRealOutcome(l.Cause)))
@@ -352,6 +390,9 @@ public static partial class PlainLanguage
     private static string ShortReason(FailureCause cause) => cause switch
     {
         FailureCause.TestData => "testdata",
+        FailureCause.MissingData => "testdata saknas",
+        FailureCause.TestUserRejected => "testanvändaren godtogs inte",
+        FailureCause.RateLimited => "för många anrop",
         FailureCause.Auth => "inloggning",
         FailureCause.Environment => "miljö",
         FailureCause.Tool => "fel i testgen",
@@ -361,6 +402,9 @@ public static partial class PlainLanguage
     private static string LongReason(FailureCause cause) => cause switch
     {
         FailureCause.TestData => "testdata fanns redan",
+        FailureCause.MissingData => "testdata saknades",
+        FailureCause.TestUserRejected => "testanvändaren godtogs inte",
+        FailureCause.RateLimited => "systemet svarade för många anrop",
         FailureCause.Auth => "inloggningen nekades",
         FailureCause.Environment => "miljön svarade inte",
         FailureCause.Tool => "fel i testgen",
@@ -368,6 +412,14 @@ public static partial class PlainLanguage
     };
 
     /// <summary>" (502/503)" när testerna fick svar från en gateway (502/503/504) i stället för tidsgräns: texten "fick inget svar" ska inte dölja att något svarade.</summary>
+    private const string MissingServiceHint = "Appen saknar troligen en tjänst den behöver i testprocessen (en databas, ett API eller en nyckel). Ange den under apis.<api>.settings i testgen.yaml.";
+
+    /// <summary>Slutet på orsaksmeningen för miljön: körs appen i testprocessen är det appen som saknar något, annars miljön.</summary>
+    private static string UpTail(IEnumerable<TestOutcome> group) =>
+        group.Select(o => o.Test.Names).FirstOrDefault(n => n is not null) is { InProcess: true } names
+            ? " " + PlainNames.Fill(MissingServiceHint, names)
+            : " Kör igen när den är uppe.";
+
     private static string GatewayNote(IEnumerable<TestOutcome> group)
     {
         var codes = group.Select(o => o.Result.Status ?? o.Result.Setup?.Status).Where(c => c is 502 or 503 or 504).Select(c => c!.Value).Distinct().Order().ToList();
@@ -399,9 +451,17 @@ public static partial class PlainLanguage
                 if (none == 0) return $"{Tests(n)} nekades (401/403) – token skickades men nekades, den kan vara fel eller ha gått ut. Byt token och kör igen.";
                 return $"{Tests(n)} nekades (401/403): {none} utan token och {rejected} där token nekades. Kontrollera token och kör igen.";
             case FailureCause.Environment:
-                return $"{Tests(n)} fick inget svar – miljön svarade inte{GatewayNote(group)}. Kör igen när den är uppe.";
+                return $"{Tests(n)} fick inget svar – miljön svarade inte{GatewayNote(group)}.{UpTail(group)}";
             case FailureCause.TestData:
                 return $"{Tests(n)} krockade med befintlig testdata (409) – säger inget om systemet.";
+            case FailureCause.MissingData:
+                return $"{Tests(n)} hoppades över eftersom ett värde som finns i systemet inte kunde hittas på ({ids}). Ange det under apis.<api>.bindings i testgen.yaml.";
+            case FailureCause.TestUserRejected:
+                return $"{Tests(n)} hoppades över eftersom appen inte godtog testanvändaren (401/403, {ids}). Ange claims under apis.<api>.auth.claims, eller ett inloggningssteg under apis.<api>.login i testgen.yaml.";
+            case FailureCause.RateLimited:
+                return $"{Tests(n)} hoppades över eftersom systemet svarade 429 (för många anrop, {ids}). Höj gränsen i miljön som testas, eller kör igen om en stund.";
+            case FailureCause.ReadOnly:
+                return $"{Tests(n)} hoppades över eftersom miljön är skrivskyddad ({ids}).";
             case FailureCause.Tool:
                 return $"{Tests(n)} kunde inte byggas eller skickas av testgen ({ids}) – säger inget om systemet. Rapportera till den som underhåller testgen.";
             default:
@@ -424,9 +484,16 @@ public static partial class PlainLanguage
         else if (partial) sb.Append("Delkörning: bara en del av testerna kördes. ");
         if (list.Count == 0) return sb.Append("Inga tester kördes.").ToString();
 
-        var lines = CauseSummary(list);
+        var allLines = CauseSummary(list);
+        var lines = allLines.Where(l => l.Cause != FailureCause.ReadOnly).ToList();
+        var readOnly = allLines.Where(l => l.Cause == FailureCause.ReadOnly).Sum(l => l.Count);
+        var readOnlyNote = readOnly == 0 ? "" : $" {Tests(readOnly)} hoppades över eftersom miljön är skrivskyddad.";
         if (lines.Count == 0)
-            return sb.Append(list.Count == 1 ? "Testet gick som väntat." : $"Alla {list.Count} tester gick som väntat.").ToString();
+        {
+            var ran = list.Count - readOnly;
+            if (readOnly == 0) return sb.Append(list.Count == 1 ? "Testet gick som väntat." : $"Alla {list.Count} tester gick som väntat.").ToString();
+            return sb.Append(ran == 0 ? readOnlyNote.TrimStart() : $"{(ran == 1 ? "1 test" : $"{ran} tester")} gick som väntat.{readOnlyNote}").ToString();
+        }
 
         var real = lines.Where(l => IsRealOutcome(l.Cause)).ToList();
         var unfinished = lines.Where(l => !IsRealOutcome(l.Cause)).ToList();
@@ -440,9 +507,10 @@ public static partial class PlainLanguage
         {
             sb.Append("Inget säkert svar: ");
             sb.Append(string.Join(' ', unfinished.Select(l => UnfinishedSentence(l, list))));
-            var okCount = list.Count - lines.Sum(l => l.Count);
+            var okCount = list.Count - allLines.Sum(l => l.Count);
             if (okCount > 0) sb.Append($" {Tests(okCount)} kördes färdigt utan fel.");
         }
+        sb.Append(readOnlyNote);
         return sb.ToString();
     }
 
@@ -462,7 +530,7 @@ public static partial class PlainLanguage
                 if (rejected == group.Count) return $"{n} nekades ({code}) – token skickades men nekades, den kan vara fel eller ha gått ut. Byt token och kör igen.";
                 return $"{n} nekades ({code}): {group.Count - rejected} utan token och {rejected} där token nekades. Kontrollera token och kör igen.";
             case FailureCause.Environment:
-                return $"{n} fick inget svar – miljön svarade inte{GatewayNote(group)}. Kör igen när den är uppe.";
+                return $"{n} fick inget svar – miljön svarade inte{GatewayNote(group)}.{UpTail(group)}";
             case FailureCause.Tool:
                 return $"{n} kunde inte byggas eller skickas av testgen – fel i testgen, inte i systemet. Rapportera till den som underhåller testgen.";
             default:
@@ -560,7 +628,8 @@ public static partial class PlainLanguage
                     "Antingen skickar systemet tillbaka fel data, eller så beskriver specen svaret fel.");
         if (status is 400 or 422)
             return ($"{start} Systemet sa nej till {(read ? "en förfrågan" : "uppgifter")} som enligt specen är giltig{(read ? "" : "a")} ({StatusText(status)}).",
-                    "Antingen är det ett fel i systemet (det kräver mer än specen säger) eller i specen (den beskriver inte alla krav).");
+                    "Antingen är det ett fel i systemet (det kräver mer än specen säger) eller i specen (den beskriver inte alla krav). "
+                    + "Kräver operationen data som inte går att hitta på (till exempel en riktig inloggningskod), hoppa över den med skipOperations eller ge den värden med bindings under apis.<api> i testgen.yaml.");
         if (status is >= 200 and < 300)
             return ($"{start} Systemet svarade {StatusText(status)} i stället för {expected}.",
                     "Systemet och specen är oense om vilken kod som ska användas – fel i systemet eller i specen.");
@@ -589,10 +658,10 @@ public static partial class PlainLanguage
         var start = $"Steget körde \"{test.OperationName}\".";
         var expected = ExpectedText(test.ExpectedStatus);
         var statusOk = test.ExpectedStatus.Count == 0 || test.ExpectedStatus.Any(e => e.Matches(status));
-        var forvantan = Cause(test, r) == FailureCause.Expectation;
+        var expectation = Cause(test, r) == FailureCause.Expectation;
         if (!statusOk)
-            return ($"{start} Vi väntade oss {expected}{(forvantan ? ExcelAt(step.StatusCell) : "")}, men systemet svarade {StatusText(status)}.",
-                    StatusHint(status, test, r) ?? (forvantan ? "Antingen är det ett fel i systemet, eller så stämmer inte den förväntade statusen i Excel-raden." : null));
+            return ($"{start} Vi väntade oss {expected}{(expectation ? ExcelAt(step.StatusCell) : "")}, men systemet svarade {StatusText(status)}.",
+                    StatusHint(status, test, r) ?? (expectation ? "Antingen är det ett fel i systemet, eller så stämmer inte den förväntade statusen i Excel-raden." : null));
         if (r.Ok)
         {
             var extra = step.ExpectedFields.Count > 0 ? $" Svaret innehöll också det som förväntades ({string.Join(", ", step.ExpectedFields)})." : "";
@@ -719,14 +788,17 @@ public static partial class PlainLanguage
     /// <summary>Tolkning utifrån statuskoden, eller null om koden inte säger något särskilt.</summary>
     private static string? StatusHint(int status, TestInfo test, CaseResult r)
     {
+        if (status is 502 or 503 or 504 && test.Names is { InProcess: true })
+            return MissingServiceHint + (r.BlockedHosts.Count == 0 ? "" :
+                $" testgen blockerade appens anrop till {string.Join(", ", r.BlockedHosts)} under testet: sätt värdet mock eller allow för värden under hosts i testgen.yaml.");
         if (status is 502 or 503 or 504) return "Det tyder på ett problem med miljön (en gateway eller ett system som inte är uppe), inte på ett fel i funktionen som testas. Kör igen när miljön är uppe.";
         if (status >= 500) return "Det tyder på ett fel i systemet, inte i testet.";
         if (status is 401 or 403)
             return TokenWasSent(r)
-                ? TokenRejectedText(status) + " Byt token med --token eller i bladet Miljöer."
-                : "Ingen token skickades. Ange en token med --token eller fyll i bladet Miljöer.";
+                ? TokenRejectedText(status) + $" Byt token i testgen.yaml ({TokenKey}), eller med --token för testgen run."
+                : $"Ingen token skickades. Sätt token i testgen.yaml ({TokenKey}), eller ange --token för testgen run.";
         if (status == 409) return "Uppgifterna fanns redan i systemet (troligen från en tidigare körning). Välj ett annat slumpfrö (--seed, eller Slumpfrö under Fler inställningar) eller be någon nollställa testsystemet.";
-        if (status == 404 && test.Method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+        if (status == 404 && test.Method.Equals("GET", StringComparison.OrdinalIgnoreCase) && r.Exchanges.Any(x => x.Preparation is not null))
             return "Det som skapades hittades inte när vi sökte efter det.";
         if (status == 429) return "Systemet tycker att vi anropar för ofta. Vänta en stund och kör igen.";
         return null;

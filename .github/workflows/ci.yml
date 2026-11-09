@@ -1,4 +1,4 @@
-# Bygger och testar allt i repot. Playwright-webbläsare och Docker behövs inte (se kommentarerna vid testgen och uitestgen).
+# Bygger och testar allt i repot. Docker behövs inte. Chromium installeras för sviterna som har browser i matrisen.
 name: ci
 
 on:
@@ -19,55 +19,145 @@ env:
 
 jobs:
   test:
-    name: test ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    name: test ${{ matrix.suite.name }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: testgen
-            solution: testgen/testgen.slnx
-          - name: systemmap
-            solution: systemmap/SystemMap.slnx
-          - name: uitestgen
-            solution: uitestgen/UiTestGen.slnx
+        os: [ ubuntu-latest, windows-latest ]
+        suite:
+          - { name: shared, solution: shared/Shared.slnx }
+          - { name: testgen, solution: testgen/testgen.slnx, browser: testgen/tests/TestGen.Browser.Tests }
+          - { name: systemmap, solution: systemmap/SystemMap.slnx, browser: systemmap/tests/SystemMap.Tests }
+          - { name: testing, solution: testing/Testing.slnx }
+          - { name: repository, solution: tests/Repository.Tests/Repository.Tests.csproj }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.x
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ matrix.name }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-          restore-keys: ${{ runner.os }}-nuget-${{ matrix.name }}-
-      # testgen/tests/Api.Tests (Playwright + Testcontainers/SQL Server) hoppar över sig själva (Assert.Ignore) när
-      # TESTGEN_API_PROJECT inte är satt. Vi sätter den inte, så de kräver varken webbläsare eller Docker och behöver inget filter.
-      # uitestgens sonderingstester (uitestgen/tests/UiTestGen.Tests/ProbeTests.cs) öppnar sidor i Chromium. De hoppar över sig själva
-      # (IgnoreException) när ingen Chromium hittas via UITEST_BROWSER_PATH eller i standardsökvägen, så de kräver ingen webbläsare här.
-      # Testerna som uitestgen genererar körs inte av CI; de kör man mot den egna appen.
+          key: ${{ runner.os }}-nuget-${{ matrix.suite.name }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-${{ matrix.suite.name }}-
+      # Sviter med browser har tester som kör Chromium. Webbläsaren installeras med playwright.ps1 i det projektet och cachas på
+      # Playwright-versionen (Directory.Packages.props).
+      - name: Cache för Chromium
+        if: matrix.suite.browser
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-chromium-${{ hashFiles('Directory.Packages.props') }}
+      - name: Installera Chromium
+        if: matrix.suite.browser
+        shell: pwsh
+        run: |
+          dotnet build ${{ matrix.suite.browser }}
+          $install = @('install', 'chromium')
+          if ($IsLinux) { $install = @('install', '--with-deps', 'chromium') }
+          & ${{ matrix.suite.browser }}/bin/Debug/net10.0/playwright.ps1 @install
       - name: Test
-        run: dotnet test ${{ matrix.solution }} --logger "trx;LogFileName=results.trx" --results-directory TestResults
-      - uses: actions/upload-artifact@v4
+        run: dotnet test ${{ matrix.suite.solution }} --logger "trx;LogFileName=results.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: testresultat-${{ matrix.name }}
+          name: testresultat-${{ matrix.suite.name }}-${{ matrix.os }}
           path: TestResults
+          retention-days: 7
           if-no-files-found: ignore
 
-  # Bevisar att paketen går att installera och starta, inte bara att koden bygger: paketerar, installerar verktygen från en lokal källa
-  # och kör --help (exitkod 0 för alla tre). Fångar t.ex. saknade filer i paketet eller fel ToolCommandName.
+  samples:
+    name: exemplen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+      - name: Bygg Shop
+        run: dotnet build samples/Shop.slnx
+      # UI-testerna kör Chromium. Webbläsaren cachas på Playwright-versionen (Directory.Packages.props).
+      - name: Cache för Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-chromium-${{ hashFiles('Directory.Packages.props') }}
+      - name: Installera Chromium
+        shell: pwsh
+        run: samples/Shop.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+      # ShopApi och ShopWeb har avsiktliga fel (se samples/expected-failures.txt). Jobbet kräver att exakt de testerna faller, i båda lagren.
+      - name: API- och UI-testerna mot ShopApi och ShopWeb
+        shell: bash
+        run: |
+          set +e
+          dotnet test samples/Shop.Tests --no-build
+          set -e
+          eng/check-expected-failures.sh samples/expected-failures.txt samples/Shop.Tests/TestResults/testgen/*.json
+
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+      - name: dotnet format
+        shell: bash
+        run: |
+          set -euo pipefail
+          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx testing/Testing.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
+            echo "::group::$s"
+            dotnet format whitespace "$s" --verify-no-changes
+            dotnet format style "$s" --verify-no-changes
+            echo "::endgroup::"
+          done
+
+  # Egen jobb så att en ny sårbarhetsvarning (NU190x, som inte stoppar bygget) fäller här och inte i orelaterade PR:er.
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+      - name: Sök sårbara paket
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx testing/Testing.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
+            echo "::group::$s"
+            dotnet restore "$s" --verbosity quiet
+            dotnet list "$s" package --vulnerable --include-transitive | tee audit.txt
+            if grep -q "has the following vulnerable packages" audit.txt; then
+              echo "::error::Sårbara paket i $s"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+
+  # Bevisar att paketen går att packa, installera och starta, inte bara att koden bygger: paketerar allt som release.yml ger ut, installerar
+  # verktygen från en lokal källa och kör --help. Fångar t.ex. saknade filer i paketet eller fel ToolCommandName.
   pack-smoke:
     name: paket (installera och starta)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.x
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-pack-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -76,7 +166,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for p in testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore uitestgen/src/UiTestGen.Cli; do
+          for p in shared/CommandLine testgen/src/TestGen.Core testgen/src/TestGen.Excel testgen/src/TestGen.Mock testgen/src/TestGen.Browser testing/src/SagaPerception.Testing testgen/src/SagaPerception.Testing.NUnit testgen/src/TestGen.Cli systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore; do
             dotnet pack "$p" -c Release -o "$RUNNER_TEMP/feed"
           done
           ls -l "$RUNNER_TEMP/feed"
@@ -84,9 +174,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for t in testgen:SagaPerception.TestGen.Cli systemmap:SagaPerception.SystemMap.Cli uitestgen:SagaPerception.UiTestGen.Cli; do
+          for t in testgen:SagaPerception.TestGen.Cli systemmap:SagaPerception.SystemMap.Cli; do
             cmd="${t%%:*}"
             id="${t#*:}"
             dotnet tool install "$id" --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/feed" --prerelease
             "$RUNNER_TEMP/tools/$cmd" --help
           done
+
+  # Kodanalys för C#. Gratis i ett publikt repo (se ADR 0009). Resultatet visas under Security > Code scanning.
+  codeql:
+    name: codeql
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: csharp
+          build-mode: manual
+      - name: Bygg
+        run: dotnet build SagaPerception.Tools.slnx
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:csharp

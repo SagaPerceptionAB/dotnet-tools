@@ -16,7 +16,9 @@ public sealed class ShopDatabase : IDisposable
     {
         ConnectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = $"shop-{Guid.NewGuid():N}", Mode = SqliteOpenMode.Memory, Cache = SqliteCacheMode.Shared,
+            DataSource = $"shop-{Guid.NewGuid():N}",
+            Mode = SqliteOpenMode.Memory,
+            Cache = SqliteCacheMode.Shared,
         }.ToString();
         _keepAlive = new SqliteConnection(ConnectionString);
         _keepAlive.Open();

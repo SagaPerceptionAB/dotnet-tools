@@ -17,39 +17,48 @@ public static class CodeMapper
         IEnumerable<string>? loadWarnings = null, CancellationToken ct = default)
     {
         var root = Path.GetDirectoryName(Path.GetFullPath(solution.FilePath ?? solutionPath)) ?? ".";
-        var projects = solution.Projects.Where(p => p.Language == LanguageNames.CSharp && !IsTestProject(p)).ToList();
+        var projects = SystemProjects(solution, solutionPath);
         var warnings = new List<string>(loadWarnings ?? []);
         var models = await ModelCache.CreateAsync(projects, ct);
-        var resolver = ServiceResolver.Build(projects, models);
-        var walker = new CallWalker(resolver, models, new Origins(models.For), root, warnings);
+        var origins = new Origins(models.For);
+        var resolver = ServiceResolver.Build(projects, models, origins);
+        var walker = new CallWalker(resolver, models, origins, root, warnings);
+        var sites = new CallSites(projects, models);
 
-        var entries = EntryPointFinder.Find(projects, models, root, warnings);
+        var entries = EntryPointFinder.Find(projects, models, sites, root, warnings);
         if (entries.Count == 0)
-            warnings.Add("Hittade inga controllers med route-attribut. Kartan känner än så länge igen controllers ([ApiController], [HttpGet] ...), inte minimal API.");
+            warnings.Add("Hittade inga ingångar. Kartan känner igen controllers ([ApiController], [HttpGet] ...), minimal API (MapGet ...), Razor Pages och Blazor-sidor (@page).");
 
-        var stepsByAction = new Dictionary<string, IReadOnlyList<Step>>(StringComparer.Ordinal);
+        var stepsByRoots = new Dictionary<string, IReadOnlyList<Step>>(StringComparer.Ordinal);
         foreach (var entry in entries)
-        {
-            var key = Symbols.Key(entry.Action);
-            if (!stepsByAction.ContainsKey(key)) stepsByAction[key] = await walker.StepsFromAsync(entry.Action, ct);
-        }
+            if (!stepsByRoots.ContainsKey(entry.RootsKey)) stepsByRoots[entry.RootsKey] = await walker.StepsFromAsync(entry.Roots, ct);
 
         var (matches, differences) = SpecMatcher.Match(entries, operations);
         var entryPoints = entries
             .Select(e => matches.TryGetValue(e, out var op)
-                ? new EntryPoint(e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByAction[Symbols.Key(e.Action)])
-                : new EntryPoint(e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByAction[Symbols.Key(e.Action)]))
+                ? new EntryPoint(e.Kind, e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey])
+                : new EntryPoint(e.Kind, e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey]))
             .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Path, StringComparer.Ordinal)
             .ThenBy(e => Array.IndexOf(MethodOrder, e.Method) is var i and >= 0 ? i : MethodOrder.Length).ThenBy(e => e.Method, StringComparer.Ordinal)
             .ThenBy(e => e.Handler, StringComparer.Ordinal)
             .ToList();
 
+        // En app utan någon sort (inga ingångar) är bara ett bibliotek som råkar använda WebApplication.
+        var apps = AppFinder.Find(projects, solution, models, resolver, sites, entries, walker.Integrations).Where(a => a.Kinds.Count > 0).ToList();
+        // Appens HTTP-klient pekar på ett projekt i solutionen: integrationen får veta vilket.
+        var targets = apps.SelectMany(a => a.HttpClients).Where(c => c.TargetProject is not null)
+            .GroupBy(c => c.IntegrationId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().TargetProject, StringComparer.Ordinal);
+        var integrations = walker.Integrations.Values
+            .Select(i => targets.TryGetValue(i.Id, out var target) ? i with { TargetProject = target } : i)
+            .OrderBy(i => i.Kind).ThenBy(i => i.Name, StringComparer.Ordinal).ThenBy(i => i.Id, StringComparer.Ordinal).ToList();
+
         warnings.AddRange(resolver.Warnings);
         return new CodeMapModel(
             solutionPath,
             ProjectOrder(entryPoints),
-            walker.Integrations.Values.OrderBy(i => i.Kind).ThenBy(i => i.Name, StringComparer.Ordinal).ThenBy(i => i.Id, StringComparer.Ordinal).ToList(),
+            integrations,
             entryPoints,
+            apps,
             differences,
             warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList());
     }
@@ -61,6 +70,29 @@ public static class CodeMapper
     private static string Relative(string warning, string root) =>
         warning.Replace(root + Path.DirectorySeparatorChar, "", StringComparison.OrdinalIgnoreCase)
                .Replace(root.Replace('\\', '/') + "/", "", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Systemets projekt: de som står i solutionsfilen (eller det enda projektet om ett .csproj öppnades), utom testprojekt, och
+    /// allt de refererar. Projekt som MSBuild läser in bara för att ett testprojekt refererar dem hör inte till systemet.
+    /// Utan solutionsfil (kod i minnet) räknas alla projekt som listade.
+    /// </summary>
+    private static List<Project> SystemProjects(Solution solution, string solutionPath)
+    {
+        var file = Path.GetFullPath(solution.FilePath ?? solutionPath);
+        var listed = File.Exists(file) ? SolutionFile.ProjectPaths(file).ToHashSet(StringComparer.OrdinalIgnoreCase) : null;
+        bool IsSystem(Project p) => p.Language == LanguageNames.CSharp && !IsTestProject(p);
+
+        var seen = new HashSet<ProjectId>();
+        var pending = new Stack<Project>(solution.Projects.Where(p => IsSystem(p) && (listed is null || (p.FilePath is not null && listed.Contains(p.FilePath)))));
+        while (pending.Count > 0)
+        {
+            var project = pending.Pop();
+            if (!seen.Add(project.Id)) continue;
+            foreach (var reference in project.ProjectReferences)
+                if (solution.GetProject(reference.ProjectId) is { } referenced && IsSystem(referenced)) pending.Push(referenced);
+        }
+        return solution.Projects.Where(p => seen.Contains(p.Id)).ToList();
+    }
 
     /// <summary>Testprojekt (NUnit, xUnit, MSTest) hoppas över: deras kod är inte en del av systemet.</summary>
     private static bool IsTestProject(Project project) =>

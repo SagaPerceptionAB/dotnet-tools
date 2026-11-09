@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 using ClosedXML.Excel;
+using Microsoft.OpenApi;
 using TestGen.Core;
 using TestGen.Core.Run;
 
@@ -171,7 +172,7 @@ public class PlainLanguageTests
         foreach (var code in new[] { 401, 403 })
         {
             var t = PlainLanguage.Explain(Case(CaseMeta.Valid), Res(code, false));
-            Assert.That(t.Hint, Does.Contain("--token").And.Contain("Miljöer"));
+            Assert.That(t.Hint, Does.Contain("--token").And.Contain("testgen.yaml"));
         }
     }
 
@@ -186,8 +187,25 @@ public class PlainLanguageTests
     [Test]
     public void GET_returning_404_means_the_created_item_was_not_found()
     {
-        var t = PlainLanguage.Explain(Case(CaseMeta.Valid, "Hämta order", "getOrder", "GET"), Res(404, false));
+        var prepared = new Exchange("POST", "http://x/orders", new Dictionary<string, string>(), null, 201, null, 1, Preparation: "createOrder");
+        var t = PlainLanguage.Explain(Case(CaseMeta.Valid, "Hämta order", "getOrder", "GET"), Res(404, false) with { Exchanges = [prepared] });
         Assert.That(t.Hint, Is.EqualTo("Det som skapades hittades inte när vi sökte efter det."));
+    }
+
+    [Test]
+    public void GET_returning_404_without_a_preparing_call_does_not_claim_anything_was_created()
+    {
+        var t = PlainLanguage.Explain(Case(CaseMeta.Valid, "Hämta order", "getOrder", "GET"), Res(404, false));
+        Assert.That(t.Hint, Is.Null);
+    }
+
+    [Test]
+    public void Bad_request_on_valid_input_mentions_skipOperations_and_bindings_and_a_401_names_the_settings_key()
+    {
+        var bad = PlainLanguage.Explain(Case(CaseMeta.Valid), Res(400, false));
+        Assert.That(bad.Hint, Does.Contain("skipOperations").And.Contain("bindings").And.Contain("testgen.yaml"));
+        var auth = PlainLanguage.Explain(Case(CaseMeta.Valid), Res(401, false));
+        Assert.That(auth.Hint, Does.Contain("environments.<miljö>.apis.<api>.token").And.Contain("--token för testgen run"));
     }
 
     // --- Svarskontroll ---------------------------------------------------------------------
@@ -206,17 +224,17 @@ public class PlainLanguageTests
     public void The_response_check_translates_real_detail_lines_from_the_checks()
     {
         // Radformaten kommer från ResponseSchemaCheck och BodyMatcher; ändras de här måste översättningen följa med.
-        var schema = new Microsoft.OpenApi.Models.OpenApiSchema
+        var schema = new OpenApiSchema
         {
-            Type = "object",
-            Properties = { ["sku"] = new() { Type = "string", Pattern = "^[A-Z]{3}$" } },
+            Type = JsonSchemaType.Object,
+            Properties = new Dictionary<string, IOpenApiSchema> { ["sku"] = new OpenApiSchema { Type = JsonSchemaType.String, Pattern = "^[A-Z]{3}$" } },
         };
         var broken = ResponseSchemaCheck.Check(JsonNode.Parse("{\"sku\":\"abc\"}"), schema).Errors.Single();
         Assert.That(PlainLanguage.DetailSentence(broken), Is.EqualTo("Systemet svarade med sku = \"abc\", men specen säger att den ska följa ^[A-Z]{3}$."));
 
         var body = JsonNode.Parse("{\"quantity\":2,\"ordernr\":\"X1\"}");
         var want = new[] { KeyValuePair.Create<string, JsonNode?>("quantity", JsonValue.Create(5)), KeyValuePair.Create<string, JsonNode?>("kund", JsonValue.Create("a")) };
-        var lines = TestGen.Scenarios.BodyMatcher.Mismatches(want, body).Concat(TestGen.Scenarios.BodyMatcher.RegexMismatches(new[]
+        var lines = TestGen.Core.Run.BodyMatcher.Mismatches(want, body).Concat(TestGen.Core.Run.BodyMatcher.RegexMismatches(new[]
             { KeyValuePair.Create("ordernr", "^ORD-\\d{6}$"), KeyValuePair.Create("saknas", "x") }, body)).Select(PlainLanguage.DetailSentence).ToList();
         Assert.That(lines, Is.EqualTo(new[]
         {
@@ -400,7 +418,7 @@ public class CaseMetaTests
     [Test]
     public void Generated_cases_have_rule_field_limit_and_sent_value()
     {
-        var gen = new ScenarioGenerator(OpenApiLoader.Load(Spec()), new TestGenConfig { Seed = 1 });
+        var gen = new ScenarioGenerator(OpenApiLoader.Load(Spec()), new GeneratorOptions { Seed = 1 });
         CaseMeta M(string op, string name) => gen.GenerateCases(Op(op)).Single(c => c.Scenario.Name == $"{op}_{name}").Meta;
 
         Assert.That(M("createOrder", "valid"), Is.EqualTo(CaseMeta.Valid));
@@ -421,13 +439,13 @@ public class CaseMetaTests
     }
 
     [Test]
-    public void Scenario_files_are_not_affected_by_the_metadata()
+    public void Scenarios_are_not_affected_by_the_metadata()
     {
-        var gen = new ScenarioGenerator(OpenApiLoader.Load(Spec()), new TestGenConfig { Seed = 1 });
+        var gen = new ScenarioGenerator(OpenApiLoader.Load(Spec()), new GeneratorOptions { Seed = 1 });
         var op = Op("createOrder");
-        var json = TestGen.Scenarios.ScenarioJson.Serialize(gen.Generate(op));
+        var json = System.Text.Json.JsonSerializer.Serialize(gen.Generate(op));
         Assert.That(json, Does.Not.Contain("meta").And.Not.Contain("rule").And.Not.Contain("limit"));
-        Assert.That(TestGen.Scenarios.ScenarioJson.Serialize(gen.GenerateCases(op).Select(c => c.Scenario)), Is.EqualTo(json));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(gen.GenerateCases(op).Select(c => c.Scenario).ToList()), Is.EqualTo(json));
     }
 }
 
@@ -464,11 +482,17 @@ public class PlainRunTests
 
     private static async Task<(string Output, List<TestOutcome> Outcomes)> Run(bool plainText, string only = "createOrder", bool failCustomers = false)
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var seen = new List<TestOutcome>();
         var runner = new TestRunner(new RunOptions
         {
-            Spec = Spec(), Api = "http://fake.test", Token = Token, Only = only, Seed = 1, PlainText = plainText, OnResult = seen.Add,
+            Spec = Spec(),
+            Api = "http://fake.test",
+            Token = Token,
+            Only = only,
+            Seed = 1,
+            PlainText = plainText,
+            OnResult = seen.Add,
         }, sw, new Api(failCustomers));
         await runner.RunAsync();
         Assert.That(runner.Outcomes, Is.EqualTo(seen));
@@ -542,7 +566,7 @@ public class PlainRunTests
             ExcelTemplate.Create(OpenApiLoader.Load(Spec()), xlsx);
             using (var wb = new XLWorkbook(xlsx))
             {
-                var ws = wb.Worksheet(ExcelScenarioReader.SheetName);
+                var ws = wb.Worksheet(ExcelLayout.SheetName);
                 foreach (var r in ws.RowsUsed().Skip(1).ToList()) r.Clear();
                 string[][] rows =
                 {
@@ -555,8 +579,8 @@ public class PlainRunTests
                 wb.Save();
             }
             var seen = new List<TestOutcome>();
-            await new TestRunner(new RunOptions { Spec = Spec(), Api = "http://fake.test", Only = "getOrder", Excel = xlsx, Seed = 1, OnResult = seen.Add },
-                new StringWriter(), new Api()).RunAsync();
+            await new TestRunner(new RunOptions { Spec = Spec(), Api = "http://fake.test", Only = "getOrder", Excel = xlsx, Source = new ExcelTestSource(), Seed = 1, OnResult = seen.Add },
+                new StringWriter { NewLine = "\n" }, new Api()).RunAsync();
             var steps = seen.Where(s => s.Test.Step is not null).ToList();
             Assert.That(steps.Select(s => s.Text.Title), Is.EqualTo(new[] { "Flöde, steg 1: Skapa kund", "Flöde, steg 2: Skapa order", "Flöde, steg 3: Hämta order" }));
             Assert.That(steps[0].Text.Explanation, Does.Contain("Systemet svarade 201 – skapad, som förväntat."));

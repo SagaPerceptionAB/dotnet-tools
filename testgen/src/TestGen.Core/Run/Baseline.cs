@@ -21,7 +21,7 @@ public sealed record CompareItem(string Id, string Key, string Title, FailureCau
 }
 
 /// <summary>
-/// Jämförelsen mellan den här körningen och en tidigare JSON-rapport (--jamfor). Tester matchas på stabil nyckel, inte på T-id.
+/// Jämförelsen mellan den här körningen och en tidigare JSON-rapport (--baseline). Tester matchas på stabil nyckel, inte på T-id.
 /// </summary>
 /// <param name="File">Filen som jämförelsen gjordes mot (som angiven).</param>
 /// <param name="StartedAt">När förra körningen startade (ISO 8601 ur filen), om den anges.</param>
@@ -52,14 +52,26 @@ public sealed record BaselineComparison(string File, string? StartedAt, int? See
     public string Heading => $"Jämförelse med {File}" + (StartedAt is null ? "" : $" (körd {StartedAt})");
 }
 
-/// <summary>De stabila nycklarna som tester matchas på mellan körningar: operationId + regel + fält (genererade) eller operationId + scenario + steg (Excel).</summary>
+/// <summary>
+/// De stabila nycklarna som tester matchas på mellan körningar: <c>api:&lt;operationId&gt;:&lt;regel&gt;:&lt;fält&gt;</c> (t.ex. <c>api:createProduct:missing:name</c>)
+/// och <c>api:&lt;operationId&gt;:excel:&lt;scenario&gt;:&lt;steg&gt;</c> för Excel. Saknas operationId används metod och normaliserad sökväg (<c>api:get/products/{id}:valid</c>).
+/// </summary>
 public static class TestKeys
 {
     /// <summary>Nyckeln utan löpnummer. Hör samma test ihop får det samma nyckel även om T-id:t ändrats.</summary>
-    public static string Base(string operationId, string rule, string? field, string? scenario, int? step) =>
+    public static string Base(string operation, string rule, string? field, string? scenario, int? step) =>
         rule == "excel"
-            ? $"{operationId}|excel|{scenario}|{step}"
-            : $"{operationId}|{rule}|{field}";
+            ? $"api:{operation}:excel:{scenario}:{step}"
+            : field is null ? $"api:{operation}:{rule}" : $"api:{operation}:{rule}:{field}";
+
+    /// <summary>operationId, annars metod och sökväg i gemener utan avslutande snedstreck (<c>post/orders</c>).</summary>
+    public static string Operation(TestInfo info)
+    {
+        if (info.OperationId.Length > 0) return info.OperationId;
+        var space = info.Call.IndexOf(' ');
+        var path = space > 0 ? info.Call[(space + 1)..] : "";
+        return (info.Method + "/" + path.Trim('/')).ToLowerInvariant().TrimEnd('/');
+    }
 
     /// <summary>Gör nycklarna unika: ett andra test med samma nyckel får suffixet #2 (i körordning).</summary>
     public static List<string> Unique(IEnumerable<string> baseKeys)
@@ -74,30 +86,32 @@ public static class TestKeys
         return result;
     }
 
-    /// <summary>Regelkoden i JSON: valid, required, minimum, maximum, minLength, maxLength, enum, type, pattern eller excel.</summary>
+    /// <summary>Regelkoden i JSON och i nyckeln: valid, missing, below-minimum, above-maximum, too-short, too-long, not-in-enum, wrong-type, pattern-mismatch, bad-format, empty, too-few-items, too-many-items, excel eller unknown.</summary>
     public static string RuleCode(TestInfo info) => info.Step is not null ? "excel" : info.Case is null ? "unknown" : info.Case.Rule switch
     {
         TestRule.Valid => "valid",
-        TestRule.Missing => "required",
-        TestRule.BelowMinimum => "minimum",
-        TestRule.AboveMaximum => "maximum",
-        TestRule.TooLong => "maxLength",
-        TestRule.TooShort => "minLength",
-        TestRule.NotInEnum => "enum",
-        TestRule.WrongType => "type",
-        TestRule.PatternMismatch => "pattern",
+        TestRule.Missing => "missing",
+        TestRule.BelowMinimum => "below-minimum",
+        TestRule.AboveMaximum => "above-maximum",
+        TestRule.TooLong => "too-long",
+        TestRule.TooShort => "too-short",
+        TestRule.NotInEnum => "not-in-enum",
+        TestRule.WrongType => "wrong-type",
+        TestRule.PatternMismatch => "pattern-mismatch",
+        TestRule.BadFormat => "bad-format",
+        TestRule.Empty => "empty",
+        TestRule.TooFewItems => "too-few-items",
+        TestRule.TooManyItems => "too-many-items",
         _ => "unknown",
     };
 
     public static string BaseOf(TestInfo info) =>
-        info.OperationId.Length == 0
-            ? $"{info.Call}|{info.Description}"   // test utan strukturerad info: den tekniska raden får duga
-            : Base(info.OperationId, RuleCode(info), info.Case?.Field, info.Step?.Scenario, info.Step?.Number);
+        info.Key ?? Base(Operation(info), RuleCode(info), info.Case?.Field, info.Step?.Scenario, info.Step?.Number);
 
     public static List<string> For(IEnumerable<TestInfo> infos) => Unique(infos.Select(BaseOf));
 }
 
-/// <summary>En tidigare körning inläst ur en JSON-rapport (--jamfor).</summary>
+/// <summary>En tidigare körning inläst ur en JSON-rapport (--baseline).</summary>
 public sealed class Baseline
 {
     private sealed record Old(string Id, string Key, string Outcome);
@@ -117,44 +131,35 @@ public sealed class Baseline
     {
         var full = Path.GetFullPath(path);
         if (!System.IO.File.Exists(full))
-            throw new UsageException($"Hittar inte filen att jämföra med (--jamfor): {full}",
+            throw new UsageException($"Hittar inte filen att jämföra med (--baseline): {full}",
                 "Ange en JSON-rapport från en tidigare körning. Skapa en med --report resultat.json och spara den (t.ex. som artefakt i CI).");
         string text;
         try { text = System.IO.File.ReadAllText(full, Encoding.UTF8); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new UsageException($"Kan inte läsa filen att jämföra med (--jamfor): {full}", "Kontrollera att filen finns och att du får läsa den.", e.Message);
+            throw new UsageException($"Kan inte läsa filen att jämföra med (--baseline): {full}", "Kontrollera att filen finns och att du får läsa den.", e.Message);
         }
         JsonNode? root;
         try { root = JsonNode.Parse(text); }
         catch (JsonException e)
         {
             throw new UsageException($"{full} är ingen JSON-rapport från testgen (filen är inte giltig JSON).",
-                "--jamfor vill ha en rapport som skrevs med --report resultat.json. Ange rätt fil.", e.Message);
+                "--baseline vill ha en rapport som skrevs med --report resultat.json. Ange rätt fil.", e.Message);
         }
         if (root is not JsonObject obj || obj["schemaVersion"] is null || obj["tests"] is not JsonArray tests)
             throw new UsageException($"{full} ser inte ut som en JSON-rapport från testgen (fälten schemaVersion och tests saknas).",
-                "--jamfor vill ha en rapport som skrevs med --report resultat.json (inte .html, .xlsx eller .xml). Ange rätt fil.");
+                "--baseline vill ha en rapport som skrevs med --report resultat.json (inte .html, .xlsx eller .xml). Ange rätt fil.");
         var version = obj["schemaVersion"]!.GetValueKind() == JsonValueKind.Number ? (int?)obj["schemaVersion"]!.GetValue<double>() : null;
         if (version != JsonResult.SchemaVersion)
             throw new UsageException($"{full} har schemaVersion {obj["schemaVersion"]}, men den här versionen av testgen läser schemaVersion {JsonResult.SchemaVersion}.",
                 "Kör om den gamla körningen med den här versionen av testgen och jämför mot den nya rapporten, eller använd samma version av testgen i båda körningarna.");
 
         var byKey = new Dictionary<string, Old>();
-        var rows = new List<(string Id, string Base, string? Key, string Outcome)>();
         foreach (var t in tests.OfType<JsonObject>())
         {
-            var id = Str(t, "id") ?? "";
-            var op = Str(t, "operationId") ?? "";
-            var rule = Str(t, "rule") ?? "";
-            var b = op.Length == 0 ? $"{Str(t, "call")}|{Str(t, "name")}" : TestKeys.Base(op, rule, Str(t, "field"), Str(t, "scenario"), t["step"] is JsonValue sv && sv.TryGetValue<int>(out var sn) ? sn : null);
-            rows.Add((id, b, Str(t, "key"), Str(t, "outcome") ?? ""));
-        }
-        var keys = TestKeys.Unique(rows.Select(r => r.Base));
-        for (var i = 0; i < rows.Count; i++)
-        {
-            var key = rows[i].Key ?? keys[i];   // nyckeln i filen är den som skrevs; saknas den räknas den ut på samma sätt
-            byKey[key] = new Old(rows[i].Id, key, rows[i].Outcome);
+            var key = Str(t, "key") ?? throw new UsageException($"{full} saknar nyckeln key på ett test.",
+                "--baseline vill ha en rapport som skrevs med den här versionen av testgen (--report resultat.json).");
+            byKey[key] = new Old(Str(t, "id") ?? "", key, Str(t, "outcome") ?? "");
         }
         return new Baseline(path, Str(obj, "startedAt"), obj["seed"] is JsonValue s && s.TryGetValue<int>(out var seed) ? seed : null, byKey);
     }
@@ -175,10 +180,10 @@ public sealed class Baseline
             _byKey.TryGetValue(key, out var old);
             var prevId = old is not null && old.Id != o.Id && old.Id.Length > 0 ? old.Id : null;
             var item = new CompareItem(o.Id, key, o.Text.Title, o.Cause, prevId);
-            if (o.Outcome == "FEL") (old?.Outcome == "FEL" ? persisting : newFailures).Add(item);
-            else if (o.Outcome == "OK" && old?.Outcome == "FEL") fixedNow.Add(item);
+            if (o.Outcome == "FEL") (old?.Outcome == "failed" ? persisting : newFailures).Add(item);
+            else if (o.Outcome == "OK" && old?.Outcome == "failed") fixedNow.Add(item);
         }
-        var unverified = _byKey.Values.Count(v => v.Outcome == "FEL" && !current.Where((o, i) => keys[i] == v.Key && o.Outcome == "OK").Any()
+        var unverified = _byKey.Values.Count(v => v.Outcome == "failed" && !current.Where((o, i) => keys[i] == v.Key && o.Outcome == "OK").Any()
                                                   && !current.Where((o, i) => keys[i] == v.Key && o.Outcome == "FEL").Any());
         return new BaselineComparison(File, StartedAt, Seed, newFailures, fixedNow, persisting, unverified);
     }

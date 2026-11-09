@@ -14,24 +14,34 @@
     <Project Path="systemmap/src/SystemMap.Cli/SystemMap.Cli.csproj" />
   </Folder>
   <Folder Name="/tools/testgen/">
-    <Project Path="testgen/src/TestGen.Scenarios/TestGen.Scenarios.csproj" />
     <Project Path="testgen/src/TestGen.Cli/TestGen.Cli.csproj" />
     <Project Path="testgen/src/TestGen.Core/TestGen.Core.csproj" />
+    <Project Path="testgen/src/TestGen.Excel/TestGen.Excel.csproj" />
+    <Project Path="testgen/src/SagaPerception.Testing.NUnit/SagaPerception.Testing.NUnit.csproj" />
+    <Project Path="testgen/src/TestGen.Browser/TestGen.Browser.csproj" />
+    <Project Path="testgen/src/TestGen.Mock/TestGen.Mock.csproj" />
+    <Project Path="testgen/src/TestGen.Views/TestGen.Views.csproj" />
   </Folder>
-  <Folder Name="/tools/uitestgen/">
-    <Project Path="uitestgen/src/UiTestGen/UiTestGen.csproj" />
-    <Project Path="uitestgen/src/UiTestGen.Cli/UiTestGen.Cli.csproj" />
+  <Folder Name="/tools/testing/">
+    <Project Path="testing/src/SagaPerception.Testing/SagaPerception.Testing.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/Shop.Tests/Shop.Tests.csproj" />
     <Project Path="samples/ShopApi/ShopApi.csproj" />
     <Project Path="samples/ShopApplication/ShopApplication.csproj" />
     <Project Path="samples/ShopInfrastructure/ShopInfrastructure.csproj" />
     <Project Path="samples/ShopWeb/ShopWeb.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="shared/tests/CommandLine.Tests/CommandLine.Tests.csproj" />
     <Project Path="systemmap/tests/SystemMap.Tests/SystemMap.Tests.csproj" />
-    <Project Path="testgen/tests/Api.Tests/Api.Tests.csproj" />
+    <Project Path="testing/tests/SagaPerception.Testing.Tests/SagaPerception.Testing.Tests.csproj" />
+    <Project Path="testing/tests/TestApi/TestApi.csproj" />
+    <Project Path="tests/Repository.Tests/Repository.Tests.csproj" />
+    <Project Path="testgen/tests/TestGen.Browser.Tests/TestGen.Browser.Tests.csproj" />
+    <Project Path="testgen/tests/TestGen.Mock.Tests/TestGen.Mock.Tests.csproj" />
+    <Project Path="testgen/tests/SagaPerception.Testing.NUnit.Tests/SagaPerception.Testing.NUnit.Tests.csproj" />
+    <Project Path="testgen/tests/TestGen.Views.Tests/TestGen.Views.Tests.csproj" />
     <Project Path="testgen/tests/TestGen.Tests/TestGen.Tests.csproj" />
-    <Project Path="uitestgen/tests/UiTestGen.Tests/UiTestGen.Tests.csproj" />
   </Folder>
 </Solution>

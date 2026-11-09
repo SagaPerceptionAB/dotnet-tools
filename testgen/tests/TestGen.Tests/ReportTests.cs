@@ -207,7 +207,7 @@ public class ReportWriterTests : IDisposable
         Assert.That(html, Does.Contain("Vi skickade quantity = 0, men minsta tillåtna är 1."));
         Assert.That(html, Does.Contain("<strong>Tolkning:</strong> Det tyder på ett fel i systemet, inte i testet."));
         Assert.That(html, Does.Contain("Hoppades över eftersom ett tidigare steg i flödet misslyckades."));
-        Assert.That(html, Does.Contain("etikett fel\">FEL").And.Contain("etikett ok\">OK"));
+        Assert.That(html, Does.Contain("badge failed\">FEL").And.Contain("badge passed\">OK"));
         // Tekniken ligger efter klartexten, inom "Tekniska detaljer".
         var t2 = html[html.IndexOf("id=\"T-002\"", StringComparison.Ordinal)..];
         Assert.That(t2.IndexOf("Vi skickade quantity", StringComparison.Ordinal), Is.LessThan(t2.IndexOf("Tekniska detaljer", StringComparison.Ordinal)));
@@ -220,12 +220,12 @@ public class ReportWriterTests : IDisposable
     {
         var entries = Entries().Select(e => e with { Group = e.Outcome == "FEL" ? "Grupp med fel" : "Grupp utan fel" }).ToList();
         var html = WebUtility.HtmlDecode(ReportWriter.Html(Info, entries, Mask));
-        Assert.That(html, Does.Contain("<button type=\"button\" id=\"bara-fel\" aria-pressed=\"false\">Visa bara FEL"));
+        Assert.That(html, Does.Contain("<button type=\"button\" id=\"only-failed\" aria-pressed=\"false\">Visa bara FEL"));
         Assert.That(html, Does.Not.Contain("type=\"checkbox\"").And.Not.Contain("left:-9999px"));
-        Assert.That(html, Does.Contain("id=\"verktyg\" hidden"), "knappen visas bara med JavaScript");
-        Assert.That(html, Does.Contain("<section class=\"grupp utan-fel\"").And.Contain("<section class=\"grupp\""));
-        Assert.That(html, Does.Contain("body.bara-fel .grupp.utan-fel{display:none}"));
-        Assert.That(html.IndexOf("id=\"bara-fel\"", StringComparison.Ordinal), Is.LessThan(html.IndexOf("<h2 id=\"grupp-1\">", StringComparison.Ordinal)),
+        Assert.That(html, Does.Contain("id=\"toolbar\" hidden"), "knappen visas bara med JavaScript");
+        Assert.That(html, Does.Contain("<section class=\"group no-failures\"").And.Contain("<section class=\"group\""));
+        Assert.That(html, Does.Contain("body.only-failed .group.no-failures{display:none}"));
+        Assert.That(html.IndexOf("id=\"only-failed\"", StringComparison.Ordinal), Is.LessThan(html.IndexOf("<h2 id=\"group-1\">", StringComparison.Ordinal)),
             "knappen ligger före grupperna i tabbordningen");
     }
 
@@ -235,7 +235,7 @@ public class ReportWriterTests : IDisposable
         var html = WebUtility.HtmlDecode(ReportWriter.Html(Info, Entries(), Mask));
         Assert.That(html, Does.Contain("<title>Testrapport – 1 fel i systemet, 1 kunde inte köras färdigt – 2026-11-01</title>"));
         Assert.That(html, Does.Contain("<a href=\"#T-002\">T-002 – Skapa order – quantity för lågt (under minimum)</a>"));
-        Assert.That(html, Does.Contain("<summary>Tekniska detaljer<span class=\"endast-skarmlasare\"> för T-002</span></summary>"));
+        Assert.That(html, Does.Contain("<summary>Tekniska detaljer<span class=\"sr-only\"> för T-002</span></summary>"));
         Assert.That(html, Does.Contain("<html lang=\"sv\">").And.Contain("<header>").And.Contain("<main>"));
         Assert.That(html, Does.Contain("@media print").And.Contain(":focus-visible{outline:3px").And.Contain("@media (max-width:480px)"));
         var h = System.Text.RegularExpressions.Regex.Matches(html, @"<h([1-6])[ >]").Select(m => int.Parse(m.Groups[1].Value)).ToList();
@@ -406,7 +406,7 @@ public class ReportWriterTests : IDisposable
         using var wb = new XLWorkbook(path);
         var ws = wb.Worksheet("Resultat");
         var cut = ws.Cell(2, 14).GetString();
-        Assert.That(cut.Length, Is.LessThanOrEqualTo(ReportWriter.FullResponseMax));
+        Assert.That(cut.Length, Is.LessThanOrEqualTo(ExcelReportFormat.FullResponseMax));
         Assert.That(cut, Does.Match(@"… \(avkortat, \d+ tecken totalt\)$"));
         Assert.That(ws.Cell(2, 12).GetString(), Does.Contain("hela svaret finns i kolumnen Svar (hela)"));
         var whole = ws.Cell(3, 14).GetString();
@@ -495,10 +495,16 @@ public class RunnerWithFakeApiTests : IDisposable
 
     private async Task<(int Exit, string Output)> Run(bool verbose = false, string? report = null, string? only = "createOrder")
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var exit = await new TestRunner(new RunOptions
         {
-            Spec = Spec(), Api = "http://fake.test", Token = Token, Only = only, Seed = 1, Verbose = verbose, ReportPath = report,
+            Spec = Spec(),
+            Api = "http://fake.test",
+            Token = Token,
+            Only = only,
+            Seed = 1,
+            Verbose = verbose,
+            ReportPath = report,
         }, sw, new FakeApi()).RunAsync();
         return (exit, sw.ToString());
     }
@@ -556,7 +562,7 @@ public class RunnerWithFakeApiTests : IDisposable
         var path = Path.Combine(_dir, "ny katalog", "r.html");
         var (exit, output) = await Run(report: path);
         Assert.That(exit, Is.EqualTo(1));
-        Assert.That(output, Does.Contain("Rapport skriven: " + path));
+        Assert.That(output, Does.Contain($"Skrev {Terminal.Relative(path)} (HTML-rapport)"));
         var html = File.ReadAllText(path);
         Assert.That(html, Does.Contain("T-0").And.Contain("FEL").And.Contain("curl -X POST"));
         Assert.That(html, Does.Not.Contain(Token));

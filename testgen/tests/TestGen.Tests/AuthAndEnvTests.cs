@@ -1,7 +1,7 @@
-using ClosedXML.Excel;
 using TestGen.Cli;
 using TestGen.Core;
 using TestGen.Core.Run;
+using TestGen.Core.Settings;
 
 namespace TestGen.Tests;
 
@@ -103,7 +103,9 @@ public class HeaderMaskTests
     {
         var masked = HeaderMask.Default.Mask(new Dictionary<string, string>
         {
-            ["authorization"] = "Bearer hemlig", ["Cookie"] = "s=1", ["X-Env"] = "test",
+            ["authorization"] = "Bearer hemlig",
+            ["Cookie"] = "s=1",
+            ["X-Env"] = "test",
         });
         Assert.That(masked["Authorization"], Is.EqualTo("Bearer ***"));
         Assert.That(masked["Cookie"], Is.EqualTo("***"));
@@ -158,47 +160,45 @@ public class RunSettingsTests : IDisposable
 
     private static string? Env(string n) => n == "T" ? "hemlig" : null;
 
-    private string Workbook(bool withSheet = true, params string[][] rows)
+    private const string Yaml = """
+        environments:
+          local:
+            apis:
+              ShopApi:
+                url: http://localhost:5080
+                headers: { X-Env: local }
+                token: ${env:T}
+                timeout: 5
+          test:
+            readOnly: true
+            apis:
+              ShopApi: { url: "https://test.example.se" }
+        """;
+
+    private TestEnvironment Environment(string name, string yaml = Yaml)
     {
-        var path = Path.Combine(_dir, "t.xlsx");
-        using var wb = new XLWorkbook();
-        wb.AddWorksheet("Tester").Cell(1, 1).Value = "Scenario";
-        if (withSheet)
-        {
-            var ws = wb.AddWorksheet("Miljöer");
-            string[] heads = { "Miljö", "Inställning", "Värde" };
-            for (var c = 0; c < 3; c++) ws.Cell(1, c + 1).Value = heads[c];
-            for (var r = 0; r < rows.Length; r++)
-                for (var c = 0; c < 3; c++) ws.Cell(r + 2, c + 1).Value = rows[r][c];
-        }
-        wb.SaveAs(path);
-        return path;
+        var path = Path.Combine(_dir, "testgen.yaml");
+        File.WriteAllText(path, yaml);
+        return TestGenSettings.LoadFile(path).Environment(name, Env);
     }
 
-    private static readonly string[][] Rows =
-    {
-        new[] { "lokal", "api", "http://localhost:5080" },
-        new[] { "lokal", "header", "X-Env: lokal" },
-        new[] { "lokal", "token", "${env:T}" },
-        new[] { "lokal", "timeout", "5" },
-        new[] { "test", "api", "https://test.example.se" },
-    };
-
     [Test]
-    public void Reads_environment_from_the_sheet()
+    public void Reads_the_environment_for_the_project()
     {
-        var s = RunSettings.Resolve(null, Array.Empty<string>(), null, null, Workbook(true, Rows), "LOKAL", Env);
+        var s = RunSettings.Resolve(null, Array.Empty<string>(), null, null, Environment("LOCAL"), "ShopApi", getEnv: Env);
         Assert.That(s.Api, Is.EqualTo("http://localhost:5080"));
-        Assert.That(s.Headers["x-env"], Is.EqualTo("lokal"));
+        Assert.That(s.Headers["x-env"], Is.EqualTo("local"));
         Assert.That(s.Token, Is.EqualTo("hemlig"));
         Assert.That(s.TimeoutSeconds, Is.EqualTo(5));
-        Assert.That(s.EnvName, Is.EqualTo("lokal"));
+        Assert.That(s.EnvName, Is.EqualTo("local"));
+        Assert.That(s.ReadOnly, Is.False);
+        Assert.That(RunSettings.Resolve(null, Array.Empty<string>(), null, null, Environment("test"), "ShopApi", getEnv: Env).ReadOnly, Is.True);
     }
 
     [Test]
     public void Command_line_wins_over_the_environment()
     {
-        var s = RunSettings.Resolve("http://annan:1", new[] { "x-env: cli" }, "cli-token", "9", Workbook(true, Rows), "lokal", Env);
+        var s = RunSettings.Resolve("http://annan:1", new[] { "x-env: cli" }, "cli-token", "9", Environment("local"), "ShopApi", getEnv: Env);
         Assert.That(s.Api, Is.EqualTo("http://annan:1"));
         Assert.That(s.Headers["X-Env"], Is.EqualTo("cli"));
         Assert.That(s.Token, Is.EqualTo("cli-token"));
@@ -206,49 +206,32 @@ public class RunSettingsTests : IDisposable
     }
 
     [Test]
-    public void Unknown_environment_lists_the_available_ones()
+    public void The_local_address_is_used_only_in_the_local_environment()
     {
+        var local = TestGenSettings.Defaults.Environment("local", Env);
+        Assert.That(RunSettings.Resolve(null, Array.Empty<string>(), null, null, local, "ShopApi", "http://localhost:5080").Api, Is.EqualTo("http://localhost:5080"));
         var e = Assert.Throws<ArgumentException>(() =>
-            RunSettings.Resolve(null, Array.Empty<string>(), null, null, Workbook(true, Rows), "prod", Env))!;
-        Assert.That(e.Message, Does.Contain("prod").And.Contain("lokal").And.Contain("test"));
+            RunSettings.Resolve(null, Array.Empty<string>(), null, null, Environment("test", "environments: { test: {} }"), "ShopApi", "http://localhost:5080"))!;
+        Assert.That(e.Message, Does.StartWith("API:ets adress saknas").And.Contain("environments.test.apis.ShopApi.url"));
     }
 
     [Test]
-    public void Env_without_excel_gives_a_clear_error() =>
+    public void Missing_api_gives_a_clear_error() =>
         Assert.That(Assert.Throws<ArgumentException>(() =>
-            RunSettings.Resolve(null, Array.Empty<string>(), null, null, null, "lokal", Env))!.Message, Does.Contain("--excel"));
-
-    [Test]
-    public void Old_file_without_sheet_works_without_env_but_fails_with_env()
-    {
-        var path = Workbook(false);
-        Assert.That(EnvironmentSheet.Read(path), Is.Null);
-        Assert.That(RunSettings.Resolve("http://x", Array.Empty<string>(), null, null, path, null, Env).Api, Is.EqualTo("http://x"));
-        Assert.That(Assert.Throws<ArgumentException>(() =>
-            RunSettings.Resolve(null, Array.Empty<string>(), null, null, path, "lokal", Env))!.Message, Does.Contain("Miljöer"));
-    }
-
-    [Test]
-    public void Missing_api_and_unknown_setting_give_clear_errors()
-    {
-        Assert.That(Assert.Throws<ArgumentException>(() =>
-            RunSettings.Resolve(null, Array.Empty<string>(), null, null, null, null, Env))!.Message, Does.Contain("--api"));
-        var bad = Workbook(true, new[] { "lokal", "url", "x" });
-        Assert.That(Assert.Throws<ExcelValidationException>(() => EnvironmentSheet.Read(bad))!.Message, Does.Contain("Miljöer!B2 (Inställning)").And.Contain("url"));
-    }
+            RunSettings.Resolve(null, Array.Empty<string>(), null, null, TestGenSettings.Defaults.Environment("local", Env)))!.Message, Does.Contain("--api"));
 
     [Test]
     public void Missing_environment_variable_in_header_names_the_variable()
     {
         var e = Assert.Throws<ArgumentException>(() =>
-            RunSettings.Resolve("http://x", new[] { "Authorization: Bearer ${env:SAKNAS}" }, null, null, null, null, Env))!;
+            RunSettings.Resolve("http://x", new[] { "Authorization: Bearer ${env:SAKNAS}" }, null, null, TestGenSettings.Defaults.Environment("local", Env), getEnv: Env))!;
         Assert.That(e.Message, Does.Contain("SAKNAS"));
     }
 
     [Test]
     public void Header_with_env_becomes_secret_and_the_value_is_masked()
     {
-        var s = RunSettings.Resolve("http://x", new[] { "X-Custom: ${env:T}", "X-Plain: a" }, null, null, null, null, Env);
+        var s = RunSettings.Resolve("http://x", new[] { "X-Custom: ${env:T}", "X-Plain: a" }, null, null, TestGenSettings.Defaults.Environment("local", Env), getEnv: Env);
         var mask = HeaderMask.For(s.Headers, s.SecretHeaderNames);
         Assert.That(mask.Format(s.Headers), Is.EqualTo("X-Custom: ***, X-Plain: a"));
     }

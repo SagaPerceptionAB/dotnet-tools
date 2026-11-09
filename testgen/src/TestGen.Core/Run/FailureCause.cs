@@ -17,10 +17,18 @@ public enum FailureCause
     Environment,
     /// <summary>"Testdata fanns redan": 409 i testet eller i ett förberedande anrop.</summary>
     TestData,
+    /// <summary>"Testdata saknas": HOPPAD för att ett giltigt anrop med påhittade värden fick ett dokumenterat 404. Värdet måste anges i testgen.yaml (bindings).</summary>
+    MissingData,
+    /// <summary>"Testanvändaren godtogs inte": HOPPAD för att ett giltigt, inloggat anrop med testgens testanvändare fick ett dokumenterat 401 eller 403. Appen slår upp användaren själv; ange claims eller ett inloggningssteg.</summary>
+    TestUserRejected,
+    /// <summary>"För många anrop": HOPPAD för att systemet svarade 429 (för många anrop) även efter att Retry-After följts.</summary>
+    RateLimited,
     /// <summary>"Fel i testgen": verktyget kunde inte bygga eller skicka testet (internt fel, eller en bodytyp det inte stöder ännu). Säger inget om systemet.</summary>
     Tool,
     /// <summary>"Följdfel": HOPPAD, eller FEL för att ett tidigare steg/förberedande anrop föll av annan orsak.</summary>
     Cascade,
+    /// <summary>"Skrivskyddad miljö": HOPPAD för att miljön bara tillåter läsande anrop (GET, HEAD, OPTIONS). Räknas inte som fel och påverkar inte exitkoden.</summary>
+    ReadOnly,
 }
 
 /// <summary>De två varianterna av <see cref="FailureCause.Auth"/>.</summary>

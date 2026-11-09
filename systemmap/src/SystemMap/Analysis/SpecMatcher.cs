@@ -14,7 +14,9 @@ internal static class SpecMatcher
         var differences = new List<SpecDifference>();
         if (operations is null) return (matches, differences);
 
-        foreach (var entry in entries)
+        // Sidor är inga API-anrop och finns inte i specen.
+        var api = entries.Where(e => e.Kind is not (EntryKind.RazorPage or EntryKind.BlazorPage)).ToList();
+        foreach (var entry in api)
         {
             var key = RouteTemplate.Key(entry.CodePath);
             bool SameVerb(ApiOperation o) => entry.Method == "ANY" || o.Method.Equals(entry.Method, StringComparison.OrdinalIgnoreCase);
@@ -25,7 +27,7 @@ internal static class SpecMatcher
             if (candidates.Count == 1) matches[entry] = candidates[0];
         }
 
-        foreach (var entry in entries.Where(e => !matches.ContainsKey(e)))
+        foreach (var entry in api.Where(e => !matches.ContainsKey(e)))
             differences.Add(new SpecDifference(DifferenceKind.OnlyInCode, entry.Method, entry.CodePath, null, entry.Handler));
         var matched = matches.Values.ToHashSet();
         foreach (var op in operations.Where(o => !matched.Contains(o)))

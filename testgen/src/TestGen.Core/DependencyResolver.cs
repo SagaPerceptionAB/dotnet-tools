@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
-using TestGen.Scenarios;
+using TestGen.Core;
+using TestGen.Core.Run;
 
 namespace TestGen.Core;
 
@@ -14,10 +15,10 @@ public sealed class DependencyResolver
     private static readonly Regex IdField = new(@"^(.+)Id$", RegexOptions.Compiled);
 
     private readonly Dictionary<string, OperationInfo> _ops;
-    private readonly TestGenConfig _config;
+    private readonly GeneratorOptions _config;
     private readonly Dictionary<string, Dependencies> _cache = new();
 
-    public DependencyResolver(IEnumerable<OperationInfo> ops, TestGenConfig config)
+    public DependencyResolver(IEnumerable<OperationInfo> ops, GeneratorOptions config)
     {
         _ops = ops.ToDictionary(o => o.OperationId);
         _config = config;

@@ -1,20 +1,19 @@
 using System.Text.Json.Nodes;
-using Microsoft.OpenApi.Models;
-using TestGen.Scenarios;
+using Microsoft.OpenApi;
+using TestGen.Core;
+using TestGen.Core.Run;
 
 namespace TestGen.Core;
 
 public sealed class ScenarioGenerator
 {
-    private readonly TestGenConfig _config;
+    private readonly GeneratorOptions _config;
     private readonly DependencyResolver _deps;
-    private readonly FieldRules _rules;
 
-    public ScenarioGenerator(IEnumerable<OperationInfo> ops, TestGenConfig config)
+    public ScenarioGenerator(IEnumerable<OperationInfo> ops, GeneratorOptions config)
     {
         _config = config;
         _deps = new DependencyResolver(ops, config);
-        _rules = new FieldRules(config.FieldRules);
     }
 
     /// <summary>
@@ -28,7 +27,7 @@ public sealed class ScenarioGenerator
     public List<GeneratedCase> GenerateCases(OperationInfo op, int? salt = null, bool includeNegatives = true)
     {
         var seed = salt is { } s ? Fnv.OperationSeed(op.OperationId, _config.Seed, s) : Fnv.OperationSeed(op.OperationId, _config.Seed);
-        var gen = new SchemaDataGenerator(seed, _config.Locale, _rules);
+        var gen = new SchemaDataGenerator(seed, _config.Locale);
         var deps = _deps.Resolve(op.OperationId);
         _config.Overrides.TryGetValue(op.OperationId, out var overrides);
         JsonNode? Fixed(string field) =>
@@ -68,7 +67,7 @@ public sealed class ScenarioGenerator
             {
                 var obj = new JsonObject();
                 foreach (var (name, schema) in bodyProps!)
-                    if (!schema.ReadOnly) obj[name] = gen.GenerateField(name, schema, Fixed(name));
+                    if (!schema.ReadOnly) obj[name] = gen.GenerateField(name, schema, Fixed(name), owner: SchemaUtil.SchemaName(effective));
                 body = obj;
             }
             else body = gen.GenerateField("", effective);
@@ -125,11 +124,11 @@ public sealed class ScenarioGenerator
     /// Giltiga bodys för alternativ nummer 2 och framåt av varje oneOf/anyOf i bodyn (på toppnivå och i fält, högst
     /// <see cref="MaxAlternativeCases"/>). Alternativ som är objekt får sitt diskriminatorvärde (eller kind-enum) satt.
     /// </summary>
-    private static List<(string Field, string Label, JsonNode Body)> AlternativeBodies(SchemaDataGenerator gen, OpenApiSchema root, JsonNode valid)
+    private static List<(string Field, string Label, JsonNode Body)> AlternativeBodies(SchemaDataGenerator gen, IOpenApiSchema root, JsonNode valid)
     {
         var result = new List<(string, string, JsonNode)>();
 
-        void Visit(OpenApiSchema schema, List<object> path, int depth)
+        void Visit(IOpenApiSchema schema, List<object> path, int depth)
         {
             if (depth > NegativeCaseGenerator.MaxDepth || result.Count >= MaxAlternativeCases) return;
             var alts = SchemaUtil.Alternatives(schema);
@@ -165,40 +164,26 @@ public sealed class ScenarioGenerator
     }
 
     /// <summary>Sätter diskriminatorfältet till alternativets värde (ur mapping, eller alternativets namn).</summary>
-    private static void SetDiscriminator(OpenApiSchema parent, OpenApiSchema alt, JsonObject value)
+    private static void SetDiscriminator(IOpenApiSchema parent, IOpenApiSchema alt, JsonObject value)
     {
         if (parent.Discriminator?.PropertyName is not { Length: > 0 } prop) return;
-        if (SchemaUtil.Flatten(alt).Props.TryGetValue(prop, out var own) && own.Enum.Count > 0) return;   // alternativet bestämmer värdet själv
-        var id = alt.Reference?.Id;
-        var mapped = parent.Discriminator.Mapping?.FirstOrDefault(kv => kv.Value.EndsWith("/" + id, StringComparison.Ordinal) || kv.Value == id).Key;
+        if (SchemaUtil.Flatten(alt).Props.TryGetValue(prop, out var own) && own.EnumValues().Count > 0) return;   // alternativet bestämmer värdet själv
+        var id = alt.RefId();
+        var mapped = parent.Discriminator.Mapping?.FirstOrDefault(kv => kv.Value.Reference?.Id == id).Key;
         var name = mapped ?? id;
         if (name is not null) value[prop] = name;
     }
 
     /// <summary>Namn på ett alternativ: diskriminator/kind-värde, annars titel, schemanamn eller "alternativ N".</summary>
-    private static string AlternativeLabel(OpenApiSchema parent, OpenApiSchema alt, int index, JsonNode? value)
+    private static string AlternativeLabel(IOpenApiSchema parent, IOpenApiSchema alt, int index, JsonNode? value)
     {
         if (parent.Discriminator?.PropertyName is { Length: > 0 } prop && value is JsonObject o && o[prop] is JsonValue dv && dv.TryGetValue<string>(out var d)) return d;
         if (value is JsonObject obj)
             foreach (var (k, v) in SchemaUtil.Flatten(alt).Props)
-                if (v.Enum.Count == 1 && obj[k] is JsonValue ev && ev.TryGetValue<string>(out var e)) return e;
+                if (v.EnumValues().Count == 1 && obj[k] is JsonValue ev && ev.TryGetValue<string>(out var e)) return e;
         if (!string.IsNullOrWhiteSpace(alt.Title)) return alt.Title.Trim();
-        if (!string.IsNullOrWhiteSpace(alt.Reference?.Id)) return alt.Reference!.Id;
+        if (alt.RefId() is { Length: > 0 } refId) return refId;
         return $"alternativ {index + 1}";
-    }
-
-    /// <summary>Skriver en fil per endpoint (operation). Returnerar antal filer.</summary>
-    public int WriteAll(IEnumerable<OperationInfo> ops, string outDir)
-    {
-        Directory.CreateDirectory(outDir);
-        var n = 0;
-        foreach (var op in ops.Where(o => !_config.SkipOperations.Contains(o.OperationId)))
-        {
-            var file = Path.Combine(outDir, Safe(op.OperationId) + ".json");
-            File.WriteAllText(file, ScenarioJson.Serialize(Generate(op)));
-            n++;
-        }
-        return n;
     }
 
     private static string Safe(string s) => string.Concat(s.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));

@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using TestGen.Scenarios;
+using TestGen.Core;
+using TestGen.Core.Run;
 
 namespace TestGen.Core.Run;
 

@@ -1,103 +1,76 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Bogus;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 
 namespace TestGen.Core;
 
-/// <summary>
-/// Fältregler: testgen.yaml fieldRules (matchas på fältnamn, skiftlägesokänsligt, regex tillåtet)
-/// följt av inbyggda heuristiker på fältnamn.
-/// </summary>
-public sealed class FieldRules
+/// <summary>Inbyggd heuristik på fältnamn (näst sista steget), samt hjälpare som kontrollerar och kapar värden mot schemat.</summary>
+public static class FieldRules
 {
-    private static readonly Dictionary<string, Func<Faker, string>> Generators = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly (Regex Name, Func<Faker, IOpenApiSchema, string?, string?> Generate, FictionalData.Kind? Kind)[] BuiltIn =
     {
-        ["person.fullName"] = f => f.Name.FullName(),
-        ["person.firstName"] = f => f.Name.FirstName(),
-        ["person.lastName"] = f => f.Name.LastName(),
-        ["internet.email"] = f => f.Internet.Email(),
-        ["internet.userName"] = f => f.Internet.UserName(),
-        ["internet.url"] = f => f.Internet.Url(),
-        ["phone.number"] = f => f.Phone.PhoneNumber(),
-        ["address.city"] = f => f.Address.City(),
-        ["address.streetAddress"] = f => f.Address.StreetAddress(),
-        ["address.zipCode"] = f => f.Address.ZipCode(),
-        ["address.country"] = f => f.Address.Country(),
-        ["company.name"] = f => f.Company.CompanyName(),
-        ["commerce.productName"] = f => f.Commerce.ProductName(),
-        ["lorem.word"] = f => f.Lorem.Word(),
-        ["lorem.sentence"] = f => f.Lorem.Sentence(),
-        ["se.personnummer"] = SwedishPersonalNumber,
-        ["se.organisationsnummer"] = SwedishOrganizationNumber,
+        (R("personnummer|ssn|socialsecurity"), (f, s, like) => First(FictionalData.PersonnummerCandidates(f.Random, like), s), FictionalData.Kind.Personnummer),
+        (R("orgnr|orgnummer|organisationsnummer|organizationnumber|orgnumber"), (f, _, _) => OrganizationNumber(f), null),
+        (R("e-?mail"), (f, _, _) => FictionalData.Email(f), FictionalData.Kind.Email),
+        (R("phone|mobile|telefon|tel"), (f, s, like) => First(FictionalData.PhoneCandidates(f.Random, like), s), FictionalData.Kind.Phone),
+        (R("firstname|givenname|fornamn"), (f, _, _) => f.Name.FirstName(), null),
+        (R("lastname|surname|familyname|efternamn"), (f, _, _) => f.Name.LastName(), null),
+        (R("fullname"), (f, _, _) => f.Name.FullName(), null),
+        (R("city|stad"), (f, _, _) => f.Address.City(), null),
+        (R("zip|zipcode|postalcode|postnummer"), (f, _, _) => f.Address.ZipCode(), null),
+        (R("street|streetaddress|address|adress"), (f, _, _) => f.Address.StreetAddress(), null),
+        (R("country|land"), (f, _, _) => f.Address.Country(), null),
+        (R("url|website|homepage"), (_, _, _) => "https://example.com/", null),
+        (R("company|companyname|foretag"), (f, _, _) => f.Company.CompanyName(), null),
+        (R("username"), (f, _, _) => f.Internet.UserName(), null),
     };
 
-    private static readonly (Regex Name, string Key)[] BuiltIn =
+    private static readonly Regex TitleName = R("name|title|displayname");
+
+    private static readonly (Regex Owner, Func<Faker, string> Name)[] OwnerNames =
     {
-        (R("personnummer|ssn|socialsecurity"), "se.personnummer"),
-        (R("orgnr|orgnummer|organisationsnummer|organizationnumber|orgnumber"), "se.organisationsnummer"),
-        (R("e-?mail"), "internet.email"),
-        (R("phone|mobile|telefon|tel"), "phone.number"),
-        (R("firstname|givenname|fornamn"), "person.firstName"),
-        (R("lastname|surname|familyname|efternamn"), "person.lastName"),
-        (R("fullname"), "person.fullName"),
-        (R("city|stad"), "address.city"),
-        (R("zip|zipcode|postalcode|postnummer"), "address.zipCode"),
-        (R("street|streetaddress|address|adress"), "address.streetAddress"),
-        (R("country|land"), "address.country"),
-        (R("url|website|homepage"), "internet.url"),
-        (R("company|companyname|foretag"), "company.name"),
-        (R("username"), "internet.userName"),
+        (new("customer|person|user|employee|contact|member", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), f => f.Name.FullName()),
+        (new("product|item|article|artikel|produkt", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), f => f.Commerce.ProductName()),
+        (new("company|organization|organisation|foretag|supplier", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), f => f.Company.CompanyName()),
     };
+
+    /// <summary>Namngenerator efter det omgivande schemats namn (t.ex. ProductCreate), eller null om namnet inte är känt.</summary>
+    private static Func<Faker, string>? NameFor(string? owner) =>
+        owner is null ? null : OwnerNames.FirstOrDefault(o => o.Owner.IsMatch(owner)).Name;
 
     private static Regex R(string p) => new($"^(?:{p})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    private readonly List<(Regex Name, string Key)> _config = new();
+    /// <summary>Vilken fiktiv serie fältnamnet hör till, om någon.</summary>
+    public static FictionalData.Kind? KindByName(string fieldName) =>
+        BuiltIn.FirstOrDefault(b => b.Kind is not null && b.Name.IsMatch(fieldName)).Kind;
 
-    public FieldRules(IReadOnlyDictionary<string, string> configRules)
-    {
-        foreach (var (pattern, key) in configRules)
-        {
-            if (key != "pattern" && !Generators.ContainsKey(key))
-                throw new InvalidOperationException(
-                    $"Okänd fältregel '{key}' för '{pattern}'. Tillgängliga: pattern, {string.Join(", ", Generators.Keys)}");
-            _config.Add((R(pattern), key));
-        }
-    }
-
-    /// <summary>Returnerar ett värde om en regel matchar fältnamnet, annars null.</summary>
-    public string? TryGenerate(string fieldName, OpenApiSchema schema, Faker faker)
+    /// <summary>Värde ur fältnamnet om ett sådant finns och uppfyller schemat, annars null.</summary>
+    public static string? TryGenerate(string fieldName, IOpenApiSchema schema, Faker faker, string? owner = null)
     {
         if (SchemaUtil.TypeOf(schema) is not (null or "string")) return null;
-
-        foreach (var (re, key) in _config)
+        if (TitleName.IsMatch(fieldName) && NameFor(owner) is { } ownerName)
+        {
+            for (var i = 0; i < 5; i++)
+                if (ownerName(faker) is var v && Meets(v, schema)) return v;
+            return null;
+        }
+        foreach (var (re, generate, _) in BuiltIn)
         {
             if (!re.IsMatch(fieldName)) continue;
-            if (key == "pattern")
-            {
-                if (string.IsNullOrEmpty(schema.Pattern)) continue;
-                return PatternGenerator.Generate(schema.Pattern, faker.Random);
-            }
-            return Satisfying(Generators[key], faker, schema);
+            for (var i = 0; i < 5; i++)
+                if (generate(faker, schema, null) is { } v && Meets(v, schema)) return v;
+            return null;
         }
-        foreach (var (re, key) in BuiltIn)
-            if (re.IsMatch(fieldName)) return Satisfying(Generators[key], faker, schema);
         return null;
     }
 
-    /// <summary>
-    /// Specens villkor (pattern, format, längdgränser) går före fältnamnet: namnregelns värde används bara om det uppfyller dem
-    /// (några försök). Annars returneras null, och värdet genereras ur specen i stället.
-    /// </summary>
-    private static string? Satisfying(Func<Faker, string> generate, Faker faker, OpenApiSchema schema)
-    {
-        for (var i = 0; i < 5; i++)
-            if (generate(faker) is var v && Meets(v, schema)) return v;
-        return null;
-    }
+    /// <summary>Första kandidaten som uppfyller schemat (null om ingen).</summary>
+    public static string? First(IEnumerable<string> candidates, IOpenApiSchema schema) =>
+        candidates.FirstOrDefault(c => Meets(c, schema));
 
     /// <summary>Uppfyller värdet längdgränser, mönster och (kända) format i schemat?</summary>
-    public static bool Meets(string v, OpenApiSchema schema)
+    public static bool Meets(string v, IOpenApiSchema schema)
     {
         if (schema.MaxLength is { } max && v.Length > max) return false;
         if (schema.MinLength is { } min && v.Length < min) return false;
@@ -114,12 +87,14 @@ public sealed class FieldRules
             "date" => DateTime.TryParseExact(v, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _),
             "date-time" => DateTimeOffset.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.None, out _),
             "uri" or "url" => Uri.TryCreate(v, UriKind.Absolute, out _),
+            "personnummer" => FictionalData.IsPersonnummer(v),
+            "phone" or "tel" => FictionalData.IsPhone(v),
             _ => true,
         };
     }
 
     /// <summary>Kapar/fyller ut till längdgränserna, men aldrig så att ett värde som följer mönstret slutar göra det.</summary>
-    public static string Fit(string s, OpenApiSchema schema)
+    public static string Fit(string s, IOpenApiSchema schema)
     {
         var original = s;
         if (schema.MaxLength is { } max && s.Length > max) s = s[..max];
@@ -128,7 +103,7 @@ public sealed class FieldRules
     }
 
     // Bara mönstret prövas (längd är det Fit just justerat).
-    private static OpenApiSchema Loose(OpenApiSchema schema) => new() { Pattern = schema.Pattern };
+    private static IOpenApiSchema Loose(IOpenApiSchema schema) => new OpenApiSchema { Pattern = schema.Pattern };
 
     // --- Luhn / svenska nummer ---
 
@@ -144,18 +119,7 @@ public sealed class FieldRules
         return (10 - sum % 10) % 10;
     }
 
-    private static string SwedishPersonalNumber(Faker f)
-    {
-        var year = f.Random.Number(1940, 2005);
-        var month = f.Random.Number(1, 12);
-        var day = f.Random.Number(1, 28);
-        var serial = f.Random.Number(0, 999);
-        var nine = $"{year % 100:D2}{month:D2}{day:D2}{serial:D3}";
-        var check = LuhnCheckDigit(nine);
-        return string.Create(CultureInfo.InvariantCulture, $"{year:D4}{month:D2}{day:D2}-{serial:D3}{check}");
-    }
-
-    private static string SwedishOrganizationNumber(Faker f)
+    public static string OrganizationNumber(Faker f)
     {
         // Tredje siffran >= 2 (skiljer från personnummer), börjar på 5 (aktiebolag m.fl.).
         var nine = $"5{f.Random.Number(0, 9)}{f.Random.Number(2, 9)}{f.Random.Number(0, 999999):D6}";

@@ -103,14 +103,17 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+          example: Eva Lindqvist
         email:
           type: string
           format: email
         phone:
           type: string
+          format: phone
         personnummer:
           type: string
-          example: "19900101-1239"
+          format: personnummer
+          example: "19810706-2385"
         status:
           type: string
           enum: [active, inactive]
@@ -134,6 +137,7 @@ components:
         sku:
           type: string
           pattern: '^[A-Z]{3}-[0-9]{4}$'
+          example: ABC-1234
         price:
           type: number
           format: double

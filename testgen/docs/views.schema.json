@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/testgen/views.schema.json",
+  "title": "testgen vyer (schemaVersion 1)",
+  "description": "Skrivs av: testgen views. Checkas in och läses av UI-testerna. Nycklar, enum-värden och id:n är engelska i ASCII. Nycklar utan värde utelämnas. Vyerna är sorterade på id; formulär och fält står i den ordning de har på sidan. Sökvägar (source) är relativa till filens katalog och använder snedstreck. Filen innehåller inga tider, versioner eller absoluta sökvägar.",
+  "type": "object",
+  "required": ["schemaVersion", "apps"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "apps": { "type": "array", "items": { "$ref": "#/$defs/app" }, "description": "Webbappar sorterade på projektnamn" }
+  },
+  "$defs": {
+    "app": {
+      "type": "object",
+      "required": ["project", "views", "apis"],
+      "properties": {
+        "project": { "type": "string", "description": "Projektnamnet, samma nyckel som i solutionen" },
+        "views": { "type": "array", "items": { "$ref": "#/$defs/view" } },
+        "apis": { "type": "array", "items": { "$ref": "#/$defs/api" }, "description": "API:erna appen anropar, sorterade på projekt och nyckel. Specen skrivs inte här; den hittas vid API-projektet." }
+      }
+    },
+    "api": {
+      "type": "object",
+      "required": ["project"],
+      "properties": {
+        "project": { "type": "string", "description": "API-projektet i solutionen" },
+        "configKey": { "type": "string", "description": "Konfigurationsnyckeln för API:ets adress, t.ex. ShopApi:BaseUrl. Peka om den till mockens adress i testerna." }
+      }
+    },
+    "view": {
+      "type": "object",
+      "required": ["id", "route", "kind", "source", "parameters", "forms", "links", "apiCalls", "requiresAuth"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^ui:/", "description": "ui: och ruttmallen, t.ex. ui:/products/create. Unikt i appen (en dubblett får #2, #3)." },
+        "route": { "type": "string", "pattern": "^/", "description": "Ruttmallen som den står i koden, t.ex. /products/{id:int}" },
+        "kind": { "enum": ["razor-page", "blazor", "mvc", "spa", "probed"] },
+        "source": { "type": "string", "description": "Filen vyn kommer från, relativt den här filen" },
+        "title": { "type": "string" },
+        "heading": { "type": "string", "description": "Första h1 om den är fast text" },
+        "parameters": { "type": "array", "items": { "$ref": "#/$defs/routeParameter" } },
+        "forms": { "type": "array", "items": { "$ref": "#/$defs/form" } },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/link" } },
+        "apiCalls": { "type": "array", "items": { "$ref": "#/$defs/apiCall" }, "description": "Anrop till backend som vyn gör (SPA)" },
+        "requiresAuth": { "type": "boolean" }
+      }
+    },
+    "routeParameter": {
+      "type": "object",
+      "required": ["name", "optional"],
+      "properties": {
+        "name": { "type": "string" },
+        "constraint": { "type": "string", "description": "t.ex. int, guid" },
+        "optional": { "type": "boolean" }
+      }
+    },
+    "form": {
+      "type": "object",
+      "required": ["id", "submit", "fields"],
+      "properties": {
+        "id": { "type": "string", "description": "Namn inom vyn: modellens namn eller Form1" },
+        "model": { "type": "string", "description": "Modellens typnamn" },
+        "submit": { "$ref": "#/$defs/locator" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+        "submitsTo": { "$ref": "#/$defs/apiCall", "description": "Anropet formuläret gör, om det är känt" },
+        "operationId": { "type": "string", "description": "Specens operation som formuläret skickas till. Utelämnad om ingen matchar." }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["name", "type", "locator", "rules", "options"],
+      "properties": {
+        "name": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "enum": ["text", "text-area", "email", "password", "number", "date", "date-time", "tel", "url", "select", "checkbox", "radio", "hidden"] },
+        "locator": { "$ref": "#/$defs/locator" },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } },
+        "options": { "type": "array", "items": { "type": "string" }, "description": "Valen i en select eller radiogrupp" },
+        "specField": { "type": "string", "description": "Fältet i operationens request-schema som detta fält motsvarar. Utelämnat om formuläret saknar operation eller inget fält matchar." }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["required", "min-length", "max-length", "min", "max", "pattern", "email", "url", "compare"] },
+        "value": { "type": "string", "description": "Längden för min/max-length, gränsen för min/max, mönstret för pattern, det andra fältets namn för compare" },
+        "message": { "type": "string", "description": "Felmeddelandet om det står i koden (svenska, för människor)" }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "enum": ["label", "role", "test-id", "css"] },
+        "value": { "type": "string", "description": "Etiketten, rollen, test-id:t eller CSS-väljaren" },
+        "name": { "type": "string", "description": "Med kind role: elementets tillgängliga namn" }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["href"],
+      "properties": {
+        "href": { "type": "string", "description": "Adressen som den står; det dynamiska skrivs {}" },
+        "text": { "type": "string" }
+      }
+    },
+    "apiCall": {
+      "type": "object",
+      "required": ["method", "path"],
+      "properties": {
+        "method": { "type": "string", "pattern": "^[A-Z]+$" },
+        "path": { "type": "string", "description": "Sökvägen med parametrar som {}" }
+      }
+    }
+  }
+}

@@ -56,4 +56,4 @@ public sealed record CaseMeta(TestRule Rule, string? Field = null, string? Limit
 }
 
 /// <summary>Ett genererat scenario tillsammans med sin metadata.</summary>
-public sealed record GeneratedCase(TestGen.Scenarios.Scenario Scenario, CaseMeta Meta);
+public sealed record GeneratedCase(TestGen.Core.Scenario Scenario, CaseMeta Meta);

@@ -3,9 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
-using TestGen.Scenarios;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
+using Microsoft.OpenApi;
 using TestGen.Core;
 using TestGen.Core.Run;
 
@@ -66,8 +64,7 @@ public class PatternMismatchTests
         Assert.That(Regex.IsMatch(v, "^.{3}$"), Is.False);
     }
 
-    private static OpenApiSchema Schema(string yaml) =>
-        new OpenApiStringReader().ReadFragment<OpenApiSchema>(yaml, Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0, out _);
+    private static IOpenApiSchema Schema(string yaml) => SpecText.Schema(yaml);
 
     [Test]
     public void Negative_cases_get_pattern_mismatch_only_for_string_fields_with_pattern()
@@ -92,10 +89,9 @@ public class PatternMismatchTests
 
 public class ResponseSchemaCheckTests
 {
-    private static OpenApiSchema Schema(string yaml) =>
-        new OpenApiStringReader().ReadFragment<OpenApiSchema>(yaml, Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0, out _);
+    private static IOpenApiSchema Schema(string yaml) => SpecText.Schema(yaml);
 
-    private static List<string> Errs(JsonNode? body, OpenApiSchema? schema) => ResponseSchemaCheck.Check(body, schema).Errors;
+    private static List<string> Errs(JsonNode? body, IOpenApiSchema? schema) => ResponseSchemaCheck.Check(body, schema).Errors;
 
     private const string Yaml = """
         allOf:
@@ -252,7 +248,7 @@ public class ExpectedRegexTests : IDisposable
         var path = Path.Combine(_dir, "t.xlsx");
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("Tester");
-        for (var i = 0; i < ExcelScenarioReader.Headers.Length; i++) ws.Cell(1, i + 1).Value = ExcelScenarioReader.Headers[i];
+        for (var i = 0; i < ExcelLayout.Headers.Length; i++) ws.Cell(1, i + 1).Value = ExcelLayout.Headers[i];
         ws.Cell(2, 1).Value = "S";
         ws.Cell(2, 2).Value = "createProduct";
         ws.Cell(2, 5).Value = "201";
@@ -263,8 +259,8 @@ public class ExpectedRegexTests : IDisposable
 
     private async Task<(int Exit, string Output)> Run(string sku, string? excel = null, string only = "createProduct")
     {
-        var sw = new StringWriter();
-        var exit = await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Only = only, Seed = 1, Excel = excel },
+        var sw = new StringWriter { NewLine = "\n" };
+        var exit = await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Only = only, Seed = 1, Excel = excel, Source = new ExcelTestSource() },
             sw, new Api(sku)).RunAsync();
         return (exit, sw.ToString());
     }

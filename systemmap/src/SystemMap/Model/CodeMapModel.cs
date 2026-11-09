@@ -3,8 +3,11 @@ namespace SystemMap;
 /// <summary>Vilket slags system en integration är.</summary>
 public enum IntegrationKind { Database, Http, Wcf, Queue, Storage, Email }
 
+/// <summary>Hur en ingång tas emot: controller, minimal API, Razor Page, Blazor-sida eller controller som returnerar en vy.</summary>
+public enum EntryKind { Controller, MinimalApi, RazorPage, BlazorPage, MvcView }
+
 /// <summary>
-/// Systemkartan: vägen från varje ingång (controller-action) genom solutionens projekt ut till integrationerna.
+/// Systemkartan: vägen från varje ingång (controller-action, minimal API eller sida) genom solutionens projekt ut till integrationerna.
 /// Kartan visar möjliga vägar enligt koden, inte vilken väg ett visst anrop tog.
 /// </summary>
 /// <param name="Solution">Sökvägen som angavs (relativ eller absolut, som användaren skrev den).</param>
@@ -14,6 +17,7 @@ public sealed record CodeMapModel(
     IReadOnlyList<string> Projects,
     IReadOnlyList<Integration> Integrations,
     IReadOnlyList<EntryPoint> EntryPoints,
+    IReadOnlyList<AppFacts> Apps,
     IReadOnlyList<SpecDifference> Differences,
     IReadOnlyList<string> Warnings)
 {
@@ -23,7 +27,8 @@ public sealed record CodeMapModel(
 /// <param name="Id">Stabilt id, t.ex. <c>http:Betaltjanst</c> eller <c>db:ShopDatabase</c>.</param>
 /// <param name="Techniques">Hur systemet når integrationen, t.ex. "EF Core (ShopDbContext)" och "SQL", "Service Bus" eller "WCF/SOAP".</param>
 /// <param name="ConfigKey">Nyckeln som adressen läses från, t.ex. <c>Betaltjanst:BaseUrl</c>.</param>
-public sealed record Integration(string Id, IntegrationKind Kind, string Name, IReadOnlyList<string> Techniques, string? ConfigKey = null)
+/// <param name="TargetProject">För HTTP: projektet i solutionen som adressen pekar på, om något.</param>
+public sealed record Integration(string Id, IntegrationKind Kind, string Name, IReadOnlyList<string> Techniques, string? ConfigKey = null, string? TargetProject = null)
 {
     /// <summary>Vad det är och tekniken, t.ex. "databas, EF Core och SQL", "kö, Service Bus" eller "HTTP, adressen i Betaltjanst:BaseUrl".</summary>
     public string Detail
@@ -31,7 +36,7 @@ public sealed record Integration(string Id, IntegrationKind Kind, string Name, I
         get
         {
             var kind = Kind switch { IntegrationKind.Database => "databas, ", IntegrationKind.Queue => "kö, ", IntegrationKind.Storage => "lagring, ", _ => "" };
-            return kind + string.Join(" och ", Techniques) + (ConfigKey is null ? "" : $", adressen i {ConfigKey}");
+            return kind + string.Join(" och ", Techniques) + (ConfigKey is null ? "" : $", adressen i {ConfigKey}") + (TargetProject is null ? "" : $", anropar {TargetProject}");
         }
     }
 
@@ -44,13 +49,13 @@ public sealed record Integration(string Id, IntegrationKind Kind, string Name, I
             : this with { Techniques = Techniques.Union(other.Techniques).Order(StringComparer.Ordinal).ToList(), ConfigKey = ConfigKey ?? other.ConfigKey };
 }
 
-/// <summary>En ingång i systemet: ett HTTP-anrop som en controller-action tar emot.</summary>
+/// <summary>En ingång i systemet: ett HTTP-anrop som en controller-action, ett minimal API, en Razor Page eller en Blazor-sida tar emot.</summary>
 /// <param name="Path">Sökvägen i specen om ingången matchar en operation där, annars sökvägen enligt koden.</param>
 /// <param name="CodePath">Sökvägen enligt koden (route-attributen), t.ex. <c>/Orders/{id}</c>.</param>
-/// <param name="Handler">Controller och action, t.ex. <c>OrdersController.Create</c>.</param>
+/// <param name="Handler">Controller och action, t.ex. <c>OrdersController.Create</c>; för en sida dess hanterare, t.ex. <c>AboutModel.OnPost</c>.</param>
 /// <param name="File">Filen relativt solutionens katalog, med snedstreck.</param>
 public sealed record EntryPoint(
-    string Method, string Path, string CodePath, string? OperationId, string Project, string Handler, string File, int Line,
+    EntryKind Kind, string Method, string Path, string CodePath, string? OperationId, string Project, string Handler, string File, int Line,
     DataShape? Input, DataShape? Output, IReadOnlyList<Step> Steps);
 
 /// <summary>
@@ -75,3 +80,16 @@ public enum DifferenceKind { OnlyInCode, OnlyInSpec }
 
 /// <summary>En ingång som bara finns i koden, eller en operation som bara finns i specen.</summary>
 public sealed record SpecDifference(DifferenceKind Kind, string Method, string Path, string? OperationId, string? Handler);
+
+public enum AppKind { Api, Web }
+
+/// <summary>En databas som appen registrerar: leverantören (<c>sql-server</c>, <c>postgresql</c>, <c>sqlite</c>, <c>in-memory</c>, <c>mysql</c>, <c>cosmos</c>).</summary>
+public sealed record DatabaseFacts(string? Provider, string Context, string? ConfigKey);
+
+/// <summary>En utgående HTTP-klient: klientens typ, nyckeln för adressen och projektet i solutionen som den pekar på (om något).</summary>
+public sealed record HttpClientFacts(string Client, string? ConfigKey, string IntegrationId, string? TargetProject);
+
+/// <summary>Fakta om en app (ett webbprojekt): sort, hälsovägar, databaser och utgående HTTP-klienter.</summary>
+public sealed record AppFacts(
+    string Project, IReadOnlyList<AppKind> Kinds, IReadOnlyList<string> HealthPaths,
+    IReadOnlyList<DatabaseFacts> Databases, IReadOnlyList<HttpClientFacts> HttpClients);

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SagaPerception.Testing/SagaPerception.Testing.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SagaPerception.Testing.Tests/SagaPerception.Testing.Tests.csproj" />
+    <Project Path="tests/TestApi/TestApi.csproj" />
+  </Folder>
+</Solution>

@@ -3,13 +3,22 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace SystemMap;
 
-/// <summary>En action i en controller och vägen som tar dit (en per HTTP-metod och route).</summary>
+/// <summary>
+/// En ingång och vägen som tar dit (en per HTTP-metod och route). <paramref name="Roots"/> är metoderna vars anrop följs:
+/// en action, en lambda i ett minimal API eller en sidas hanterare.
+/// </summary>
 internal sealed record EntryCandidate(
-    IMethodSymbol Action, string Method, string CodePath, string Project, string Handler, string File, int Line, DataShape? Input, DataShape? Output);
+    EntryKind Kind, IReadOnlyList<IMethodSymbol> Roots, string Method, string CodePath, string Project, string Handler, string File, int Line,
+    DataShape? Input, DataShape? Output)
+{
+    /// <summary>Nyckel för anropen som följs (lika för ingångar som delar hanterare).</summary>
+    public string RootsKey => string.Join("|", Roots.Select(Symbols.Key));
+}
 
 /// <summary>
 /// Hittar ingångarna: actions i controllers med attributrouting (<c>[Route]</c>, <c>[HttpPost]</c> ...), både ASP.NET Core
-/// och ASP.NET Web API 2 (<c>ApiController</c>, <c>[RoutePrefix]</c>). Minimal API och konventionell routing känns inte igen än.
+/// och ASP.NET Web API 2 (<c>ApiController</c>, <c>[RoutePrefix]</c>), minimal API:er (<see cref="MinimalApiFinder"/>) samt
+/// Razor Pages och Blazor-sidor (<see cref="PageFinder"/>). Konventionell routing känns inte igen än.
 /// </summary>
 internal static class EntryPointFinder
 {
@@ -17,11 +26,12 @@ internal static class EntryPointFinder
     private static readonly string[] ResultMethods =
         ["Ok", "Created", "CreatedAtAction", "CreatedAtRoute", "Accepted", "AcceptedAtAction", "AcceptedAtRoute", "StatusCode", "Json", "Content"];
 
-    public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, string root, List<string> warnings)
+    public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, CallSites sites, string root, List<string> warnings)
     {
+        var projectList = projects.ToList();
         var entries = new List<EntryCandidate>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var project in projects)
+        foreach (var project in projectList)
             foreach (var tree in models.Trees(project))
             {
                 if (models.For(tree) is not { } model) continue;
@@ -31,6 +41,8 @@ internal static class EntryPointFinder
                     entries.AddRange(Actions(type, project.Name, models, root, warnings));
                 }
             }
+        entries.AddRange(MinimalApiFinder.Find(models, sites, root, warnings));
+        entries.AddRange(PageFinder.Find(projectList, models, root));
         return entries;
     }
 
@@ -62,6 +74,7 @@ internal static class EntryPointFinder
             var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
             var input = Input(method);
             var output = Output(method, models);
+            var kind = ReturnsView(method, models) ? EntryKind.MvcView : EntryKind.Controller;
             var paths = new HashSet<string>(StringComparer.Ordinal);
             foreach (var (verb, template) in verbs)
                 foreach (var t in template is not null ? [template] : routes.Count > 0 ? routes.Cast<string?>() : [null])
@@ -69,7 +82,7 @@ internal static class EntryPointFinder
                     {
                         var path = RouteTemplate.Combine(prefix, t, controller, action);
                         if (paths.Add(verb + " " + path))
-                            yield return new EntryCandidate(method, verb, path, project, $"{type.Name}.{method.Name}", file, line, input, output);
+                            yield return new EntryCandidate(kind, [method], verb, path, project, $"{type.Name}.{method.Name}", file, line, input, output);
                     }
         }
         if (unrouted)
@@ -122,6 +135,21 @@ internal static class EntryPointFinder
 
     private static string? AttributeString(ISymbol symbol, string attribute) => Templates(symbol, attribute).FirstOrDefault();
 
+    /// <summary>En action som returnerar en vy (<c>ViewResult</c>, eller <c>return View(...)</c> i en controller med vyer).</summary>
+    private static bool ReturnsView(IMethodSymbol method, ModelCache models)
+    {
+        if (Symbols.Is(Symbols.Unwrap(method.ReturnType), "Microsoft.AspNetCore.Mvc.ViewResult", "Microsoft.AspNetCore.Mvc.PartialViewResult")) return true;
+        foreach (var reference in method.DeclaringSyntaxReferences)
+        {
+            if (models.For(reference.SyntaxTree) is not { } model) continue;
+            foreach (var invocation in reference.GetSyntax().DescendantNodes().OfType<InvocationExpressionSyntax>())
+                if (Symbols.InvokedName(invocation) is "View" or "PartialView" && Symbols.Invoked(invocation, model)?.ContainingType is { } owner &&
+                    Symbols.Is(owner, "Microsoft.AspNetCore.Mvc.Controller"))
+                    return true;
+        }
+        return false;
+    }
+
     /// <summary>Indata: parametern med [FromBody] (eller en egen [ModelBinder]), annars första parametern av en typ i solutionen.</summary>
     private static DataShape? Input(IMethodSymbol method)
     {
@@ -131,7 +159,7 @@ internal static class EntryPointFinder
     }
 
     /// <summary>Utdata: returtypen (<c>ActionResult&lt;T&gt;</c>), <c>[ProducesResponseType(typeof(T), ...)]</c> eller värdet i <c>Ok(x)</c>.</summary>
-    private static DataShape? Output(IMethodSymbol method, ModelCache models)
+    internal static DataShape? Output(IMethodSymbol method, ModelCache models)
     {
         if (DataShapes.Of(method.ReturnType) is { } returned) return returned;
         foreach (var attribute in method.GetAttributes().Where(a => a.AttributeClass?.Name is "ProducesResponseTypeAttribute" or "ProducesAttribute"))

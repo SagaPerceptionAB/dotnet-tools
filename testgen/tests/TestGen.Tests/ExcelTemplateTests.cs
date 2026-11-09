@@ -1,8 +1,6 @@
 using System.Text.Json.Nodes;
 using ClosedXML.Excel;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
-using TestGen.Scenarios;
+using Microsoft.OpenApi;
 using TestGen.Core;
 using TestGen.Core.Run;
 
@@ -49,7 +47,7 @@ public class ExcelTemplateTests
     {
         With((wb, _) =>
         {
-            Assert.That(wb.Worksheets.Select(w => w.Name), Is.EqualTo(new[] { "Tester", "Hjälp", "Miljöer", "Fält", "Listor" }));
+            Assert.That(wb.Worksheets.Select(w => w.Name), Is.EqualTo(new[] { "Tester", "Hjälp", "Fält", "Listor" }));
             Assert.That(wb.Worksheet("Listor").Visibility, Is.EqualTo(XLWorksheetVisibility.Hidden));
         });
     }
@@ -126,11 +124,11 @@ public class ExcelTemplateTests
         With((wb, _) =>
         {
             var ws = wb.Worksheet("Tester");
-            for (var col = 1; col <= ExcelScenarioReader.Headers.Length; col++)
+            for (var col = 1; col <= ExcelLayout.Headers.Length; col++)
             {
                 var dv = ws.DataValidations.Single(v => v.Ranges.Any(r => r.RangeAddress.FirstAddress.ColumnNumber == col));
                 var (title, text) = ExcelTemplate.TesterPrompts[col - 1];
-                Assert.That(dv.ShowInputMessage, Is.True, ExcelScenarioReader.Headers[col - 1]);
+                Assert.That(dv.ShowInputMessage, Is.True, ExcelLayout.Headers[col - 1]);
                 Assert.That(dv.InputTitle, Is.EqualTo(title));
                 Assert.That(dv.InputMessage, Is.EqualTo(text));
                 Assert.That(title.Length, Is.LessThanOrEqualTo(32));
@@ -162,32 +160,9 @@ public class ExcelTemplateTests
     }
 
     [Test]
-    public void Environments_sheet_has_messages_examples_and_token_warning()
+    public void Template_has_no_environments_sheet()
     {
-        With((wb, path) =>
-        {
-            var ws = wb.Worksheet("Miljöer");
-            for (var col = 1; col <= EnvironmentSheet.Headers.Length; col++)
-            {
-                var dv = ws.DataValidations.Single(v => v.Ranges.Any(r => r.RangeAddress.FirstAddress.ColumnNumber == col));
-                var (title, text) = ExcelTemplate.EnvironmentPrompts[col - 1];
-                Assert.That(dv.InputTitle, Is.EqualTo(title));
-                Assert.That(dv.InputMessage, Is.EqualTo(text));
-                Assert.That(title.Length, Is.LessThanOrEqualTo(32));
-                Assert.That(text.Length, Is.LessThanOrEqualTo(255));
-                Assert.That(ws.Cell(1, col).GetComment().Text, Is.EqualTo(text));
-            }
-            var all = string.Join("\n", ws.CellsUsed().Select(c => c.GetString()));
-            Assert.That(all, Does.Contain("${env:API_TOKEN}").And.Contain("X-Tenant: acme").And.Contain("timeout")
-                .And.Contain("Skriv aldrig en riktig token här – använd ${env:NAMN}"));
-
-            // Exemplen ligger utanför kolumn A-C: bara miljön "lokal" med api läses, så ensam miljö väljs som förut.
-            var envs = EnvironmentSheet.Read(path)!;
-            Assert.That(envs.Select(e => e.Name), Is.EqualTo(new[] { "lokal" }));
-            Assert.That(envs[0].Api, Is.EqualTo("http://localhost:5080"));
-            Assert.That(envs[0].Token, Is.Null);
-            Assert.That(envs[0].Headers, Is.Empty);
-        });
+        With((wb, _) => Assert.That(wb.Worksheets.Select(w => w.Name), Is.EqualTo(new[] { "Tester", "Hjälp", "Fält", "Listor" })));
     }
 
     [Test]
@@ -207,7 +182,7 @@ public class ExcelTemplateTests
             Assert.That(rows.Single(r => r.Field == "quantity").Type, Is.EqualTo("heltal"));
             Assert.That(rows.Single(r => r.Field == "email").Type, Is.EqualTo("e-postadress"));
             Assert.That(rows.Single(r => r.Field == "status").Input, Is.EqualTo("status=active"));
-            Assert.That(rows.Single(r => r.Field == "personnummer").Input, Is.EqualTo("personnummer=19900101-1239"), "från specens example");
+            Assert.That(rows.Single(r => r.Field == "personnummer").Input, Is.EqualTo("personnummer=19810706-2385"), "från specens example");
             Assert.That(rows.Single(r => r.Field == "sku").Input, Does.Match("^sku=[A-Z]{3}-[0-9]{4}$"), "följer specens pattern");
             foreach (var r in rows.Where(r => r.Input.Length > 0))
                 Assert.That(FieldList.Parse(r.Input).Single().Key, Is.EqualTo(r.Field));
@@ -217,17 +192,17 @@ public class ExcelTemplateTests
     [Test]
     public void Input_example_respects_limits_and_quotes_when_needed()
     {
-        OpenApiSchema Int(decimal? min = null, decimal? max = null) => new() { Type = "integer", Minimum = min, Maximum = max };
+        IOpenApiSchema Int(decimal? min = null, decimal? max = null) => new OpenApiSchema { Type = JsonSchemaType.Integer, Minimum = min?.ToString(System.Globalization.CultureInfo.InvariantCulture), Maximum = max?.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         Assert.That(ExcelTemplate.InputExample("n", Int()), Is.EqualTo("n=5"));
         Assert.That(ExcelTemplate.InputExample("n", Int(min: 10)), Is.EqualTo("n=10"));
         Assert.That(ExcelTemplate.InputExample("n", Int(max: 3)), Is.EqualTo("n=3"));
-        Assert.That(ExcelTemplate.InputExample("n", new OpenApiSchema { Type = "boolean" }), Is.EqualTo("n=true"));
-        Assert.That(ExcelTemplate.InputExample("d", new OpenApiSchema { Type = "string", Format = "date" }), Is.EqualTo("d=2025-01-31"));
-        Assert.That(ExcelTemplate.InputExample("l", new OpenApiSchema { Type = "array" }), Is.EqualTo(""));
+        Assert.That(ExcelTemplate.InputExample("n", new OpenApiSchema { Type = JsonSchemaType.Boolean }), Is.EqualTo("n=true"));
+        Assert.That(ExcelTemplate.InputExample("d", new OpenApiSchema { Type = JsonSchemaType.String, Format = "date" }), Is.EqualTo("d=2025-01-31"));
+        Assert.That(ExcelTemplate.InputExample("l", new OpenApiSchema { Type = JsonSchemaType.Array }), Is.EqualTo(""));
         // Ett textvärde som annars blir tal, eller innehåller ;, skrivs inom citattecken och tolkas som text.
-        var zip = new OpenApiSchema { Type = "string", Enum = { new OpenApiString("123") } };
+        var zip = new OpenApiSchema { Type = JsonSchemaType.String, Enum = [JsonValue.Create("123")] };
         Assert.That(ExcelTemplate.InputExample("kod", zip), Is.EqualTo("kod=\"123\""));
-        var semi = new OpenApiSchema { Type = "string", Example = new OpenApiString("a;b") };
+        var semi = new OpenApiSchema { Type = JsonSchemaType.String, Examples = [JsonValue.Create("a;b")] };
         Assert.That(ExcelTemplate.InputExample("kod", semi), Is.EqualTo("kod=\"a;b\""));
         Assert.That(FieldList.Parse(ExcelTemplate.InputExample("kod", semi)).Single().Value!.GetValue<string>(), Is.EqualTo("a;b"));
     }
@@ -237,7 +212,7 @@ public class ExcelTemplateTests
     {
         With((wb, _) =>
         {
-            foreach (var name in new[] { "Tester", "Hjälp", "Miljöer", "Fält" })
+            foreach (var name in new[] { "Tester", "Hjälp", "Fält" })
             {
                 var ps = wb.Worksheet(name).PageSetup;
                 Assert.That(ps.PaperSize, Is.EqualTo(XLPaperSize.A4Paper), name);

@@ -25,8 +25,8 @@ public static partial class CodeMapHtml
         // som sidan byter själv.
         var mermaid = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var entry in map.EntryPoints.Select(CodeMapOverview.EntryKey).Prepend(""))
-        foreach (var level in MermaidOptions.Levels)
-            mermaid[$"{level}|{entry}"] = CodeMapMermaid.Write(shown, MermaidOptions.Parse(level, null, entry), overview);
+            foreach (var level in MermaidOptions.Levels)
+                mermaid[$"{level}|{entry}"] = CodeMapMermaid.Write(shown, MermaidOptions.Parse(level, null, entry), overview);
 
         var scripts = new StringBuilder();
         foreach (var name in CodeMapAssets.Scripts)

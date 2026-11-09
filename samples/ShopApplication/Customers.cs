@@ -23,7 +23,11 @@ public sealed class CustomerService(ICustomerRepository customers, IEmailSender 
 
         var customer = await customers.AddAsync(new Customer
         {
-            Name = request.Name, Email = request.Email, Phone = request.Phone, Personnummer = request.Personnummer, Status = request.Status,
+            Name = request.Name,
+            Email = request.Email,
+            Phone = request.Phone,
+            Personnummer = request.Personnummer,
+            Status = request.Status,
         }, ct);
         await email.SendAsync(customer.Email, "Välkommen", $"Hej {customer.Name}! Ditt kundnummer är {customer.Id}.", ct);
         return CustomerResponse.From(customer);

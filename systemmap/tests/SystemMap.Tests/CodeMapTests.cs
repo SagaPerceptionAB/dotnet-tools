@@ -9,7 +9,7 @@ namespace SystemMap.Tests;
 /// Systemkartan byggd ur källkod i minnet (AdhocWorkspace, ingen MSBuild). Paket som inte finns i testmiljön
 /// (EF Core, Dapper, Service Bus ...) deklareras som stubbar med samma namnrymd: reglerna jämför typernas namn.
 /// </summary>
-public class CodeMapTests
+public partial class CodeMapTests
 {
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "systemmap-tests");
 
@@ -43,7 +43,15 @@ public class CodeMapTests
                 public abstract IEnumerator<T> GetEnumerator();
                 IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
             }
-            public class DbContextOptionsBuilder { public DbContextOptionsBuilder UseSqlServer(string? connection) => this; }
+            public class DbContextOptionsBuilder
+            {
+                public DbContextOptionsBuilder UseSqlServer(string? connection) => this;
+                public DbContextOptionsBuilder UseNpgsql(string? connection) => this;
+                public DbContextOptionsBuilder UseSqlite(string? connection) => this;
+                public DbContextOptionsBuilder UseInMemoryDatabase(string name) => this;
+                public DbContextOptionsBuilder UseMySql(string? connection) => this;
+                public DbContextOptionsBuilder UseCosmos(string? connection, string key, string database) => this;
+            }
             public static class EntityFrameworkQueryableExtensions
             {
                 public static Task<bool> AnyAsync<T>(this IQueryable<T> q, Expression<Func<T, bool>> p, CancellationToken ct = default) => null!;
@@ -410,7 +418,7 @@ public class CodeMapTests
         var html = CodeMapHtml.Write(map);
         Assert.That(html, Does.StartWith("<!DOCTYPE html>").And.Contain("<title>Systemkarta – Test.sln</title>"));
         Assert.That(html, Does.Contain("Content-Security-Policy\" content=\"default-src 'none';"), "sidan hämtar inget utifrån");
-        Assert.That(html, Does.Contain("window.SystemMap = { create: create, summary: summary };").And.Contain("cytoscape").And.Contain(".map-view {"));
+        Assert.That(html, Does.Contain("window.SystemMap = { create: create, summary: summary, groups: callGroups").And.Contain("cytoscape").And.Contain(".map-view {"));
         Assert.That(html, Does.Not.Contain("__" + "MAP__").And.Not.Contain("__" + "SCRIPTS__"), "alla delar är insatta");
         Assert.That(html.Split("</script>").Length - 1, Is.EqualTo(CodeMapAssets.Scripts.Count + 3), "varningen avslutar ingen skripttagg");
         Assert.That(html, Does.Not.Contain(Root), "bara filnamnet: sidan kan delas");
@@ -579,7 +587,7 @@ public class CodeMapTests
     {
         var map = await MapAsync("public class Tom { }");
         Assert.That(map.EntryPoints, Is.Empty);
-        Assert.That(map.Warnings, Has.Some.Contains("Hittade inga controllers"));
+        Assert.That(map.Warnings, Has.Some.Contains("Hittade inga ingångar"));
     }
 
     // --- Små delar -------------------------------------------------------------------------------
@@ -609,8 +617,8 @@ public class CodeMapTests
         using var loaded = await SolutionLoader.LoadAsync(TestPaths.Solution, restore: true);
         var map = await CodeMapper.AnalyzeAsync(loaded.Solution, "samples/Shop.slnx", SpecReader.Load(TestPaths.Spec), loaded.Warnings);
 
-        Assert.That(map.Projects, Is.EqualTo(new[] { "ShopApi", "ShopApplication", "ShopInfrastructure" }));
-        Assert.That(map.EntryPoints.Select(e => e.OperationId), Is.EquivalentTo(new[] { "createCustomer", "createOrder", "getOrder", "createProduct" }));
+        Assert.That(map.Projects, Is.EqualTo(new[] { "ShopApi", "ShopWeb", "ShopApplication", "ShopInfrastructure" }));
+        Assert.That(map.EntryPoints.Where(e => e.Kind == EntryKind.Controller).Select(e => e.OperationId), Is.EquivalentTo(new[] { "createCustomer", "createOrder", "getOrder", "createProduct" }));
         Assert.That(map.Differences, Is.Empty, "koden och specen ska ha samma anrop");
         Assert.That(map.Warnings, Is.Empty);
         Assert.That(Uses(map.EntryPoints.Single(e => e.OperationId == "createOrder")), Is.EqualTo(new[]
@@ -627,7 +635,7 @@ public class CodeMapTests
         Assert.That(Uses(map.EntryPoints.Single(e => e.OperationId == "getOrder")), Is.EqualTo(new[] { "db:ShopDatabase | läsa Orders" }));
 
         // EF Core och Dapper går mot samma databas (ShopDatabase skapar anslutningen): den är en integration.
-        Assert.That(map.Integrations, Has.Count.EqualTo(6));
+        Assert.That(map.Integrations, Has.Count.EqualTo(7), "de sex i ShopApi och ShopApi som ShopWeb anropar");
         Assert.That(map.Integrations.Single(i => i.Kind == IntegrationKind.Database).Detail, Is.EqualTo("databas, EF Core (ShopDbContext) och SQL"));
         var overview = CodeMapOverview.Build(map);
         Assert.That(overview.Nodes.Where(n => n.Parent == "int:db:ShopDatabase").Select(n => n.Name), Is.EqualTo(new[]

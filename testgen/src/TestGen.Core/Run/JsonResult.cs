@@ -7,7 +7,7 @@ using System.Text.Json.Nodes;
 namespace TestGen.Core.Run;
 
 /// <summary>
-/// Maskinläsbart resultat (--report resultat.json) för CI och för jämförelse mellan körningar (--jamfor).
+/// Maskinläsbart resultat (--report resultat.json) för CI och för jämförelse mellan körningar (--baseline).
 /// Formatet är fast och engelskt: nyckelnamn, orsakskoder och regelkoder är alltid samma ord, tal skrivs med punkt,
 /// tider är ISO 8601 med förskjutning och varaktigheter är sekunder respektive millisekunder. Texter för människor
 /// (verdict, title, explanation, hint) är på svenska och ska inte matchas mot. Schema: docs/ci/testgen-result.schema.json.
@@ -21,6 +21,24 @@ public static class JsonResult
     private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public static string Serialize(JsonObject root) => root.ToJsonString(Pretty) + "\n";
+
+    /// <summary>null utelämnas överallt i filen.</summary>
+    private static void Prune(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject o:
+                foreach (var name in o.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList()) o.Remove(name);
+                foreach (var (_, child) in o) Prune(child);
+                break;
+            case JsonArray a:
+                foreach (var child in a) Prune(child);
+                break;
+        }
+    }
+
+    /// <summary>Resultatet av ett test som ord för maskiner: passed, failed eller skipped (i texten OK, FEL, HOPPAD).</summary>
+    public static string OutcomeCode(string outcome) => outcome switch { "OK" => "passed", "FEL" => "failed", _ => "skipped" };
 
     /// <summary>ISO 8601 med förskjutning, t.ex. 2026-11-01T21:51:43.120+01:00.</summary>
     public static string Iso(DateTimeOffset t) => t.ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", CultureInfo.InvariantCulture);
@@ -40,9 +58,9 @@ public static class JsonResult
         root["totals"] = new JsonObject
         {
             ["tests"] = entries.Count,
-            ["ok"] = entries.Count(e => e.Outcome == "OK"),
-            ["fel"] = entries.Count(e => e.Outcome == "FEL"),
-            ["hoppad"] = entries.Count(e => e.Outcome == "HOPPAD"),
+            ["passed"] = entries.Count(e => e.Outcome == "OK"),
+            ["failed"] = entries.Count(e => e.Outcome == "FEL"),
+            ["skipped"] = entries.Count(e => e.Outcome == "HOPPAD"),
             ["warnings"] = entries.Sum(e => e.Result.Warnings.Count),
         };
         root["verdict"] = S(PlainLanguage.Verdict(outcomes, info.PossibleTotal, info.Partial));
@@ -59,7 +77,6 @@ public static class JsonResult
         root["rerun"] = S(ReportWriter.RerunCommand(info));
         root["rerunFailed"] = S(ReportWriter.RerunFailedCommand(info, entries.Where(e => e.Outcome == "FEL")));
         root["comparison"] = info.Comparison is { } cmp ? Comparison(cmp) : null;
-        root["error"] = null;
 
         var tests = new JsonArray();
         for (var i = 0; i < entries.Count; i++)
@@ -88,7 +105,7 @@ public static class JsonResult
                 ["step"] = t.Step?.Number,
                 ["name"] = S(t.Description),
                 ["title"] = S(plain.Title),
-                ["outcome"] = e.Outcome,
+                ["outcome"] = OutcomeCode(e.Outcome),
                 ["cause"] = cause is { } c ? CauseCodes.Code(c) : null,
                 ["causeName"] = cause is { } c2 ? PlainLanguage.CauseName(c2) : null,
                 ["expectedStatus"] = expected,
@@ -105,6 +122,7 @@ public static class JsonResult
             });
         }
         root["tests"] = tests;
+        Prune(root);
         return root;
     }
 
@@ -119,16 +137,15 @@ public static class JsonResult
     public static JsonObject BuildFailure(ReportInfo info, string what, string action, int finishedTests, HeaderMask mask)
     {
         var root = Header(info, mask);
-        root["totals"] = new JsonObject { ["tests"] = 0, ["ok"] = 0, ["fel"] = 0, ["hoppad"] = 0, ["warnings"] = 0 };
+        root["totals"] = new JsonObject { ["tests"] = 0, ["passed"] = 0, ["failed"] = 0, ["skipped"] = 0, ["warnings"] = 0 };
         root["verdict"] = mask.Scrub("Körningen kunde inte genomföras. " + what);
         root["verdictKind"] = "unreachable";
         root["causes"] = new JsonArray();
-        root["exitCode"] = ExitCodes.ApiUnreachable;
+        root["exitCode"] = ExitCodes.Unreachable;
         root["rerun"] = ReportWriter.RerunCommand(info) is { } rr ? mask.Scrub(rr) : null;
-        root["rerunFailed"] = null;
-        root["comparison"] = null;
         root["error"] = new JsonObject { ["message"] = mask.Scrub(what), ["action"] = mask.Scrub(action), ["finishedTestsNotIncluded"] = finishedTests };
         root["tests"] = new JsonArray();
+        Prune(root);
         return root;
     }
 
@@ -139,7 +156,9 @@ public static class JsonResult
         return new JsonObject
         {
             ["schemaVersion"] = SchemaVersion,
-            ["testgenVersion"] = info.Version,
+            ["toolVersion"] = info.Version,
+            ["layer"] = info.Layer,
+            ["project"] = S(info.Project),
             ["startedAt"] = Iso(info.When),
             ["finishedAt"] = Iso(new DateTimeOffset(info.When) + duration),
             ["durationSeconds"] = Seconds(duration),
@@ -168,15 +187,23 @@ public static class JsonResult
             foreach (var i in items)
                 a.Add(new JsonObject
                 {
-                    ["id"] = i.Id, ["key"] = i.Key, ["title"] = i.Title,
-                    ["cause"] = i.Cause is { } cause ? CauseCodes.Code(cause) : null, ["previousId"] = i.PreviousId,
+                    ["id"] = i.Id,
+                    ["key"] = i.Key,
+                    ["title"] = i.Title,
+                    ["cause"] = i.Cause is { } cause ? CauseCodes.Code(cause) : null,
+                    ["previousId"] = i.PreviousId,
                 });
             return a;
         }
         return new JsonObject
         {
-            ["baselineFile"] = c.File, ["baselineStartedAt"] = c.StartedAt, ["baselineSeed"] = c.Seed,
-            ["newFailures"] = Items(c.New), ["fixed"] = Items(c.Fixed), ["persisting"] = Items(c.Persisting), ["notRerun"] = c.Unverified,
+            ["baselineFile"] = c.File,
+            ["baselineStartedAt"] = c.StartedAt,
+            ["baselineSeed"] = c.Seed,
+            ["newFailures"] = Items(c.New),
+            ["fixed"] = Items(c.Fixed),
+            ["persisting"] = Items(c.Persisting),
+            ["notRerun"] = c.Unverified,
         };
     }
 

@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- NUnits testadapter hoppar över ett testprojekt vars kod inte nämner någon NUnit-typ (då skrivs ingen referens till nunit.framework).
+       Med ApiTests("...") eller ViewTests("...") som enda kod är det fallet. Attributet gör att projektet upptäcks.
+       Fixturerna (ett API eller en webbapp vardera) körs parallellt: de delar inget, eftersom varje fixtur har egen app, mock och port 0.
+       Testerna inom en fixtur körs i tur och ordning. Följer med paketet i build/. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="NUnit.Framework.ParallelizableAttribute">
+      <_Parameter1>NUnit.Framework.ParallelScope.Fixtures</_Parameter1>
+      <_Parameter1_IsLiteral>true</_Parameter1_IsLiteral>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

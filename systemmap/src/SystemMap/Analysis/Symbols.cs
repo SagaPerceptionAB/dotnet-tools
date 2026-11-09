@@ -11,7 +11,7 @@ internal static class Symbols
     /// <summary>Filen relativt <paramref name="root"/> (med snedstreck) och raden, räknad från 1.</summary>
     public static (string File, int Line) Where(Location location, string root)
     {
-        var span = location.GetLineSpan();
+        var span = location.GetMappedLineSpan();   // följer #line: kod från Razor-filer pekar på .razor- eller .cshtml-filen
         var file = string.IsNullOrEmpty(span.Path) ? "" : Path.GetRelativePath(root, span.Path).Replace('\\', '/');
         return (file, span.StartLinePosition.Line + 1);
     }
@@ -71,8 +71,14 @@ internal static class Symbols
         symbol.GetAttributes().Any(a => a.AttributeClass is { } c && shortNames.Any(n => c.Name == n || c.Name == n + "Attribute"));
 
     /// <summary>Nyckel för en metod (för cykler och cachning), oberoende av vilken kompilering symbolen kommer från.</summary>
-    public static string Key(IMethodSymbol m) =>
-        (m.OriginalDefinition.GetDocumentationCommentId() ?? m.OriginalDefinition.ToDisplayString()) + "@" + m.ContainingAssembly?.Name;
+    public static string Key(IMethodSymbol m)
+    {
+        var original = m.OriginalDefinition;
+        // Lambdor och lokala funktioner har inget dokumentations-id: platsen skiljer dem åt.
+        var id = original.GetDocumentationCommentId() ??
+                 (original.Locations.FirstOrDefault(l => l.IsInSource) is { SourceTree: { } tree } at ? $"{tree.FilePath}:{at.SourceSpan.Start}" : original.ToDisplayString());
+        return id + "@" + m.ContainingAssembly?.Name;
+    }
 
     public static string TypeKey(ITypeSymbol t) => FullName(t) + "@" + t.ContainingAssembly?.Name;
 

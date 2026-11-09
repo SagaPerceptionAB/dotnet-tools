@@ -7,7 +7,7 @@ public enum OverviewKind { Entry, Project, Class, Method, Integration, Operation
 /// (t.ex. "läsa Customers" i databasen eller "skicka OrderPlaced" i en kö).
 /// </summary>
 /// <param name="Parent">Delen den ligger i, eller null för anrop, projekt och integrationer.</param>
-/// <param name="Ref">För en integration dess id (namnet på ett anrop är dess nyckel, <c>POST /orders</c>).</param>
+/// <param name="Ref">För en integration dess id; för ett anrop dess sort (<c>controller</c>, <c>razor-page</c> ...). Namnet på ett anrop är dess nyckel, <c>POST /orders</c>.</param>
 /// <param name="File">För en metod filen där den finns, relativt solutionens katalog.</param>
 /// <param name="Entries">Anropen (nycklar som <c>POST /orders</c>) vars väg går genom delen.</param>
 public sealed record OverviewNode(
@@ -78,16 +78,17 @@ public static class CodeMapOverview
         public void Add(EntryPoint entry)
         {
             var key = EntryKey(entry);
-            var node = GetOrAdd("in:" + key, () => new Node("in:" + key, OverviewKind.Entry, key, null), _entries);
+            var node = GetOrAdd("in:" + key, () => new Node("in:" + key, OverviewKind.Entry, key, null) { Ref = CodeMapJson.KindCode(entry.Kind) }, _entries);
             node.Touch(key);
             var handler = Member(entry.Project, entry.Handler, entry.File, entry.Line, entry.Input, entry.Output, key);
             Connect(node.Id, handler.Id, null, null, key);
-            Walk(entry.Steps, handler, key, new HashSet<string>(StringComparer.Ordinal));
+            Walk(entry.Steps, handler, key, new HashSet<IReadOnlyList<Step>>(ReferenceEqualityComparer.Instance));
         }
 
-        private void Walk(IReadOnlyList<Step> steps, Node from, string key, HashSet<string> walked)
+        private void Walk(IReadOnlyList<Step> steps, Node from, string key, HashSet<IReadOnlyList<Step>> walked)
         {
-            if (!walked.Add(from.Id)) return;
+            // Samma lista av steg (delad via minnet) behöver bara gås igenom en gång per anrop.
+            if (!walked.Add(steps)) return;
             foreach (var step in steps)
             {
                 if (step.Integration is { } use)

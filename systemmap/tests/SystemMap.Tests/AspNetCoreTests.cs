@@ -31,7 +31,7 @@ public class AspNetCoreTests
         try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
-    private static string Page => CodeMapHtml.Write(new CodeMapModel("Test.sln", [], [], [], [], []));
+    private static string Page => CodeMapHtml.Write(new CodeMapModel("Test.sln", [], [], [], [], [], []));
 
     private void WriteBuilt()
     {

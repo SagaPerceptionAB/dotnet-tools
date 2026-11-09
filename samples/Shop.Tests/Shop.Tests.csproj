@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Med paketet följer den här filen med automatiskt; här pekar den direkt på projektet. -->
+  <Import Project="../../testgen/src/SagaPerception.Testing.NUnit/build/SagaPerception.Testing.NUnit.props" />
+
+  <!-- API- och UI-testerna för ShopApi och ShopWeb i `dotnet test`: en rad vardera (ShopApiTests.cs, ShopWebViewTests.cs). Ingår i samples/Shop.slnx.
+       ShopApi har en avsiktlig bugg, så ett av testerna fallerar (se expected-failures.txt). -->
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Vyerna som UI-testerna utgår från (testgen views). -->
+    <None Include="views.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShopApi\ShopApi.csproj" />
+    <ProjectReference Include="..\ShopWeb\ShopWeb.csproj" />
+    <ProjectReference Include="..\..\testgen\src\SagaPerception.Testing.NUnit\SagaPerception.Testing.NUnit.csproj" />
+  </ItemGroup>
+
+</Project>

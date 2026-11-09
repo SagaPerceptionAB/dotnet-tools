@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using NUnit.Framework;
-using TestGen.Scenarios;
 using TestGen.Cli;
 using TestGen.Core;
 using TestGen.Core.Run;
@@ -19,9 +18,9 @@ public class ExcelValidationTests
     [SetUp] public void SetUp() => _dir = System.IO.Directory.CreateTempSubdirectory("testgen-xlsx-").FullName;
     [TearDown] public void TearDown() => System.IO.Directory.Delete(_dir, true);
 
-    private static readonly string[] Std = ExcelScenarioReader.Headers;
+    private static readonly string[] Std = ExcelLayout.Headers;
 
-    private string Book(string[][] rows, string[]? headers = null, string name = "t.xlsx", string[][]? envs = null)
+    private string Book(string[][] rows, string[]? headers = null, string name = "t.xlsx")
     {
         var path = Path.Combine(_dir, name);
         using var wb = new XLWorkbook();
@@ -31,13 +30,6 @@ public class ExcelValidationTests
         for (var r = 0; r < rows.Length; r++)
             for (var c = 0; c < rows[r].Length; c++)
                 if (!string.IsNullOrEmpty(rows[r][c])) ws.Cell(r + 2, c + 1).Value = rows[r][c];
-        if (envs is not null)
-        {
-            var we = wb.AddWorksheet("Miljöer");
-            for (var i = 0; i < EnvironmentSheet.Headers.Length; i++) we.Cell(1, i + 1).Value = EnvironmentSheet.Headers[i];
-            for (var r = 0; r < envs.Length; r++)
-                for (var c = 0; c < envs[r].Length; c++) we.Cell(r + 2, c + 1).Value = envs[r][c];
-        }
         wb.SaveAs(path);
         return path;
     }
@@ -70,10 +62,17 @@ public class ExcelValidationTests
     private async Task<(int Exit, string Output, Api Api)> Run(string excel, string[]? scenarios = null, bool excelOnly = false, string? only = null, Api? api = null)
     {
         api ??= new Api();
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var exit = await new TestRunner(new RunOptions
         {
-            Spec = ShopSpec.Path, Api = "http://fake.test", Excel = excel, Seed = 1, Only = only, Scenarios = scenarios, ExcelOnly = excelOnly,
+            Spec = ShopSpec.Path,
+            Api = "http://fake.test",
+            Excel = excel,
+            Source = new ExcelTestSource(),
+            Seed = 1,
+            Only = only,
+            Scenarios = scenarios,
+            ExcelOnly = excelOnly,
         }, sw, api).RunAsync();
         return (exit, sw.ToString(), api);
     }
@@ -112,18 +111,6 @@ public class ExcelValidationTests
         var api = new Api();
         Assert.ThrowsAsync<ExcelValidationException>(async () => await Run(path, api: api));
         Assert.That(api.Requests, Is.EqualTo(0), "ingen request får skickas, varken genererade eller från Excel");
-    }
-
-    [Test]
-    public void Environment_warnings_are_included_in_the_error_when_Tester_sheet_has_errors()
-    {
-        var path = Book(new[] { new[] { "S", "createProdukt" } });
-        var warning = new ExcelIssue("Miljöer", 3, 3, "Värde", "token står i klartext.", IsError: false);
-        var e = Assert.ThrowsAsync<ExcelValidationException>(async () =>
-            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Excel = path, Warnings = new[] { warning } }, new StringWriter(), new Api()).RunAsync())!;
-        Assert.That(e.Errors, Is.Not.Empty);
-        Assert.That(e.Warnings.Select(w => w.Cell), Does.Contain("Miljöer!C3"));
-        Assert.That(e.Message, Does.Contain("Varning (stoppar inte):").And.Contain("Miljöer!C3 (Värde): token står i klartext."));
     }
 
     [Test]
@@ -353,91 +340,19 @@ public class ExcelValidationTests
         var headers = new[] { "Scenario", "Anrop", "Indata", "Spara som", "Förväntad status", "Förväntat svar", "Kommentar" };
         var (exit, output, _) = await Run(Book(new[] { new[] { "S", "createCustomer", "name=A" } }, headers), excelOnly: true);
         Assert.That(exit, Is.EqualTo(0));
-        Assert.That(output, Does.StartWith("Varning (körningen fortsätter):\n  Tester!G1: rubriken 'Kommentar' känns inte igen och ignoreras."));
+        Assert.That(output, Does.StartWith("Varning: Tester!G1: rubriken 'Kommentar' känns inte igen och ignoreras."));
         Assert.That(output, Does.Contain("S, steg 1"));
     }
 
-    // --- Punkt 2 + 10: Miljöer ---
-
-    [Test]
-    public void Environments_errors_give_cell_and_all_errors_are_collected()
-    {
-        var path = Book(new[] { new[] { "S", "createCustomer", "name=A" } }, envs: new[]
-        {
-            new[] { "lokal", "api", "http://x" },
-            new[] { "lokal", "timeut", "10" },
-            new[] { "", "api", "http://y" },
-            new[] { "test", "token", "" },
-        });
-        var e = Assert.Throws<ExcelValidationException>(() => EnvironmentSheet.Read(path))!;
-        Assert.That(Lines(e), Is.EqualTo(new[]
-        {
-            "Miljöer!B3 (Inställning): okänd inställning \"timeut\". Menade du timeout? Giltiga: api, header, token, timeout.",
-            "Miljöer!A4 (Miljö): cellen är tom. Skriv miljöns namn, t.ex. lokal.",
-            "Miljöer!C5 (Värde): cellen är tom för token. Skriv värdet, eller ta bort raden.",
-        }));
-    }
-
-    [Test]
-    public void Environments_warns_about_plaintext_token_and_secret_header_but_not_env_or_common_headers()
-    {
-        var path = Book(new[] { new[] { "S", "createCustomer", "name=A" } }, envs: new[]
-        {
-            new[] { "lokal", "api", "http://x" },
-            new[] { "lokal", "token", "hemligt" },
-            new[] { "lokal", "header", "X-Api-Key: abc" },
-            new[] { "lokal", "header", "Accept: application/json" },
-            new[] { "test", "api", "http://y" },
-            new[] { "test", "token", "${env:API_TOKEN}" },
-            new[] { "test", "header", "Authorization: Bearer ${env:T}" },
-        });
-        var local = EnvironmentSheet.FindWithWarnings(path, "lokal");
-        Assert.That(local.Warnings.Select(w => w.Text), Is.EqualTo(new[]
-        {
-            "Miljöer!C3: token står i klartext i Excel-filen. Använd ${env:NAMN} så att den inte sprids när filen delas.",
-            "Miljöer!C4: headern X-Api-Key står i klartext i Excel-filen. Använd ${env:NAMN} så att den inte sprids när filen delas.",
-        }));
-        Assert.That(EnvironmentSheet.FindWithWarnings(path, "test").Warnings, Is.Empty);
-
-        var settings = RunSettings.Resolve(null, Array.Empty<string>(), null, null, path, "lokal");
-        Assert.That(settings.Warnings, Has.Count.EqualTo(2), "varningarna följer med i inställningarna");
-    }
-
-    [Test]
-    public void Environments_value_with_wrong_format_gets_cell_as_in_Excel()
-    {
-        var path = Book(new[] { new[] { "S", "createCustomer", "name=A" } }, envs: new[]
-        {
-            new[] { "lokal", "api", "inte-en-url" },
-            new[] { "lokal", "header", "bara-text" },
-            new[] { "lokal", "timeout", "abc" },
-        });
-        var e = Assert.Throws<ExcelValidationException>(() => RunSettings.Resolve(null, Array.Empty<string>(), null, null, path, "lokal"))!;
-        Assert.That(Lines(e), Is.EqualTo(new[]
-        {
-            "Miljöer!C2 (Värde): API-adressen 'inte-en-url' är inte en giltig http/https-adress, t.ex. http://localhost:5080.",
-            "Miljöer!C3 (Värde): kan inte tolka header \"bara-text\". Skriv \"Namn: värde\", t.ex. \"X-Api-Key: abc\".",
-            "Miljöer!C4 (Värde): timeout måste vara ett positivt antal sekunder, inte 'abc'.",
-        }));
-    }
-
-    [Test]
-    public void Unknown_environment_suggests_closest()
-    {
-        var path = Book(new[] { new[] { "S", "createCustomer" } }, envs: new[] { new[] { "lokal", "api", "http://x" } });
-        var e = Assert.Throws<ArgumentException>(() => EnvironmentSheet.Find(path, "lokla"))!;
-        Assert.That(e.Message, Does.Contain("Menade du lokal?").And.Contain("Tillgängliga: lokal"));
-    }
-
-    // --- Punkt 11: --scenario och --bara-excel ---
+    // --- Punkt 11: --scenario och --excel-only ---
 
     [Test]
     public void Flags_parse_repeated_scenario_and_excel_only_with_alias()
     {
-        var a = CommandArgs.Parse("run", new[] { "--scenario", "A B", "--scenario=C", "--bara-excel" }, new[] { "scenario" }, "bara-excel", "excel-only");
+        var a = CommandArgs.Parse("run", new[] { "--scenario", "A B", "--scenario=C", "--excel-only" }, new[] { "scenario" }, "excel-only");
         Assert.That(a.GetAll("scenario"), Is.EqualTo(new[] { "A B", "C" }));
-        Assert.That(a.Flag("bara-excel"), Is.True);
-        Assert.That(CommandArgs.Parse("run", new[] { "--excel-only" }, Array.Empty<string>(), "bara-excel", "excel-only").Flag("excel-only"), Is.True);
+        Assert.That(a.Flag("excel-only"), Is.True);
+        Assert.That(CommandArgs.Parse("run", new[] { "--excel-only" }, Array.Empty<string>(), "excel-only").Flag("excel-only"), Is.True);
     }
 
     [Test]
@@ -448,7 +363,7 @@ public class ExcelValidationTests
         var only = await Run(path, excelOnly: true);
         Assert.That(all.Output, Does.Contain("Genererade tester"));
         Assert.That(only.Output, Does.Not.Contain("Genererade tester"));
-        Assert.That(only.Output, Does.Contain("Kör 1 tester").And.Contain("Sammanfattning: 1 tester, 1 OK, 0 FEL"));
+        Assert.That(only.Output, Does.Contain(" – 1 test mot ").And.Contain("Sammanfattning: 1 tester, 1 OK, 0 FEL"));
         Assert.That(only.Exit, Is.EqualTo(0));
     }
 
@@ -475,11 +390,11 @@ public class ExcelValidationTests
         Assert.That(e.Tip, Does.Contain("Scenarier i filen: Stamkund"));
 
         var none = Assert.ThrowsAsync<UsageException>(async () =>
-            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Scenarios = new[] { "x" } }, new StringWriter(), new Api()).RunAsync())!;
+            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Scenarios = new[] { "x" } }, new StringWriter { NewLine = "\n" }, new Api()).RunAsync())!;
         Assert.That(none.Message, Does.Contain("--scenario kräver --excel"));
         var none2 = Assert.ThrowsAsync<UsageException>(async () =>
-            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", ExcelOnly = true }, new StringWriter(), new Api()).RunAsync())!;
-        Assert.That(none2.Message, Does.Contain("--bara-excel kräver --excel"));
+            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", ExcelOnly = true }, new StringWriter { NewLine = "\n" }, new Api()).RunAsync())!;
+        Assert.That(none2.Message, Does.Contain("--excel-only kräver --excel"));
     }
 
     // --- Punkt 12: sammanfattning av hoppade steg ---

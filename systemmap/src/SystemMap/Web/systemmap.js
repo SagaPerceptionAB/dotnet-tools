@@ -43,9 +43,9 @@
   // open: delar användaren fällt ut. shut: delar på det valda anropets väg som användaren fällt ihop. card: noden i detaljkortet.
   // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects, classes eller all (vad som är utfällt från början).
   // out/into: pilarna från och till varje nod. visible: visibleOf för det som ritas just nu.
-  var state = { map: null, entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
+  var state = { map: null, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
     dir: stored('map-direction', ['LR', 'TB'], 'LR'), level: stored('map-level', ['projects', 'classes', 'all'], 'classes'),
-    layout: null, card: null, hovered: null, pulses: [], root: null, opts: {}, tools: [], unfitted: false };
+    layout: null, steps: {}, base: {}, last: 1, card: null, hovered: null, pulses: [], root: null, opts: {}, tools: [], unfitted: false };
 
   var $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) {
@@ -91,6 +91,24 @@
   function summary(map) {
     var p = map.projects.length, i = map.integrations.length;
     return map.entryPoints.length + ' anrop, ' + p + (p === 1 ? ' del av systemet och ' : ' delar av systemet och ') + i + (i === 1 ? ' integration.' : ' integrationer.');
+  }
+
+  // Anropen i grupper efter sökvägsområde: den gemensamma början för alla anrop (t.ex. /v1) tas bort och nästa segment blir
+  // gruppen (/v1/auth, /v1/family ...). Ger [{ label, entries }]: grupperna där deras första anrop står, och anropen i en grupp
+  // i samma ordning som i kartan (sökväg, sedan metod). Ett ensamt anrop är ingen grupp (label är null).
+  function callGroups(entries) {
+    var segs = entries.map(function (e) { return String(e.path || '').split('/').filter(Boolean); });
+    var common = 0;
+    while (segs.length && segs.every(function (x) { return x.length > common && x[common] === segs[0][common]; })) common++;
+    var list = [], byKey = Object.create(null);
+    entries.forEach(function (e, i) {
+      var x = segs[i];
+      if (x.length <= common) { list.push({ label: null, entries: [e] }); return; }
+      var g = byKey[x[common]];
+      if (!g) { g = byKey[x[common]] = { label: '/' + x.slice(0, common + 1).join('/'), entries: [] }; list.push(g); }
+      g.entries.push(e);
+    });
+    return list.map(function (g) { return g.entries.length > 1 ? g : { label: null, entries: g.entries }; });
   }
 
   // Bygger kartans delar i roten och kopplar knapparna. Kartan ritas först med show().
@@ -172,12 +190,18 @@
       (state.out[k.from] = state.out[k.from] || []).push(k);
       (state.into[k.to] = state.into[k.to] || []).push(k);
     });
+    computeSteps();
     if (!state.open) openLevel(state.level);
     syncTools();
     var list = $('map-entry'); list.textContent = '';
     var all = el('option', null, 'Hela systemet'); all.value = ''; list.appendChild(all);
-    map.entryPoints.forEach(function (e, i) {
-      var o = el('option', null, entryKey(e)); o.value = String(i); list.appendChild(o);
+    state.groups = callGroups(map.entryPoints);
+    state.groups.forEach(function (g) {
+      var into = g.label ? list.appendChild(el('optgroup')) : list;
+      if (g.label) into.label = g.label;
+      g.entries.forEach(function (e) {
+        var o = el('option', null, entryKey(e)); o.value = String(map.entryPoints.indexOf(e)); into.appendChild(o);
+      });
     });
     var diff = map.differences || [];
     $('map-diff-summary').textContent = 'Skillnader (' + diff.length + ')';
@@ -266,12 +290,45 @@
     while (n && n.kind !== 'project') n = n.parent ? state.nodes[n.parent] : null;
     return n ? n.name : null;
   }
-  // Lagret en nod hör till: anropen in (0), projekten i anropsordning, integrationerna sist. Lagren står i flödets riktning,
-  // men placeringen inom ett lager räknar fcose ut.
+  // Steget för varje klass i sitt projekt: 1 när ett anrop in eller ett annat projekt anropar den (eller ingen gör det),
+  // annars 1 + det högsta steget hos klasserna i projektet som anropar den. Vägen räknas med ett tak, så att cykler tar slut.
+  // Ger också första lagret för varje projekt (base) och lagret för integrationerna (last).
+  var MAX_STEP = 6;
+  function computeSteps() {
+    var steps = {}, roots = {}, calls = [], base = {}, span = {}, next = 1;
+    var owner = function (id) {
+      var n = state.nodes[id];
+      while (n && n.kind !== 'class' && n.kind !== 'entry') n = n.parent ? state.nodes[n.parent] : null;
+      return n;
+    };
+    Object.keys(state.nodes).forEach(function (id) { if (state.nodes[id].kind === 'class') steps[id] = 1; });
+    state.map.overview.links.forEach(function (k) {
+      var a = owner(k.from), b = owner(k.to);
+      if (!a || !b || a === b || b.kind !== 'class') return;
+      if (a.kind === 'entry' || projectOf(a) !== projectOf(b)) roots[b.id] = true;
+      else calls.push([a.id, b.id]);
+    });
+    for (var round = 0, changed = true; round < MAX_STEP && changed; round++) {
+      changed = false;
+      calls.forEach(function (c) {
+        var to = Math.min(MAX_STEP, steps[c[0]] + 1);
+        if (!roots[c[1]] && to > steps[c[1]]) { steps[c[1]] = to; changed = true; }
+      });
+    }
+    Object.keys(steps).forEach(function (id) { var p = projectOf(state.nodes[id]); span[p] = Math.max(span[p] || 1, steps[id]); });
+    state.map.projects.forEach(function (p) { base[p] = next; next += span[p] || 1; });
+    state.steps = steps; state.base = base; state.last = next;
+  }
+  function stepOf(n) {
+    while (n && n.kind !== 'class') n = n.parent ? state.nodes[n.parent] : null;
+    return n ? state.steps[n.id] || 1 : 1;
+  }
+  // Lagret en nod hör till: anropen in (0), projekten efter varandra med klasserna i steg, integrationerna sist. Lagren står i
+  // flödets riktning, men placeringen inom ett lager räknar fcose ut.
   function columnOf(n) {
     if (n.kind === 'entry') return 0;
-    if (n.kind === 'integration' || n.kind === 'operation') return state.map.projects.length + 1;
-    return state.map.projects.indexOf(projectOf(n)) + 1;
+    if (n.kind === 'integration' || n.kind === 'operation') return state.last;
+    return (state.base[projectOf(n)] || 1) + stepOf(n) - 1;
   }
   // Färgen för en nodtyp eller en ikon i förklaringen: grått för anropen in, blått för systemets kod, grönt för resten.
   function colorOf(kind) {
@@ -281,6 +338,7 @@
   function iconKind(n) {
     if (n.kind === 'integration') return integrationOf(n.ref).kind || 'http';
     if (n.kind === 'operation') return iconKind(state.nodes[n.parent]) === 'queue' ? 'message' : null;
+    if (n.kind === 'entry' && ['razor-page', 'blazor-page', 'mvc-view'].indexOf(n.ref) >= 0) return 'page';
     return n.kind === 'method' ? null : n.kind;
   }
   var ICONS = {
@@ -293,7 +351,8 @@
     email: '<rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M2.5 4.5 L9 9.5 L15.5 4.5"/>',
     project: '<path d="M9 2.5 L16 6 L9 9.5 L2 6 Z"/><path d="M2 9.5 L9 13 L16 9.5"/><path d="M2 12.5 L9 16 L16 12.5"/>',
     'class': '<rect x="2.5" y="2.5" width="13" height="13" rx="2"/><path d="M11.5 6.5 A3.5 3.5 0 1 0 11.5 11.5"/>',
-    entry: '<path d="M2 9 H11.5 M8 5.5 L11.5 9 L8 12.5"/><path d="M12.5 3 H15.5 V15 H12.5"/>'
+    entry: '<path d="M2 9 H11.5 M8 5.5 L11.5 9 L8 12.5"/><path d="M12.5 3 H15.5 V15 H12.5"/>',
+    page: '<rect x="2.5" y="2.5" width="13" height="13" rx="1.5"/><path d="M2.5 6.5 H15.5 M5 4.5 h0.01"/>'
   };
   function svgUri(w, h, body) {
     return 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h +
@@ -353,8 +412,20 @@
       if (open) kids.forEach(function (k) { add(state.nodes[k], n.id); });
       else { var c = columnOf(n); (layers[c] = layers[c] || []).push(n); }
     };
+    // Anropen i en grupp ligger i en egen yta med områdets namn, i fast ordning (sökväg, metod).
+    var callGroup = {}, order = {}, fixed = {}, seq = 0;
+    state.groups.forEach(function (g) {
+      var keys = g.entries.map(entryKey), gid = 'cg:' + g.label;
+      keys.forEach(function (k) { order['in:' + k] = seq++; });
+      if (!g.label) return;
+      nodes.push({ group: 'nodes', data: { id: gid, label: g.label, color: COLORS.entry }, classes: 'group t-callgroup' + mark(keys) });
+      pads[gid] = { x: 16, y: 40 };
+      fixed[gid] = true;
+      keys.forEach(function (k) { callGroup['in:' + k] = gid; });
+    });
     map.overview.nodes.forEach(function (n) {
-      if (n.kind === 'entry' || n.kind === 'integration') add(n, null);
+      if (n.kind === 'entry') add(n, callGroup[n.id] || null);
+      else if (n.kind === 'integration') add(n, null);
       else if (n.kind === 'project') add(n, 'system');
     });
     map.overview.links.forEach(function (k) {
@@ -364,35 +435,103 @@
       if (!e) { e = byId[id] = { id: id, a: a, b: b, entries: [] }; edges.push(e); }
       k.entries.forEach(function (x) { if (e.entries.indexOf(x) < 0) e.entries.push(x); });
     });
+    // Pilarna som ritas: utan valt anrop blir pilarna från anropen i en ruta en pil från rutan till varje mål (arrange räknar
+    // fortfarande på pilarna per anrop). Med ett valt anrop ritas pilarna per anrop, så att vägen syns.
+    var drawn = edges;
+    if (!key) {
+      drawn = []; byId = {};
+      edges.forEach(function (e) {
+        var a = callGroup[e.a] || e.a, id = 'k:' + a + '>' + e.b, d = byId[id];
+        if (!d) { d = byId[id] = { id: id, a: a, b: e.b, entries: [] }; drawn.push(d); }
+        e.entries.forEach(function (x) { if (d.entries.indexOf(x) < 0) d.entries.push(x); });
+      });
+    }
     // Placeringen (arrange) ger lagren i flödets riktning, ordningen inom varje lager (färre korsande pilar), en startplacering
     // och reglerna till fcose. Allt i ett lager står före allt i nästa (till vänster om eller ovanför), med avstånd som räknar in
     // nodernas storlek och ytornas kanter. Inom lagret får fcose placera fritt, men ytor bredvid varandra hålls isär.
     var lr = state.dir !== 'TB';
     var plan = arrange({ layers: layers, info: info, parentOf: parentOf, pads: pads, edges: edges, lr: lr,
-      calls: map.entryPoints.map(function (e) { return 'in:' + entryKey(e); }) });
-    var calls = plan.calls, rules = plan.rules;
-    // Anropen in står tätt, i den ordning som ger färst korsningar. Avståndet räknas från mitt till mitt, så nodernas storlek
-    // läggs till.
-    var callGap = function (a, b) { return lr ? 42 : (info[a].w + info[b].w) / 2 + 18; };
-    for (var j = 0; j + 1 < calls.length; j++) rules.push(before(calls[j], calls[j + 1], lr ? 'y' : 'x', callGap(calls[j], calls[j + 1])));
-    var ints = plan.integrations, lines = [calls, ints].filter(function (l) { return l.length > 1; });
+      calls: map.entryPoints.map(function (e) { return 'in:' + entryKey(e); }), order: order, fixed: fixed, groupOf: callGroup });
+    var calls = plan.calls, rules = plan.rules, ints = plan.integrations;
+    // Anropen in. Från vänster till höger (→: uppifrån och ned) står de i den ordning som ger färst korsningar; avståndet räknas
+    // från mitt till mitt. Uppifrån och ned blir varje ruta (eller ensamt anrop) en kolumn med anropen under varandra, och
+    // kolumnerna står bredvid varandra. units: kolumnerna (→: ett anrop var).
+    var callGap = function (a, b) {
+      var pa = parentOf[a], pb = parentOf[b];
+      // Anrop i olika grupper får också plats för ytornas kant.
+      return CALL_GAP + (pa === pb ? 0 : (pa ? pads[pa].y : 0) + (pb ? pads[pb].y : 0));
+    };
+    var units = lr ? calls.map(function (c) { return { id: c, calls: [c] }; }) : columns(calls, callGroup, info, pads);
+    var unitGap = function (a, b) { return lr ? callGap(a.calls[0], b.calls[0]) : columnGap(a, b); };
+    // Linjerna som fcose håller raka: tvärs över flödet (→: lodrätt, samma x) och längs flödet (→: vågrätt, samma y).
+    var acrossFlow = lr ? 'vertical' : 'horizontal', alongFlow = lr ? 'horizontal' : 'vertical';
+    var unitOf = {}, align = {}, bands = [];
+    var line = function (axis, ids) { if (ids.length > 1) (align[axis] = align[axis] || []).push(ids); };
+    units.forEach(function (u) { u.calls.forEach(function (c) { unitOf[c] = u.id; }); });
+    // Uppifrån och ned står kolumnerna bredvid varandra. Inom en kedja (→: alla anrop; uppifrån och ned: anropen i en kolumn)
+    // står anropen under varandra, med osynliga fjädrar emellan så att de håller ihop i stället för att dras isär mot var sin
+    // controller. Fjädern är 2 längre än regelns avstånd, så att den inte spänner anropen närmare varandra än regeln tillåter.
+    if (!lr) for (var j = 0; j + 1 < units.length; j++) rules.push(before(units[j].calls[0], units[j + 1].calls[0], 'x', columnGap(units[j], units[j + 1])));
+    (lr ? [calls] : units.map(function (u) { return u.calls; })).forEach(function (chain) {
+      for (var q = 0; q + 1 < chain.length; q++) {
+        var gap = callGap(chain[q], chain[q + 1]);
+        rules.push(before(chain[q], chain[q + 1], 'y', gap)); bands.push([chain[q], chain[q + 1], gap]);
+      }
+    });
+    // Kolumnernas första anrop (→: alla anrop) står på en linje tvärs över flödet.
+    line(acrossFlow, units.map(function (u) { return u.calls[0]; }));
     // Integrationerna på sin linje får plats för namnet under ikonen.
     for (var k = 0; k + 1 < ints.length; k++) rules.push(before(ints[k], ints[k + 1], lr ? 'y' : 'x', lr ? 125 : 120));
-    var align = {};
-    if (lines.length) align[lr ? 'vertical' : 'horizontal'] = lines;
+    line(acrossFlow, ints);
+    // Klasserna som anropen in når står på en linje längs flödet med (uppifrån och ned: rakt under) ett av sina anrop, det
+    // mittersta, så att pilen från rutan går rakt. Uppifrån och ned ställs en klass per kolumn under kolumnen. Paren hålls i samma
+    // ordning och avstånd som klasserna.
+    var at = {}, pos = 0, reach = {}, paired = {}, lastIn = {}, along = lr ? 'h' : 'w';
+    units.forEach(function (u, i) { at[u.id] = pos; if (i + 1 < units.length) pos += unitGap(u, units[i + 1]); });
+    edges.forEach(function (e) {
+      var n = state.nodes[e.b];
+      if (e.a in unitOf && info[e.b] && n && (n.kind === 'class' || n.kind === 'project')) {
+        var list = reach[e.b] = reach[e.b] || [];
+        if (list.indexOf(unitOf[e.a]) < 0) list.push(unitOf[e.a]);
+      }
+    });
+    Object.keys(reach).sort(function (x, y) { return plan.rank[x] - plan.rank[y]; }).forEach(function (id) {
+      var list = reach[id].sort(function (x, y) { return at[x] - at[y]; }), mid = (list.length - 1) / 2, layer = columnOf(state.nodes[id]);
+      var prev = lastIn[layer], room = function (c) { return !prev || at[c] - at[prev.call] >= (info[prev.id][along] + info[id][along]) / 2 + 8; };
+      var pick = list.slice().sort(function (x, y) { return Math.abs(list.indexOf(x) - mid) - Math.abs(list.indexOf(y) - mid); })
+        .filter(function (c) { return !paired[c] && room(c); })[0];
+      if (!pick) return;
+      paired[pick] = id; lastIn[layer] = { id: id, call: pick };
+    });
+    units.forEach(function (u) { line(alongFlow, paired[u.id] ? u.calls.concat([paired[u.id]]) : u.calls); });
     return {
-      elements: nodes.concat(plan.anchors).concat(edges.map(function (e) {
+      elements: nodes.concat(plan.anchors).concat(drawn.map(function (e) {
         return { group: 'edges', data: { id: e.id, source: e.a, target: e.b, color: colorOf(state.nodes[e.b].kind) }, classes: mark(e.entries).trim() };
-      })).concat(calls.slice(1).map(function (id, i) {
-        // Osynliga fjädrar mellan anropen in, så att de håller ihop i stället för att dras isär mot var sin controller.
-        // Fjädern är 2 längre än regelns avstånd, så att den inte spänner anropen närmare varandra än regeln tillåter.
-        return { group: 'edges', data: { id: 'band:' + i, source: calls[i], target: id, color: '#ffffff', len: callGap(calls[i], id) + 2 }, classes: 'band' };
+      })).concat(bands.map(function (b, i) {
+        return { group: 'edges', data: { id: 'band:' + i, source: b[0], target: b[1], color: '#ffffff', len: b[2] + 2 }, classes: 'band' };
       })),
       rules: rules,
-      align: lines.length ? align : null,
+      align: Object.keys(align).length ? align : null,
       seed: plan.seed
     };
   }
+
+  // Anropen in uppifrån och ned: en kolumn per ruta (anropen under varandra) eller ensamt anrop, i anropens ordning. w är
+  // kolumnens bredd: det bredaste anropet plus rutans kant.
+  function columns(calls, groupOf, info, pads) {
+    var list = [], by = {};
+    calls.forEach(function (c) {
+      var id = groupOf[c] || c, u = by[id];
+      if (!u) { u = by[id] = { id: id, calls: [], w: 0 }; list.push(u); }
+      u.calls.push(c); u.w = Math.max(u.w, info[c].w);
+    });
+    list.forEach(function (u) { if (pads[u.id]) u.w += 2 * pads[u.id].x; });
+    return list;
+  }
+  // Avståndet mellan mitten på två kolumner bredvid varandra.
+  function columnGap(a, b) { return (a.w + b.w) / 2 + 30; }
+  // Avståndet mellan mitten på två anrop under varandra, och var det översta anropet står uppifrån och ned.
+  var CALL_GAP = 42, CALL_TOP = 55;
 
   // En placeringsregel för fcose: a före b längs axeln (x: till vänster om, y: ovanför), mitt till mitt minst gap.
   function before(a, b, axis, gap) {
@@ -442,7 +581,11 @@
         groups.forEach(function (g, i) { g.key = g.sum / g.ids.length; g.at = i; });
         groups.sort(function (a, b) { return a.key - b.key || a.at - b.at; });
         var out = [];
-        groups.forEach(function (g) { (g.ids.length === 1 && g.id === g.ids[0] ? [g.id] : sortGroup(g.ids, depth + 1)).forEach(function (id) { out.push(id); }); });
+        // Anropen i en grupp står i fast ordning; allt annat ordnas efter grannarna.
+        var inOrder = function (ids) { return ids.slice().sort(function (a, b) { return m.order[a] - m.order[b]; }); };
+        groups.forEach(function (g) {
+          (g.ids.length === 1 && g.id === g.ids[0] ? [g.id] : m.fixed[g.id] ? inOrder(g.ids) : sortGroup(g.ids, depth + 1)).forEach(function (id) { out.push(id); });
+        });
         return out;
       };
       return sortGroup(ids, 0);
@@ -565,10 +708,24 @@
     });
 
     // Startplatsen: lagren efter varandra i flödets riktning, noderna i varje lager i sin ordning och med ytorna samlade.
-    // Ett långt lager bryts i flera rader (kolumner), så att kartan inte blir bara en smal remsa.
-    var seed = {}, cap = lr ? 520 : 1100, edge = 0;
+    // Varje nod börjar så nära snittet av sina grannar i tidigare lager som det finns plats för, så att pilarna går så rakt som
+    // möjligt. Ett långt lager bryts i flera rader (kolumner), så att kartan inte blir bara en smal remsa.
+    var seed = {}, cross = {}, cap = lr ? 520 : 1100, edge = 0;
     layerNos.forEach(function (c, li) {
       var ids = inLayer[c].slice().sort(byRank), lines = [[]], used = 0, last = null;
+      if (!lr && !li && state.nodes[ids[0]] && state.nodes[ids[0]].kind === 'entry') {
+        // Uppifrån och ned: anropen i kolumner, en per ruta, med anropen under varandra (samma mått som reglerna).
+        var cols = columns(ids, m.groupOf, m.info, m.pads), x = 0, rows = 0;
+        cols.forEach(function (u, i) {
+          if (i) x += columnGap(cols[i - 1], u);
+          u.calls.forEach(function (id, r) { cross[id] = x; seed[id] = { x: x, y: CALL_TOP + r * CALL_GAP }; });
+          rows = Math.max(rows, u.calls.length);
+        });
+        var mid = x / 2;
+        Object.keys(seed).forEach(function (id) { seed[id].x -= mid; cross[id] -= mid; });
+        edge = CALL_TOP + (rows - 1) * CALL_GAP + 31;
+        return;
+      }
       ids.forEach(function (id) {
         var s = size(id, side) + (last && chains[last].join('/') !== chains[id].join('/') ? 40 : 14);
         if (used + s > cap && lines[lines.length - 1].length) { lines.push([]); used = 0; s = size(id, side) + 14; }
@@ -577,19 +734,42 @@
       var ext = Math.max.apply(null, ids.map(function (id) { return size(id, flow); })), span = lines.length * (ext + 30) - 30;
       var start = li ? edge + 90 : 0;
       lines.forEach(function (line, ri) {
-        var total = line.reduce(function (t, e) { return t + e.s; }, 0), cursor = -total / 2;
-        line.forEach(function (e) {
-          var mid = cursor + e.s / 2; cursor += e.s;
-          var f = start + ext / 2 + ri * (ext + 30);
-          seed[e.id] = lr ? { x: f, y: mid } : { x: mid, y: f };
-        });
+        var f = start + ext / 2 + ri * (ext + 30), at = placeLine(line.map(function (e) { return e.id; }), line.map(function (e) { return e.s; }));
+        line.forEach(function (e, i) { cross[e.id] = at[i]; seed[e.id] = lr ? { x: f, y: at[i] } : { x: at[i], y: f }; });
       });
       edge = start + span;
+      function placeLine(list, extent) {
+        // Önskad plats: snittet av grannarna i tidigare lager; saknas det fylls luckorna efter grannen före (eller efter).
+        var cum = [], t = 0, want = list.map(function (id) {
+          var near = nb[id].filter(function (o) { return layerOf[o] < c && o in cross; });
+          return near.length ? near.reduce(function (sum, o) { return sum + cross[o]; }, 0) / near.length : null;
+        });
+        extent.forEach(function (e, i) { t += i ? (extent[i - 1] + e) / 2 : 0; cum.push(t); });
+        var first = want.findIndex(function (w) { return w !== null; });
+        if (first < 0) want = cum.map(function (v) { return v - t / 2; });
+        else want = want.map(function (w, i) {
+          if (w !== null) return w;
+          var j = i; while (j >= 0 && want[j] === null) j--;
+          if (j >= 0) return want[j] + cum[i] - cum[j];
+          return want[first] - (cum[first] - cum[i]);
+        });
+        // Närmast önskad plats utan att ordningen eller avstånden bryts (isotonisk regression på platserna minus avstånden).
+        var blocks = [];
+        want.forEach(function (w, i) {
+          blocks.push({ sum: w - cum[i], n: 1 });
+          while (blocks.length > 1 && blocks[blocks.length - 2].sum / blocks[blocks.length - 2].n >= blocks[blocks.length - 1].sum / blocks[blocks.length - 1].n) {
+            var top = blocks.pop(); blocks[blocks.length - 1].sum += top.sum; blocks[blocks.length - 1].n += top.n;
+          }
+        });
+        var out = [];
+        blocks.forEach(function (bl) { for (var k = 0; k < bl.n; k++) out.push(bl.sum / bl.n + cum[out.length]); });
+        return out;
+      }
     });
 
     var entries = m.calls.filter(function (id) { return id in rank; }).sort(byRank);
     var integrations = leaves.filter(function (l) { return state.nodes[l] && state.nodes[l].kind === 'integration'; }).sort(byRank);
-    return { rules: rules, anchors: anchors, seed: seed, calls: entries.length === m.calls.length ? entries : m.calls, integrations: integrations };
+    return { rules: rules, anchors: anchors, seed: seed, rank: rank, calls: entries.length === m.calls.length ? entries : m.calls, integrations: integrations };
   }
 
   var CY_STYLE = [
@@ -794,7 +974,9 @@
     cy.batch(function () {
       cy.elements('.faded').removeClass('faded');
       if (!node || id === 'system' || node.isParent()) return;
-      var lines = node.connectedEdges().not('.band'), near = node.union(lines).union(lines.connectedNodes());
+      // Pilarna från en ruta med anrop hör till alla anropen i den.
+      var box = node.parent().filter('.t-callgroup'), lines = node.connectedEdges().union(box.connectedEdges()).not('.band');
+      var near = node.union(lines).union(lines.connectedNodes()).union(lines.sources().filter('.t-callgroup').children());
       near = near.union(near.nodes().ancestors());
       cy.elements().not(near).addClass('faded');
     });
@@ -924,5 +1106,6 @@
     });
     return ol;
   }
-  window.SystemMap = { create: create, summary: summary };
+  // groups, cy och steps används av testerna.
+  window.SystemMap = { create: create, summary: summary, groups: callGroups, cy: function () { return state.cy; }, steps: function () { return state.steps; } };
 })();

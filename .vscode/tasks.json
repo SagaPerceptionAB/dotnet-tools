@@ -21,7 +21,7 @@
     },
     {
       "label": "test",
-      "detail": "Kör testerna i testgen.slnx (Api.Tests hoppas över utan Docker och TESTGEN_API_PROJECT)",
+      "detail": "Kör testerna i testgen.slnx",
       "type": "process",
       "command": "dotnet",
       "args": ["test", "${workspaceFolder}/testgen/testgen.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
@@ -54,6 +54,15 @@
       "args": ["build", "${workspaceFolder}/SagaPerception.Tools.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
       "problemMatcher": "$msCompile",
       "group": "build"
+    },
+    {
+      "label": "test testing",
+      "detail": "Kör testerna i Testing.slnx",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/testing/Testing.slnx", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": "test"
     }
   ]
 }

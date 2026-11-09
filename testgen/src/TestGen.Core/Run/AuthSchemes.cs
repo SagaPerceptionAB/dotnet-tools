@@ -38,7 +38,7 @@ public static class AuthSchemes
             var first = op.AuthAlternatives!.SelectMany(a => a).Where(byName.ContainsKey).Select(n => byName[n])
                 .First(x => x.HeaderName is not null && !have.Contains(x.HeaderName));
             var what = first.Kind == "bearer" ? "bearer" : $"apiKey i headern {first.HeaderName}";
-            return $"Obs: API:et kräver inloggning ({what}) men ingen token angavs. Använd --token, --header eller bladet {EnvironmentSheet.SheetName}.";
+            return $"Obs: API:et kräver inloggning ({what}) men ingen token angavs. Använd --token, --header eller en miljö i testgen.yaml.";
         }
         return null;
     }

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Hittar vyer och formulär i källkoden (Roslyn-syntax) och kopplar dem till specens operationer. Läser filer, kör aldrig koden. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
+    <ProjectReference Include="..\..\..\systemmap\src\SystemMap\SystemMap.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TestGen.Views.Tests" />
+  </ItemGroup>
+
+</Project>

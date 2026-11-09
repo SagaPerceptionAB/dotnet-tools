@@ -1,8 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
+using Microsoft.OpenApi;
 using NUnit.Framework;
 using TestGen.Core;
 using TestGen.Core.Run;
@@ -12,8 +11,7 @@ namespace TestGen.Tests;
 /// <summary>Svarskontrollen mot specens schema: hårda fel, varningar, allOf/oneOf/$ref och meddelandena på svenska.</summary>
 public class ResponseSchemaValidationTests
 {
-    private static OpenApiSchema Schema(string yaml) =>
-        new OpenApiStringReader().ReadFragment<OpenApiSchema>(yaml, Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0, out _);
+    private static IOpenApiSchema Schema(string yaml) => SpecText.Schema(yaml);
 
     private static SchemaCheckResult Check(string json, string yaml) => ResponseSchemaCheck.Check(JsonNode.Parse(json), Schema(yaml));
 
@@ -305,7 +303,7 @@ public class ResponseSchemaValidationTests
 
     private static async Task<TestRunner> Run(string body)
     {
-        var runner = new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 3, Only = "createProduct" }, new StringWriter(), new Api(body));
+        var runner = new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Seed = 3, Only = "createProduct" }, new StringWriter { NewLine = "\n" }, new Api(body));
         await runner.RunAsync();
         return runner;
     }

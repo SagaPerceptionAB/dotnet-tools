@@ -569,8 +569,8 @@ public class RunnerWithFakeApiTests : IDisposable
     }
 
     [Test]
-    public void Unknown_report_type_stops_before_the_run()
+    public async Task Unknown_report_type_stops_before_the_run()
     {
-        Assert.ThrowsAsync<ArgumentException>(async () => await Run(report: Path.Combine(_dir, "r.txt")));
+        await Assert.ThrowsAsync<ArgumentException>(async () => await Run(report: Path.Combine(_dir, "r.txt")));
     }
 }

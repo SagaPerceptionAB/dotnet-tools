@@ -74,7 +74,7 @@ public class AuthTests
         var plan = Plan();
         await using var session = await ApiSession.StartAsync(plan);
 
-        var skipped = Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /admin"))!;
+        var skipped = (await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /admin")))!;
 
         Assert.That(skipped.Message, Does.Contain("testanvändaren").And.Contain("apis.AuthApp.auth.claims").And.Contain("apis.AuthApp.login"));
         Assert.That(skipped.Message, Does.Not.Contain("<api>"));
@@ -95,7 +95,7 @@ public class AuthTests
     {
         var plan = Plan();
         await using var session = await ApiSession.StartAsync(plan);
-        Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /strict"));
+        await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /strict"));
 
         var json = File.ReadAllText(session.WriteResult()!);
 
@@ -173,7 +173,7 @@ public class AuthTests
         var plan = Plan("", "environments:\n  local:\n    apis:\n      AuthApp: { token: '${env:AUTH_TOKEN}' }\n", name => name == "AUTH_TOKEN" ? "en-annan-token-1234" : null);
         await using var session = await ApiSession.StartAsync(plan);
 
-        var unsure = Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /me"))!;
+        var unsure = (await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /me")))!;
 
         Assert.That(unsure.Message, Does.Contain("401").And.Not.Contain("testanvändaren godtogs inte"), "testanvändaren används inte när en token anges");
     }
@@ -216,7 +216,7 @@ public class AuthTests
         var plan = Plan(LoginYaml);
         await using var session = await ApiSession.StartAsync(plan);
 
-        var skipped = Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /nope"))!;
+        var skipped = (await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /nope")))!;
 
         Assert.That(skipped.Message, Does.Contain("apis.AuthApp.login").And.Contain("ny inloggning").And.Not.Contain("environments."));
         Assert.That(await LoginsAsync(session), Is.EqualTo(2), "bara ett omförsök");
@@ -245,7 +245,7 @@ public class AuthTests
 
         foreach (var test in echo)
         {
-            var skipped = Assert.ThrowsAsync<InconclusiveException>(() => session.RunTestAsync(test.Id, CancellationToken.None))!;
+            var skipped = (await Assert.ThrowsAsync<InconclusiveException>(() => session.RunTestAsync(test.Id, CancellationToken.None)))!;
             Assert.That(skipped.Message, Does.Contain("testanvändaren"));
         }
     }
@@ -256,7 +256,7 @@ public class AuthTests
         var plan = Plan();
         await using var session = await ApiSession.StartAsync(plan);
 
-        var unsure = Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /dependent"))!;
+        var unsure = (await Assert.ThrowsAsync<InconclusiveException>(() => Run(session, plan, "GET /dependent")))!;
 
         Assert.That(unsure.Message, Does.Contain("saknar troligen en tjänst").And.Contain("apis.AuthApp.settings").And.Contain("payments.example.com").And.Contain("hosts"));
         Assert.That(unsure.Message, Does.Not.Contain("Kör igen när miljön är uppe"));

@@ -74,7 +74,7 @@ public class ApiSessionTests
         string? Env(string name) => name switch { "TESTGEN_ENV" => "test", "SHOP_TEST_TOKEN" => "hemlig-token-1234", _ => null };
         await using var session = await ApiSession.StartAsync(Plan(Env));
 
-        var ignored = Assert.ThrowsAsync<IgnoreException>(() => session.RunTestAsync("T-001", CancellationToken.None))!;
+        var ignored = (await Assert.ThrowsAsync<IgnoreException>(() => session.RunTestAsync("T-001", CancellationToken.None)))!;
 
         Assert.That(ignored.Message, Does.Contain("Miljön är skrivskyddad").And.Contain("POST"));
         Assert.That(session.NotReady, Is.Null, "ingen app startas för en miljö med adress");
@@ -85,7 +85,7 @@ public class ApiSessionTests
     {
         string? Env(string name) => name switch { "TESTGEN_ENV" => "test", "SHOP_TEST_TOKEN" => "hemlig-token-1234", _ => null };
         await using var session = await ApiSession.StartAsync(Plan(Env));
-        Assert.ThrowsAsync<IgnoreException>(() => session.RunTestAsync("T-001", CancellationToken.None));
+        await Assert.ThrowsAsync<IgnoreException>(() => session.RunTestAsync("T-001", CancellationToken.None));
 
         var text = File.ReadAllText(session.WriteResult()!);
 

@@ -105,11 +105,11 @@ public class ExcelValidationTests
     }
 
     [Test]
-    public void No_tests_run_if_excel_has_errors()
+    public async Task No_tests_run_if_excel_has_errors()
     {
         var path = Book(new[] { new[] { "S", "createProdukt" } });
         var api = new Api();
-        Assert.ThrowsAsync<ExcelValidationException>(async () => await Run(path, api: api));
+        await Assert.ThrowsAsync<ExcelValidationException>(async () => await Run(path, api: api));
         Assert.That(api.Requests, Is.EqualTo(0), "ingen request får skickas, varken genererade eller från Excel");
     }
 
@@ -382,18 +382,18 @@ public class ExcelValidationTests
     }
 
     [Test]
-    public void Unknown_scenario_gives_did_you_mean_and_list_and_requires_excel()
+    public async Task Unknown_scenario_gives_did_you_mean_and_list_and_requires_excel()
     {
         var path = Book(new[] { new[] { "Stamkund", "createCustomer", "name=A" } });
-        var e = Assert.ThrowsAsync<UsageException>(async () => await Run(path, scenarios: new[] { "Stamkudn" }))!;
+        var e = (await Assert.ThrowsAsync<UsageException>(async () => await Run(path, scenarios: new[] { "Stamkudn" })))!;
         Assert.That(e.Message, Is.EqualTo("--scenario: det finns inget scenario som heter 'Stamkudn' i Excel-filen. Menade du Stamkund?"));
         Assert.That(e.Tip, Does.Contain("Scenarier i filen: Stamkund"));
 
-        var none = Assert.ThrowsAsync<UsageException>(async () =>
-            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Scenarios = new[] { "x" } }, new StringWriter { NewLine = "\n" }, new Api()).RunAsync())!;
+        var none = (await Assert.ThrowsAsync<UsageException>(async () =>
+            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", Scenarios = new[] { "x" } }, new StringWriter { NewLine = "\n" }, new Api()).RunAsync()))!;
         Assert.That(none.Message, Does.Contain("--scenario kräver --excel"));
-        var none2 = Assert.ThrowsAsync<UsageException>(async () =>
-            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", ExcelOnly = true }, new StringWriter { NewLine = "\n" }, new Api()).RunAsync())!;
+        var none2 = (await Assert.ThrowsAsync<UsageException>(async () =>
+            await new TestRunner(new RunOptions { Spec = ShopSpec.Path, Api = "http://fake.test", ExcelOnly = true }, new StringWriter { NewLine = "\n" }, new Api()).RunAsync()))!;
         Assert.That(none2.Message, Does.Contain("--excel-only kräver --excel"));
     }
 

@@ -87,7 +87,7 @@ public class ViewsCommandTests
         Assert.That(ids, Is.Ordered.Using<string>(StringComparer.Ordinal).And.Unique);
         var outDir = Path.GetDirectoryName(Shop.Value.Path)!;
         var sources = node["apps"]![0]!["views"]!.AsArray().Select(v => v!["source"]!.GetValue<string>()).ToList();
-        Assert.That(sources, Has.All.Matches<string>(s => !Path.IsPathRooted(s) && !s.Contains('\\') && s.Contains("/samples/ShopWeb/")), "bara relativa sökvägar");
+        Assert.That(sources, Has.All.Matches<string>(s => s is not null && !Path.IsPathRooted(s) && !s.Contains('\\') && s.Contains("/samples/ShopWeb/")), "bara relativa sökvägar");
         Assert.That(sources.Select(s => File.Exists(Path.GetFullPath(Path.Combine(outDir, s)))), Has.All.True, "relativt filen");
     }
 

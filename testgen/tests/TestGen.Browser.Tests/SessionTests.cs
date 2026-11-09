@@ -160,7 +160,7 @@ public class SessionTests
         Environment.SetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH", empty);
         try
         {
-            var error = Assert.ThrowsAsync<ChromiumMissingException>(async () => await BrowserHost.StartAsync());
+            var error = await Assert.ThrowsAsync<ChromiumMissingException>(async () => await BrowserHost.StartAsync());
             Assert.That(error!.Message, Does.Contain("Chromium är inte installerat").And.Contain("playwright.ps1 install chromium"));
         }
         finally

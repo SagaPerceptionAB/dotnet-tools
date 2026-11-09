@@ -414,8 +414,8 @@ public class FormatNegativeTests
     [Test]
     public void Unknown_formats_and_formats_with_pattern_get_no_format_case()
     {
-        Assert.That(Cases("  f: {type: string, format: int64x}"), Has.None.Matches<GeneratedCase>(c => c.Meta.Rule == TestRule.BadFormat));
-        Assert.That(Cases("  f: {type: string, format: email, pattern: '^a.*@b.se$'}"), Has.None.Matches<GeneratedCase>(c => c.Meta.Rule == TestRule.BadFormat));
+        Assert.That(Cases("  f: {type: string, format: int64x}"), Has.None.Matches<GeneratedCase>(c => c is { Meta.Rule: TestRule.BadFormat }));
+        Assert.That(Cases("  f: {type: string, format: email, pattern: '^a.*@b.se$'}"), Has.None.Matches<GeneratedCase>(c => c is { Meta.Rule: TestRule.BadFormat }));
     }
 
     [Test]
@@ -625,7 +625,7 @@ public class RunnerBodyTests : IDisposable
                   properties:
                     n: {type: integer, minimum: 1}
             """), (r, b) => b is not null && b.Contains("\"n\":0") ? Json(HttpStatusCode.BadRequest) : Json(HttpStatusCode.Created));
-        Assert.That(runner.Outcomes, Has.None.Matches<TestOutcome>(o => o.Result.Status is null), "alla tester skickade något");
+        Assert.That(runner.Outcomes, Has.None.Matches<TestOutcome>(o => o is { Result.Status: null }), "alla tester skickade något");
         var valid = runner.Outcomes.First(o => o.Test.Case?.Rule == TestRule.Valid);
         Assert.That(valid.Outcome, Is.EqualTo("OK"));
         Assert.That(api.Requests[0].Body, Does.Contain("\"tags\":[").And.Contain("\"rader\":[{\"n\":"));

@@ -1,12 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <IsPackable>true</IsPackable>
-    <PackageId>SagaPerception.TestGen.Mock</PackageId>
-    <Version>$(SagaPerceptionTestGenVersion)</Version>
-    <Description>Mockserver ur OpenAPI-specar för testgen.</Description>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\TestGen.Core\TestGen.Core.csproj" />
   </ItemGroup>

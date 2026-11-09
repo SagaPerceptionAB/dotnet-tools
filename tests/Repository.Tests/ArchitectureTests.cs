@@ -104,6 +104,27 @@ public class ArchitectureTests
         Assert.That(violations, Is.Empty, "Otillåtna referenser:" + Environment.NewLine + string.Join(Environment.NewLine, violations));
     }
 
+    // Bara fyra paket ges ut. Modulerna (CommandLine, Core, Excel, Mock, Browser) bakas in i NUnit-paketet och ska inte bli egna paket.
+    private static readonly string[] PackableProjects =
+    [
+        "systemmap/src/SystemMap.AspNetCore/SystemMap.AspNetCore.csproj",
+        "systemmap/src/SystemMap.Cli/SystemMap.Cli.csproj",
+        "testgen/src/SagaPerception.TestGen.NUnit/SagaPerception.TestGen.NUnit.csproj",
+        "testgen/src/TestGen.Cli/TestGen.Cli.csproj",
+    ];
+
+    [Test]
+    public void Only_the_four_packages_are_packable()
+    {
+        var root = FindRepositoryRoot();
+        var packable = LoadProjects()
+            .Where(p => XDocument.Load(Path.Combine(root, p.Path)).Descendants("IsPackable").Any(e => string.Equals(e.Value.Trim(), "true", StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.Path)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        Assert.That(packable, Is.EqualTo(PackableProjects), "Bara de fyra paketen får ha IsPackable=true. Ett till projekt blir annars ett eget paket (eller ett beroende i ett av dem).");
+    }
+
     [Test]
     public void Rules_apply_to_existing_projects()
     {

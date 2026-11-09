@@ -1,12 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <IsPackable>true</IsPackable>
-    <PackageId>SagaPerception.TestGen.Core</PackageId>
-    <Version>$(SagaPerceptionTestGenVersion)</Version>
-    <Description>Motorn i testgen: OpenAPI-spec, testdata, testfall, körning och rapporter. Används av SagaPerception.TestGen.NUnit.</Description>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\..\shared\CommandLine\CommandLine.csproj" />
   </ItemGroup>

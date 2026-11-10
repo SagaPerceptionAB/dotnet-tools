@@ -279,7 +279,10 @@ public class SolutionFinderTests
         Assert.That(SolutionFinder.TryFind(_dir, "systemmap"), Is.Null, "nedåt väljs ingenting automatiskt");
         var e = Assert.Throws<UsageException>(() => SolutionFinder.Find(_dir, "systemmap"))!;
         Assert.That(e.Message, Does.StartWith("Hittade ingen solution"));
-        Assert.That(e.Tip, Is.EqualTo("Gör så här: systemmap --solution backend/Butik.Backend.slnx"));
+        Assert.That(e.Tip, Is.EqualTo("systemmap --solution backend/Butik.Backend.slnx"));
+        var shown = string.Join("\n", FriendlyError.From(e, "systemmap").Lines(verbose: false));
+        Assert.That(shown, Does.Contain("\nGör så här: systemmap --solution backend/Butik.Backend.slnx"));
+        Assert.That(System.Text.RegularExpressions.Regex.Matches(shown, "Gör så här:").Count, Is.EqualTo(1), "\"Gör så här:\" en gång: " + shown);
     }
 
     [Test]
@@ -306,7 +309,7 @@ public class SolutionFinderTests
         Assert.That(SolutionFinder.HintBelow(_dir, "systemmap"), Is.Null);
         Touch("backend", "A.slnx");
         Touch("tools", "B.sln");
-        Assert.That(SolutionFinder.HintBelow(_dir, "systemmap"), Is.EqualTo("Gör så här: systemmap --solution backend/A.slnx (andra: " + Path.Combine("tools", "B.sln") + ")"));
+        Assert.That(SolutionFinder.HintBelow(_dir, "systemmap"), Is.EqualTo("systemmap --solution backend/A.slnx (andra: tools/B.sln)"), "snedstreck framåt i alla sökvägar, även på Windows");
         Directory.Delete(Path.Combine(_dir, "backend"), true);
         Directory.Delete(Path.Combine(_dir, "tools"), true);
         Directory.CreateDirectory(Path.Combine(_dir, ".git"));

@@ -43,13 +43,16 @@ public static class SolutionFinder
         return found;
     }
 
-    /// <summary>Tipset när ingenting hittades uppåt: <c>Gör så här: systemmap --solution backend/Butik.slnx</c>. Null när det inte finns någon solution i en undermapp.</summary>
+    /// <summary>
+    /// Tipset när ingenting hittades uppåt: <c>systemmap --solution backend/Butik.slnx</c>, utan "Gör så här:" (det skriver <see cref="FriendlyError"/>
+    /// framför tipset i ett <see cref="UsageException"/>). Null när det inte finns någon solution i en undermapp.
+    /// </summary>
     public static string? HintBelow(string start, string see)
     {
         var below = FindBelow(start).Select(p => p.Replace('\\', '/')).ToList();
         if (below.Count == 0) return null;
         var more = below.Count > 1 ? $" (andra: {string.Join(", ", below.Skip(1).Take(3))}{(below.Count > 4 ? ", ..." : "")})" : "";
-        return $"Gör så här: {see} --solution {below[0]}{more}";
+        return $"{see} --solution {below[0]}{more}";
     }
 
     private static IEnumerable<DirectoryInfo> Folders(DirectoryInfo parent)

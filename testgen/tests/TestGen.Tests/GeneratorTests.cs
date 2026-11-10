@@ -658,7 +658,8 @@ public class RunnerBodyTests : IDisposable
         Assert.That(api.Requests, Is.Empty);
         var o = runner.Outcomes.Single();
         Assert.That(o.Outcome, Is.EqualTo("HOPPAD"));
-        Assert.That(o.Text.Explanation, Does.Contain("stöder inte bodyn (multipart/form-data) ännu"));
+        Assert.That(o.Text.Explanation, Does.Contain("stöder inte bodyn (multipart/form-data) ännu").And.Contain("känd begränsning").And.Not.Contain("Rapportera"));
+        Assert.That(o.Cause, Is.EqualTo(FailureCause.Unsupported), "en känd begränsning, inte Fel i testgen");
     }
 
     [Test]

@@ -189,6 +189,7 @@ Datan är fiktiv. Personnummer tas ur Skatteverkets testpersonnummer, telefon ur
 - `--token` skickas som `Authorization: Bearer ...`, eller i den header specens `apiKey`-schema anger.
 - `--header` lägger till egna headers på alla anrop.
 - Miljöerna står i testgen.yaml (inte i Excel). I en miljö med `readOnly: true` hoppas tester som skickar POST, PUT, PATCH eller DELETE över (orsak `read-only`, räknas inte som fel).
+- Operationer med en bodytyp testgen inte kan skicka ännu (till exempel `application/octet-stream` eller `multipart/form-data`) hoppas över med orsaken `unsupported` ("Stöds inte ännu"): en känd begränsning, inget fel i testgen och inget att rapportera. Orsaken `tool` ("Fel i testgen") är reserverad för interna fel. Båda ger exitkod 4 om inget annat föll, och blir hoppade (`Ignore` respektive `Inconclusive`) i NUnit.
 - Hemligheter (`token`, headers som ser hemliga ut) måste skrivas `${env:NAMN}` i filen; klartext är ett konfigurationsfel (exitkod 2).
 - Låt hemligheter ligga i miljövariabler: `${env:NAMN}` i ett värde ersätts med miljövariabeln `NAMN`. Använd enkla citattecken i skalet: `--token '${env:API_TOKEN}'`. Känsliga värden visas som `***` i utskrifter.
 
@@ -216,7 +217,7 @@ testgen run --spec https://test.example.se/openapi.json --api https://test.examp
 
 - Färdiga exempel: [GitHub Actions](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/testgen/docs/ci/github-actions.yml) och [Azure Pipelines](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/testgen/docs/ci/azure-pipelines.yml).
 - `--seed ci` tar fröet från bygget, så en omkörning ger ny testdata.
-- `--fail-on <orsaker>` väljer vilka orsaker som ger exitkod 1. Koder: `system`, `expectation`, `auth`, `environment`, `test-data`, `missing-data`, `test-user-rejected`, `rate-limited`, `tool`, `dependency`, `read-only`. Standard är `system,expectation`; övriga FEL och HOPPAD ger exitkod 4. Exempel: `--fail-on system,expectation,auth`.
+- `--fail-on <orsaker>` väljer vilka orsaker som ger exitkod 1. Koder: `system`, `expectation`, `auth`, `environment`, `test-data`, `missing-data`, `test-user-rejected`, `rate-limited`, `tool`, `unsupported`, `dependency`, `read-only`. Standard är `system,expectation`; övriga FEL och HOPPAD ger exitkod 4. Exempel: `--fail-on system,expectation,auth`.
 - `--baseline forra.json --fail-on-new` ger exitkod 1 bara för nya FEL.
 - `--allow-empty` tillåter en körning utan tester (annars exitkod 2).
 - JSON-rapportens schema: [docs/ci/testgen-result.schema.json](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/testgen/docs/ci/testgen-result.schema.json). Orsakskoder, regler och resultat (`passed`, `failed`, `skipped`) är engelska ord; null utelämnas.

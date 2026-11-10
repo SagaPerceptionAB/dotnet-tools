@@ -150,23 +150,31 @@ public static partial class PlainLanguage
     /// <summary>
     /// Sammanfattning överst i en rapport, t.ex. "1 av 34 tester visar ett problem." <paramref name="toolSkipped"/> är hur många av de
     /// hoppade testerna som hoppades över av verktygsskäl (fel i testgen), inte för att ett tidigare steg föll.
+    /// <paramref name="unsupportedSkipped"/> är hur många som hoppades över för att bodytypen inte stöds ännu (en känd begränsning, inget fel).
     /// </summary>
-    public static string Summary(int ok, int fail, int skipped, int toolSkipped = 0)
+    public static string Summary(int ok, int fail, int skipped, int toolSkipped = 0, int unsupportedSkipped = 0)
     {
         var total = ok + fail + skipped;
         var sb = new StringBuilder();
         if (total == 0) return "Inga tester kördes.";
         if (fail == 0) sb.Append(skipped == 0 ? (total == 1 ? "Testet gick bra." : $"Alla {total} tester gick bra.") : $"Inget test visar något problem.");
         else sb.Append(fail == 1 ? $"1 av {total} tester visar ett problem." : $"{fail} av {total} tester visar problem.");
-        var follow = skipped - toolSkipped;
+        var follow = skipped - toolSkipped - unsupportedSkipped;
         if (follow > 0)
             sb.Append(follow == 1 ? " 1 test hoppades över eftersom ett tidigare steg i flödet misslyckades."
                                   : $" {follow} tester hoppades över eftersom ett tidigare steg i flödet misslyckades.");
         if (toolSkipped > 0)
             sb.Append(toolSkipped == 1 ? " 1 test kunde inte byggas av testgen (fel i testgen, säger inget om systemet)."
                                        : $" {toolSkipped} tester kunde inte byggas av testgen (fel i testgen, säger inget om systemet).");
+        if (unsupportedSkipped > 0)
+            sb.Append(unsupportedSkipped == 1 ? " 1 test skickades inte eftersom testgen inte stöder bodytypen ännu (en känd begränsning, säger inget om systemet)."
+                                              : $" {unsupportedSkipped} tester skickades inte eftersom testgen inte stöder bodytypen ännu (en känd begränsning, säger inget om systemet).");
         return sb.ToString();
     }
+
+    /// <summary>Antal hoppade tester med orsaken Stöds inte ännu.</summary>
+    public static int UnsupportedSkipped(IEnumerable<TestOutcome> outcomes) =>
+        outcomes.Count(o => (o.Cause ?? Cause(o.Test, o.Result)) == FailureCause.Unsupported);
 
     /// <summary>Antal hoppade tester med orsaken Fel i testgen.</summary>
     public static int ToolSkipped(IEnumerable<TestOutcome> outcomes) =>
@@ -229,6 +237,7 @@ public static partial class PlainLanguage
         FailureCause.TestUserRejected => "Testanvändaren godtogs inte",
         FailureCause.RateLimited => "För många anrop",
         FailureCause.Tool => "Fel i testgen",
+        FailureCause.Unsupported => "Stöds inte ännu",
         FailureCause.ReadOnly => "Skrivskyddad miljö",
         _ => "Följdfel",
     };
@@ -253,6 +262,7 @@ public static partial class PlainLanguage
         FailureCause.TestUserRejected => "Appen godtog inte testanvändaren som testgen loggar in som (401/403). Appen slår troligen upp användaren själv. Ange claims under apis.<api>.auth.claims, eller ett inloggningssteg under apis.<api>.login i testgen.yaml. Det säger inget om funktionen som testas.",
         FailureCause.RateLimited => "Systemet svarade 429 (för många anrop), även om testgen väntade enligt Retry-After när det angavs. Höj gränsen i miljön som testas, eller kör igen om en stund. Det säger inget om funktionen som testas.",
         FailureCause.Tool => "Verktyget kunde inte bygga eller skicka testet – rapportera till den som underhåller testgen. Det säger inget om systemet.",
+        FailureCause.Unsupported => "Testet använder en bodytyp som testgen inte kan skicka ännu (till exempel application/octet-stream eller multipart/form-data), så det skickades inte. Det är en känd begränsning, inget fel, och det säger inget om systemet.",
         FailureCause.ReadOnly => "Miljön är skrivskyddad, så anrop som skriver (POST, PUT, PATCH, DELETE) skickades inte. Det säger inget om systemet.",
         _ => "Testet kunde inte köras eller hoppades över eftersom ett tidigare steg föll. Åtgärda det tidigare felet först.",
     };
@@ -352,6 +362,7 @@ public static partial class PlainLanguage
         FailureCause.TestUserRejected => " – ange claims eller ett inloggningssteg i testgen.yaml",
         FailureCause.RateLimited => " – hoppades över, säger inget om funktionen som testas",
         FailureCause.Tool => " – säger inget om systemet, rapportera till den som underhåller testgen",
+        FailureCause.Unsupported => " – bodytypen stöds inte ännu (känd begränsning), säger inget om systemet",
         FailureCause.Cascade => " – följer av ett tidigare fel",
         FailureCause.ReadOnly => " – hoppades över, säger inget om systemet",
         _ => "",
@@ -396,6 +407,7 @@ public static partial class PlainLanguage
         FailureCause.Auth => "inloggning",
         FailureCause.Environment => "miljö",
         FailureCause.Tool => "fel i testgen",
+        FailureCause.Unsupported => "bodytyp som inte stöds ännu",
         _ => "följdfel",
     };
 
@@ -408,6 +420,7 @@ public static partial class PlainLanguage
         FailureCause.Auth => "inloggningen nekades",
         FailureCause.Environment => "miljön svarade inte",
         FailureCause.Tool => "fel i testgen",
+        FailureCause.Unsupported => "bodytypen stöds inte ännu",
         _ => "ett tidigare test föll",
     };
 
@@ -464,6 +477,8 @@ public static partial class PlainLanguage
                 return $"{Tests(n)} hoppades över eftersom miljön är skrivskyddad ({ids}).";
             case FailureCause.Tool:
                 return $"{Tests(n)} kunde inte byggas eller skickas av testgen ({ids}) – säger inget om systemet. Rapportera till den som underhåller testgen.";
+            case FailureCause.Unsupported:
+                return $"{Tests(n)} skickades inte eftersom testgen inte stöder operationens bodytyp ännu ({ids}) – en känd begränsning som säger inget om systemet.";
             default:
                 return $"{Tests(n)} är följdfel av ett tidigare fel – de säger inget eget om systemet.";
         }
@@ -533,6 +548,8 @@ public static partial class PlainLanguage
                 return $"{n} fick inget svar – miljön svarade inte{GatewayNote(group)}.{UpTail(group)}";
             case FailureCause.Tool:
                 return $"{n} kunde inte byggas eller skickas av testgen – fel i testgen, inte i systemet. Rapportera till den som underhåller testgen.";
+            case FailureCause.Unsupported:
+                return $"{n} skickades inte eftersom testgen inte stöder bodytypen ännu – en känd begränsning, inte ett fel, och den säger inget om systemet.";
             default:
                 return $"{n} är följdfel av ett tidigare fel – de säger inget eget om systemet.";
         }

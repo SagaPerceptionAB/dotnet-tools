@@ -119,7 +119,7 @@ public sealed record CaseResult(int? Status, bool Ok, bool Skipped, string Verdi
     public string? RootCauseTestId { get; init; }
     /// <summary>Kort beskrivning av rotorsaken, t.ex. "steg 1 'Skapa kund' fick FEL"; satt tillsammans med <see cref="RootCauseTestId"/>.</summary>
     public string? RootCauseText { get; init; }
-    /// <summary>Förklaring (klartext) när testet HOPPADes av en annan orsak än ett tidigare fel: bodytypen stöds inte, eller internt fel.</summary>
+    /// <summary>Förklaring (klartext) när testet HOPPADes av en annan orsak än ett tidigare fel: bodytypen stöds inte (Unsupported), eller internt fel (Tool).</summary>
     public string? SkipNote { get; init; }
     /// <summary>Orsaken när testet HOPPADes av en annan orsak än Följdfel eller Fel i testgen, t.ex. <see cref="FailureCause.ReadOnly"/>.</summary>
     public FailureCause? SkipCause { get; init; }
@@ -158,15 +158,17 @@ public sealed partial class TestRunner
     }
 
     /// <summary>Testet kan inte köras av verktygsskäl (inte systemets fel): bodytypen stöds inte, eller ett internt fel när testet byggdes.</summary>
-    private sealed class ToolLimitException(string verdict, string note, string? detail = null) : Exception(note)
+    private sealed class ToolLimitException(string verdict, string note, string? detail = null, FailureCause cause = FailureCause.Tool) : Exception(note)
     {
+        public FailureCause Cause { get; } = cause;
         public string Verdict { get; } = verdict;
         public string? Detail { get; } = detail;
     }
 
     private static ToolLimitException Unsupported(OperationInfo op) => new(
         "HOPPAD (testgen stöder inte bodyn)",
-        $"testgen stöder inte bodyn ({op.UnsupportedBody}) ännu, så testet skickades inte. Det säger inget om systemet.");
+        $"testgen stöder inte bodyn ({op.UnsupportedBody}) ännu, så testet skickades inte. Det är en känd begränsning och säger inget om systemet.",
+        cause: FailureCause.Unsupported);
 
     private static ToolLimitException Internal(Exception e) => new(
         "HOPPAD (internt fel i testgen)",
@@ -509,11 +511,11 @@ public sealed partial class TestRunner
                 catch (ArgumentException e) { r = new CaseResult(null, false, false, "FEL", new() { e.Message }); }
                 catch (TaskCanceledException) when (!_ct.IsCancellationRequested) { r = new CaseResult(null, false, false, "FEL (timeout)", new()) { TimedOut = true }; }
                 catch (ReadOnlyException e) { r = new CaseResult(null, false, true, "HOPPAD (miljön är skrivskyddad)", new()) { SkipNote = e.Message, SkipCause = FailureCause.ReadOnly }; }
-                catch (ToolLimitException e) { r = new CaseResult(null, false, true, e.Verdict, e.Detail is null ? new() : new() { e.Detail }) { SkipNote = e.Message }; }
+                catch (ToolLimitException e) { r = new CaseResult(null, false, true, e.Verdict, e.Detail is null ? new() : new() { e.Detail }) { SkipNote = e.Message, SkipCause = e.Cause }; }
                 catch (Exception e) when (e is not (OperationCanceledException or HttpRequestException or ExcelValidationException or UsageException or SourceException))
                 {
                     var t = Internal(e);
-                    r = new CaseResult(null, false, true, t.Verdict, new() { t.Detail! }) { SkipNote = t.Message };
+                    r = new CaseResult(null, false, true, t.Verdict, new() { t.Detail! }) { SkipNote = t.Message, SkipCause = t.Cause };
                 }
 
                 r = r with { Exchanges = ctx.Exchanges, BlockedHosts = BlockedSince(blockedBefore) };
@@ -611,7 +613,7 @@ public sealed partial class TestRunner
 
         PrintGroupTails();
         _out.WriteLine();
-        if (_opt.PlainText) _out.WriteLine(PlainLanguage.Summary(ok, fail, skipped, PlainLanguage.ToolSkipped(_outcomes)));
+        if (_opt.PlainText) _out.WriteLine(PlainLanguage.Summary(ok, fail, skipped, PlainLanguage.ToolSkipped(_outcomes), PlainLanguage.UnsupportedSkipped(_outcomes)));
         var results = entries.Select(en => en.Result).ToList();
         _out.WriteLine($"Sammanfattning: {entries.Count} tester, {ok} OK, {fail} FEL, {skipped} HOPPAD, tid {ReportWriter.FormatDuration(Duration ?? TimeSpan.Zero)}" +
                        (excelRan > 0 ? $" ({excelRan} av testerna kom från Excel)" : ""));

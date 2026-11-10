@@ -65,7 +65,7 @@ public static class HelpText
             new("--seed <tal|random|ci>", "Slumpfrö för testdata (standard 12345). random väljer ett och skriver ut det. ci tar det från bygget."),
             new("--timeout <s>", $"Sekunder per anrop (standard {RunSettings.DefaultTimeoutSeconds})."),
             new("--max-time <s>", "Högsta tid för hela körningen. En partiell rapport skrivs och exitkoden blir 3."),
-            new("--fail-on <lista>", "Orsaker som ger exitkod 1 (standard system,expectation): system, expectation, auth, environment, test-data, missing-data, test-user-rejected, rate-limited, tool, dependency, read-only."),
+            new("--fail-on <lista>", "Orsaker som ger exitkod 1 (standard system,expectation): system, expectation, auth, environment, test-data, missing-data, test-user-rejected, rate-limited, tool, unsupported, dependency, read-only."),
             new("--baseline <fil>", "JSON-resultat från en tidigare körning att jämföra med."),
             new("--fail-on-new", "Med --baseline: exitkod 1 bara för nya fel."),
             new("--allow-empty", "Tillåt en körning utan tester."),

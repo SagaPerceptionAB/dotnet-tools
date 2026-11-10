@@ -119,7 +119,7 @@
     }
   },
   "$defs": {
-    "cause": { "enum": ["system", "expectation", "auth", "environment", "test-data", "tool", "dependency", "read-only"], "description": "system = fel i systemet; expectation = förväntan i testet stämmer inte; auth = 401/403; environment = timeout, ingen kontakt, 502/503/504; test-data = 409; tool = fel i testgen (verktyget kunde inte bygga eller skicka testet, säger inget om systemet); dependency = följdfel/hoppat; read-only = hoppad för att miljön är skrivskyddad" },
+    "cause": { "enum": ["system", "expectation", "auth", "environment", "test-data", "missing-data", "test-user-rejected", "rate-limited", "tool", "unsupported", "dependency", "read-only"], "description": "system = fel i systemet; expectation = förväntan i testet stämmer inte; auth = 401/403; environment = timeout, ingen kontakt, 502/503/504; test-data = 409; tool = fel i testgen (verktyget kunde inte bygga eller skicka testet, säger inget om systemet; ska rapporteras); unsupported = stöds inte ännu (testet skickades inte för att operationens bodytyp, t.ex. application/octet-stream, är en känd begränsning i testgen; inget fel); dependency = följdfel/hoppat; read-only = hoppad för att miljön är skrivskyddad" },
     "compareItem": {
       "type": "object",
       "required": ["id", "key", "title"],

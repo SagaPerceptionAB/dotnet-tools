@@ -14,7 +14,7 @@ internal enum Verdict
 
 /// <summary>
 /// Översätter motorns utfall (OK, FEL, HOPPAD och orsak) till NUnit: bara fel i systemet och förväntan som inte stämmer fäller testet.
-/// Osäkra orsaker (inloggning, testdata, miljö, verktyget, följdfel) blir Inconclusive, och skrivskyddad miljö blir Ignore.
+/// Osäkra orsaker (inloggning, testdata, miljö, verktyget, följdfel) blir Inconclusive, och skrivskyddad miljö och bodytyper som inte stöds ännu (kända begränsningar) blir Ignore.
 /// </summary>
 internal static class OutcomeMapping
 {
@@ -22,7 +22,7 @@ internal static class OutcomeMapping
     {
         "OK" => Verdict.Pass,
         "FEL" => cause is null or FailureCause.System or FailureCause.Expectation ? Verdict.Fail : Verdict.Inconclusive,
-        _ => cause is null or FailureCause.ReadOnly ? Verdict.Ignore : Verdict.Inconclusive,
+        _ => cause is null or FailureCause.ReadOnly or FailureCause.Unsupported ? Verdict.Ignore : Verdict.Inconclusive,
     };
 
     /// <summary>Kastar NUnits undantag för utfallet. Pass gör ingenting.</summary>

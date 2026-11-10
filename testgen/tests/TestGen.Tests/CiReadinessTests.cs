@@ -267,6 +267,62 @@ public class CiReadinessTests
         Assert.That(PlainLanguage.Summary(1, 0, 2, toolSkipped: 1), Does.Contain("1 test hoppades över eftersom ett tidigare steg").And.Contain("1 test kunde inte byggas av testgen"));
     }
 
+    private static CaseResult UnsupportedSkip() =>
+        new(null, false, true, "HOPPAD (testgen stöder inte bodyn)", new())
+        {
+            SkipNote = "testgen stöder inte bodyn (application/octet-stream) ännu, så testet skickades inte. Det är en känd begränsning och säger inget om systemet.",
+            SkipCause = FailureCause.Unsupported,
+        };
+
+    [Test]
+    public void An_unsupported_body_is_a_known_limitation_not_a_tool_error_in_every_report()
+    {
+        var entries = new List<ReportEntry> { Entry("T-001", Res(400, true, verdict: "OK")), Entry("T-002", UnsupportedSkip()) };
+        var outcomes = ReportWriter.Outcomes(entries, Mask);
+
+        Assert.That(PlainLanguage.Cause(entries[1].Info!, entries[1].Result), Is.EqualTo(FailureCause.Unsupported));
+        Assert.That(CauseCodes.Code(FailureCause.Unsupported), Is.EqualTo("unsupported"));
+        Assert.That(PlainLanguage.CauseName(FailureCause.Unsupported), Is.EqualTo("Stöds inte ännu"));
+        Assert.That(ExitPolicy.Decide(outcomes), Is.EqualTo(4), "som före: ett test som inte kunde köras ger osäkert, inte grönt");
+        Assert.That(VerdictKinds.Of(outcomes), Is.EqualTo("uncertain"));
+
+        // Konsolen: sammanfattning, orsaksrad och slutsats.
+        var texts = new List<string>
+        {
+            PlainLanguage.Verdict(outcomes),
+            PlainLanguage.VerdictShort(outcomes),
+            PlainLanguage.CauseSummary(outcomes).Single().ListText,
+            PlainLanguage.Summary(1, 0, 1, unsupportedSkipped: PlainLanguage.UnsupportedSkipped(outcomes)),
+            PlainLanguage.CauseExplanation(FailureCause.Unsupported),
+        };
+        Assert.That(PlainLanguage.UnsupportedSkipped(outcomes), Is.EqualTo(1));
+        Assert.That(PlainLanguage.ToolSkipped(outcomes), Is.EqualTo(0));
+        Assert.That(texts[2], Does.StartWith("Stöds inte ännu: T-002").And.Contain("känd begränsning"));
+        Assert.That(texts[3], Does.Contain("känd begränsning").And.Not.Contain("tidigare steg"));
+        foreach (var text in texts)
+            Assert.That(text, Does.Not.Contain("rapportera").IgnoreCase.And.Not.Contain("Fel i testgen").IgnoreCase.And.Not.Contain("fel i testgen"), text);
+
+        // JSON, HTML, Excel och JUnit.
+        var json = JsonResult.Build(Info() with { ExitCode = 4 }, entries, Mask);
+        Assert.That(SchemaErrors(json, (JsonObject)JsonNode.Parse(File.ReadAllText(SchemaPath()))!), Is.Empty, "orsakskoden finns i schemat");
+        Assert.That(json["causes"]!.AsArray().Select(c => c!["code"]!.GetValue<string>()), Is.EqualTo(new[] { "unsupported" }));
+        Assert.That(json["tests"]![1]!["causeName"]!.GetValue<string>(), Is.EqualTo("Stöds inte ännu"));
+        var html = ReportWriter.Html(Info(), entries, Mask);
+        Assert.That(html, Does.Contain("St&#246;ds inte &#228;nnu").And.Not.Contain("Fel i testgen").And.Not.Contain("rapportera"));
+        var xlsx = Out("unsupported.xlsx");
+        ReportWriter.Write(xlsx, Info(), entries, Mask);
+        using (var wb = new XLWorkbook(xlsx))
+        {
+            var cells = wb.Worksheets.SelectMany(w => w.CellsUsed()).Select(c => c.GetString()).ToList();
+            Assert.That(cells, Has.Some.EqualTo("Stöds inte ännu").And.None.Contain("rapportera").And.None.EqualTo("Fel i testgen"));
+        }
+        var doc = new XmlDocument(); doc.LoadXml(JUnitResult.Text(Info(), entries, Mask));
+        var skipped = (XmlElement)doc.SelectSingleNode("//testcase[starts-with(@name,'T-002 ')]/skipped")!;
+        Assert.That(skipped.GetAttribute("message"), Does.StartWith("Stöds inte ännu: ").And.Contain("känd begränsning"));
+        Assert.That(skipped.InnerText, Does.Not.Contain("rapportera"));
+        Assert.That(doc.DocumentElement!.GetAttribute("errors"), Is.EqualTo("0"));
+    }
+
     [Test]
     public void Tool_error_and_warnings_in_json_validate_against_schema()
     {
@@ -522,7 +578,7 @@ public class CiReadinessTests
     {
         var e = Assert.Throws<UsageException>(() => CauseCodes.ParseFailOn("system,sysstem"))!;
         Assert.That(e.Message, Does.Contain("'sysstem' är ingen orsakskod").And.Contain("Menade du system?"));
-        Assert.That(e.Tip, Does.Contain("system, expectation, auth, environment, test-data, missing-data, test-user-rejected, rate-limited, tool, dependency"));
+        Assert.That(e.Tip, Does.Contain("system, expectation, auth, environment, test-data, missing-data, test-user-rejected, rate-limited, tool, unsupported, dependency"));
         Assert.Throws<UsageException>(() => CauseCodes.ParseFailOn(" , "));
         Assert.That(CauseCodes.ParseFailOn("System, EXPECTATION"), Is.EquivalentTo(CauseCodes.DefaultFailOn));
     }

@@ -121,6 +121,12 @@ utgående HTTP-klienter med projektet i solutionen de pekar på (namnet ur nycke
 Integrationer: databas (EF Core, Dapper, SQL), andra API:er (HTTP, Refit), WCF/SOAP, köer (Service Bus, MassTransit, RabbitMQ, Kafka,
 Azure Storage Queue), lagring (Blob, filer) och e-post (SMTP).
 
+Lagring: Azure Blob (`BlobClient`, `BlobContainerClient`, `BlobServiceClient`, med och utan `Async`) och filsystemet (`File`, `Directory`, `FileInfo`,
+`DirectoryInfo`, `new FileStream`, och egenskaperna `Exists` och `Length` på `FileInfo` och `DirectoryInfo`). Operationen väljs efter metodens namn: *finns*
+(`Exists`), *läsa*/*hämta*, *skriva*/*ladda upp*, *ta bort* (`Delete`, `DeleteIfExists`), *lista* (`GetBlobs`, `EnumerateFiles`, `GetFiles`), *skapa*
+(`CreateIfNotExists`, `CreateDirectory`), *läsa egenskaper* (`GetProperties`), *ändra egenskaper* (`SetMetadata`), *kopiera* (blob) och *flytta eller
+kopiera* (fil). Metoder som inte rör lagringen (`Path.Combine`, `GenerateSasUri`, `Directory.GetCurrentDirectory`) är inga integrationer.
+
 OIDC-discovery är HTTP ut ur systemet: `ConfigurationManager<OpenIdConnectConfiguration>.GetConfigurationAsync` och `RequestRefresh` (också genom
 `IConfigurationManager<T>`) hämtar discovery-dokumentet och sedan nycklarna (JWKS), och `OpenIdConnectConfigurationRetriever.GetAsync` hämtar
 dokumentet. Integrationen heter som värden i adressen (`appleid.apple.com`) och tekniken är "HTTP (OIDC-konfiguration och nycklar)"; operationen är

@@ -80,6 +80,8 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
                     if (context is not null && SinkCatalog.MatchCreation(creation, context) is { } sink) steps.Add(Leave(sink, project, creation));
                     continue;
                 }
+                if (node is MemberAccessExpressionSyntax access && context is not null && SinkCatalog.MatchProperty(access, context) is { } read)
+                    steps.Add(Leave(read, project, access));
                 if (node is IdentifierNameSyntax or MemberAccessExpressionSyntax && IsValueContext(node) &&
                     model.GetSymbolInfo(node).Symbol is IMethodSymbol { MethodKind: MethodKind.Ordinary or MethodKind.LocalFunction } group && Symbols.InSource(group))
                     Referenced.TryAdd(Symbols.Key(group), group);

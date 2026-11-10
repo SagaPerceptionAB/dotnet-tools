@@ -86,8 +86,44 @@ public partial class CodeMapTests
         }
         namespace Azure.Storage.Blobs
         {
-            public class BlobServiceClient { public BlobContainerClient GetBlobContainerClient(string name) => null!; }
-            public class BlobContainerClient { public Task UploadBlobAsync(string name, object data) => null!; }
+            public class BlobServiceClient
+            {
+                public BlobContainerClient GetBlobContainerClient(string name) => null!;
+                public IAsyncEnumerable<string> GetBlobContainersAsync() => null!;
+                public Task CreateBlobContainerAsync(string name) => null!;
+                public Task DeleteBlobContainerAsync(string name) => null!;
+            }
+            public class BlobContainerClient
+            {
+                public Task UploadBlobAsync(string name, object data) => null!;
+                public BlobClient GetBlobClient(string name) => null!;
+                public Task<bool> ExistsAsync(CancellationToken ct = default) => null!;
+                public Task CreateIfNotExistsAsync() => null!;
+                public Task DeleteIfExistsAsync() => null!;
+                public Task DeleteBlobIfExistsAsync(string name) => null!;
+                public IAsyncEnumerable<string> GetBlobsAsync() => null!;
+                public Task AcquireLeaseAsync() => null!;
+            }
+            public class BlobClient : Azure.Storage.Blobs.Specialized.BlobBaseClient { public Task UploadAsync(object content) => null!; }
+        }
+        namespace Azure.Storage.Blobs.Specialized
+        {
+            public class BlobBaseClient
+            {
+                public Task<bool> ExistsAsync(CancellationToken ct = default) => null!;
+                public bool Exists() => false;
+                public Task DeleteIfExistsAsync() => null!;
+                public Task GetPropertiesAsync() => null!;
+                public Task SetMetadataAsync(IDictionary<string, string> metadata) => null!;
+                public Task OpenReadAsync() => null!;
+                public Task OpenWriteAsync(bool overwrite) => null!;
+                public Task DownloadContentAsync() => null!;
+                public Task DownloadStreamingAsync() => null!;
+                public Task DownloadToAsync(System.IO.Stream destination) => null!;
+                public Task StartCopyFromUriAsync(Uri source) => null!;
+                public Task SyncCopyFromUriAsync(Uri source) => null!;
+                public Uri GenerateSasUri() => null!;
+            }
         }
         namespace MassTransit
         {

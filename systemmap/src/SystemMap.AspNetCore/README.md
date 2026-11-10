@@ -11,7 +11,7 @@ Paketet är en förhandsversion och finns ännu inte på nuget.org (bygg det med
 dotnet add package SagaPerception.SystemMap.AspNetCore --prerelease
 ```
 
-I `Program.cs`:
+I `Program.cs` (`MapSystemMap` ligger i namnrymden `Microsoft.AspNetCore.Builder`, så ingen extra `using` behövs):
 
 ```csharp
 app.MapSystemMap();                                          // /systemmap, i Development

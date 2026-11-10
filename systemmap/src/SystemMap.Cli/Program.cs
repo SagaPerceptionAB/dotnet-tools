@@ -41,7 +41,7 @@ public static class Program
     {
         Usage = ["dotnet systemmap [--solution <fil>] [--spec <fil|url>] [--html karta.html] [--mermaid karta.mmd] [--json karta.json]"],
         Description = """
-            Följer anropen från varje controller-action genom projekten ut till integrationerna (databas, HTTP, köer, lagring, e-post).
+            Följer anropen från varje ingång (controller-action, minimal API, Razor Page eller Blazor-sida) genom projekten ut till integrationerna (databas, HTTP, köer, lagring, e-post).
             Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog. Den skrivs som text på stdout.
             Utan filer att skriva öppnas den som webbsida. Projektfilerna läses med MSBuild, precis som vid dotnet build: peka bara på kod du litar på.
             """,

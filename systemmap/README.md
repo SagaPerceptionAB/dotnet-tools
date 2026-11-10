@@ -59,7 +59,8 @@ JSON-filen börjar med `schemaVersion`. null utelämnas, listorna är sorterade 
 
 ## I en app
 
-Kartan kan också visas i en ASP.NET Core-app, som Swagger UI, med `app.MapSystemMap();`. Installation och
+Kartan kan också visas i en ASP.NET Core-app, som Swagger UI, med `app.MapSystemMap();` (den ligger i namnrymden
+`Microsoft.AspNetCore.Builder`, så ingen extra `using` behövs). Installation och
 konfiguration står i [SagaPerception.SystemMap.AspNetCore](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/systemmap/src/SystemMap.AspNetCore/README.md).
 
 ## Vad som känns igen

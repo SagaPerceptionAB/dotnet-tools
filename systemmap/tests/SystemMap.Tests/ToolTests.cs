@@ -51,4 +51,11 @@ public class ToolTests
         Assert.That(help.Out, Does.Contain("Flaggor:").And.Contain("Miljövariabler:").And.Contain("Exempel:").And.Contain("Exitkoder:"));
         Assert.That(help.Out, Does.StartWith("Användning:"));
     }
+
+    [Test]
+    public void Help_names_every_kind_of_entry_the_map_follows()
+    {
+        var description = Run("--help").Out;
+        Assert.That(description, Does.Contain("controller-action").And.Contain("minimal API").And.Contain("Razor Page").And.Contain("Blazor-sida"));
+    }
 }

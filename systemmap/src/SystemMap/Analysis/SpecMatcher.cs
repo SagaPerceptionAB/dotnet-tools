@@ -14,8 +14,8 @@ internal static class SpecMatcher
         var differences = new List<SpecDifference>();
         if (operations is null) return (matches, differences);
 
-        // Sidor är inga API-anrop och finns inte i specen.
-        var api = entries.Where(e => e.Kind is not (EntryKind.RazorPage or EntryKind.BlazorPage)).ToList();
+        // Sidor och det som inte är HTTP (bakgrundstjänster, meddelanden, jobb ...) är inga API-anrop och finns inte i specen.
+        var api = entries.Where(e => e.Kind.IsHttp() && e.Kind is not (EntryKind.RazorPage or EntryKind.BlazorPage)).ToList();
         foreach (var entry in api)
         {
             var key = RouteTemplate.Key(entry.CodePath);

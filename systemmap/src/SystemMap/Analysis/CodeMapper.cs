@@ -27,7 +27,9 @@ public static class CodeMapper
 
         var entries = EntryPointFinder.Find(projects, models, sites, resolver, root, warnings);
         if (entries.Count == 0)
-            warnings.Add("Hittade inga ingångar. Kartan känner igen controllers ([ApiController], [HttpGet] ...), minimal API (MapGet ...), Razor Pages och Blazor-sidor (@page).");
+            warnings.Add("Hittade inga ingångar. Kartan känner igen controllers ([ApiController], [HttpGet] ...), minimal API (MapGet ...), Razor Pages och Blazor-sidor (@page), " +
+                         "bakgrundstjänster (BackgroundService, IHostedService), konsolprogram (Main), meddelandehanterare (MassTransit, NServiceBus, Service Bus), " +
+                         "jobb (Hangfire, Quartz), gRPC-tjänster och SignalR-hubbar.");
 
         var stepsByRoots = new Dictionary<string, IReadOnlyList<Step>>(StringComparer.Ordinal);
         foreach (var entry in entries)
@@ -36,11 +38,13 @@ public static class CodeMapper
         var (matches, differences) = SpecMatcher.Match(entries, operations);
         var entryPoints = entries
             .Select(e => matches.TryGetValue(e, out var op)
-                ? new EntryPoint(e.Kind, e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey])
-                : new EntryPoint(e.Kind, e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey]))
-            .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Path, StringComparer.Ordinal)
+                ? new EntryPoint(e.Kind, e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey], e.Name)
+                : new EntryPoint(e.Kind, e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey], e.Name))
+            // HTTP först (sökväg, metod), sedan det andra efter sort och namn.
+            .OrderBy(e => e.Kind.IsHttp() ? 0 : 1).ThenBy(e => e.Kind.IsHttp() ? 0 : (int)e.Kind)
+            .ThenBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Path, StringComparer.Ordinal)
             .ThenBy(e => Array.IndexOf(MethodOrder, e.Method) is var i and >= 0 ? i : MethodOrder.Length).ThenBy(e => e.Method, StringComparer.Ordinal)
-            .ThenBy(e => e.Handler, StringComparer.Ordinal)
+            .ThenBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Handler, StringComparer.Ordinal)
             .ToList();
 
         // En app utan någon sort (inga ingångar) är bara ett bibliotek som råkar använda WebApplication.
@@ -53,14 +57,17 @@ public static class CodeMapper
             .OrderBy(i => i.Kind).ThenBy(i => i.Name, StringComparer.Ordinal).ThenBy(i => i.Id, StringComparer.Ordinal).ToList();
 
         warnings.AddRange(resolver.Warnings);
+        var order = ProjectOrder(entryPoints);
+        var code = await CodeInventoryFinder.FindAsync(projects, models, walker, new CallWalker(resolver, models, origins, root, []), order.ToHashSet(StringComparer.Ordinal), root, ct);
         return new CodeMapModel(
             solutionPath,
-            ProjectOrder(entryPoints),
+            order,
             integrations,
             entryPoints,
             apps,
             differences,
-            warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList());
+            warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList(),
+            code);
     }
 
     /// <summary>

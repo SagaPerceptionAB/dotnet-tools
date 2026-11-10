@@ -77,7 +77,9 @@ public partial class CodeMapTests
         }
         namespace Azure.Messaging.ServiceBus
         {
-            public class ServiceBusClient { public ServiceBusSender CreateSender(string queue) => null!; }
+            public class ServiceBusClient { public ServiceBusSender CreateSender(string queue) => null!; public ServiceBusProcessor CreateProcessor(string queue) => null!; }
+            public class ProcessMessageEventArgs { }
+            public class ServiceBusProcessor { public event Func<ProcessMessageEventArgs, Task>? ProcessMessageAsync; }
             public class ServiceBusSender { public Task SendMessageAsync(ServiceBusMessage m, CancellationToken ct = default) => null!; }
             public class ServiceBusMessage { public ServiceBusMessage(string body) { } }
         }
@@ -86,7 +88,48 @@ public partial class CodeMapTests
             public class BlobServiceClient { public BlobContainerClient GetBlobContainerClient(string name) => null!; }
             public class BlobContainerClient { public Task UploadBlobAsync(string name, object data) => null!; }
         }
-        namespace MassTransit { public interface IPublishEndpoint { Task Publish<T>(T message, CancellationToken ct = default) where T : class; } }
+        namespace MassTransit
+        {
+            public interface IPublishEndpoint { Task Publish<T>(T message, CancellationToken ct = default) where T : class; }
+            public interface ConsumeContext<T> where T : class { T Message { get; } }
+            public interface IConsumer<in TMessage> where TMessage : class { Task Consume(ConsumeContext<TMessage> context); }
+        }
+        namespace NServiceBus
+        {
+            public interface IMessageHandlerContext { }
+            public interface IHandleMessages<T> { Task Handle(T message, IMessageHandlerContext context); }
+        }
+        namespace MediatR
+        {
+            public interface IRequestHandler<TRequest, TResponse> { Task<TResponse> Handle(TRequest request, CancellationToken ct); }
+            public interface INotificationHandler<T> { Task Handle(T notification, CancellationToken ct); }
+        }
+        namespace Quartz
+        {
+            public interface IJobExecutionContext { }
+            public interface IJob { Task Execute(IJobExecutionContext context); }
+        }
+        namespace Hangfire
+        {
+            public static class RecurringJob
+            {
+                public static void AddOrUpdate(string id, System.Linq.Expressions.Expression<Func<Task>> job, string cron) { }
+                public static void AddOrUpdate<T>(string id, System.Linq.Expressions.Expression<Func<T, Task>> job, string cron) { }
+            }
+            public static class BackgroundJob
+            {
+                public static string Enqueue(System.Linq.Expressions.Expression<Func<Task>> job) => "";
+            }
+        }
+        namespace Grpc.Core
+        {
+            [AttributeUsage(AttributeTargets.Class)] public sealed class BindServiceMethodAttribute(Type service, string method) : Attribute { }
+            public class ServerCallContext { }
+        }
+        namespace Microsoft.AspNetCore.Builder
+        {
+            public static class GrpcStubs { public static void MapGrpcService<T>(this Microsoft.AspNetCore.Routing.IEndpointRouteBuilder app) where T : class { } }
+        }
         namespace Confluent.Kafka { public interface IProducer<TKey, TValue> { Task<object> ProduceAsync(string topic, object message); } }
         namespace RabbitMQ.Client { public interface IChannel { ValueTask BasicPublishAsync(string exchange, string routingKey, byte[] body); } }
         namespace MailKit { public interface IMailTransport { Task SendAsync(object message); } }
@@ -111,7 +154,13 @@ public partial class CodeMapTests
 
     // --- Hjälpare --------------------------------------------------------------------------
 
-    private sealed record Proj(string Name, string Code, params string[] References);
+    /// <param name="Exe">Ett program som körs (konsol eller worker) i stället för ett bibliotek.</param>
+    /// <param name="Generated">Kod i en genererad fil (.g.cs), som inte räknas som systemets egen.</param>
+    private sealed record Proj(string Name, string Code, params string[] References)
+    {
+        public bool Exe { get; init; }
+        public string? Generated { get; init; }
+    }
 
     private static Solution Build(bool stubs, params Proj[] projects)
     {
@@ -126,14 +175,18 @@ public partial class CodeMapTests
             var id = ids[p.Name] = ProjectId.CreateNewId(p.Name);
             solution = solution.AddProject(ProjectInfo.Create(id, VersionStamp.Create(), p.Name, p.Name, LanguageNames.CSharp,
                 filePath: Path.Combine(Root, p.Name, p.Name + ".csproj"),
-                compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable),
+                compilationOptions: new CSharpCompilationOptions(p.Exe ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable),
                 parseOptions: new CSharpParseOptions(LanguageVersion.Latest),
                 metadataReferences: references,
                 projectReferences: p.References.Select(r => new Microsoft.CodeAnalysis.ProjectReference(ids[r]))));
             var files = new List<string> { Usings, p.Code };
-            if (stubs && p.References.Length == 0) files.Add(Stubs);   // stubbarna i projektet längst ner, så att alla ser dem
             for (var i = 0; i < files.Count; i++)
                 solution = solution.AddDocument(DocumentId.CreateNewId(id), $"Fil{i}.cs", SourceText.From(files[i]), filePath: Path.Combine(Root, p.Name, $"Fil{i}.cs"));
+            if (p.Generated is not null)
+                solution = solution.AddDocument(DocumentId.CreateNewId(id), "Genererad.g.cs", SourceText.From(p.Generated), filePath: Path.Combine(Root, p.Name, "Genererad.g.cs"));
+            // Stubbarna i projektet längst ner, så att alla ser dem. De heter .g.cs, som genererad kod: de är paket i verkligheten och räknas inte som systemets kod.
+            if (stubs && p.References.Length == 0)
+                solution = solution.AddDocument(DocumentId.CreateNewId(id), "Stubs.g.cs", SourceText.From(Stubs), filePath: Path.Combine(Root, p.Name, "Stubs.g.cs"));
         }
         return solution;
     }
@@ -592,7 +645,7 @@ public partial class CodeMapTests
         var first = CodeMapJson.Serialize(await MapAsync(solution));
         var second = CodeMapJson.Serialize(await MapAsync(solution));
         Assert.That(second, Is.EqualTo(first));
-        Assert.That(first, Does.Contain("\"entryPoints\"").And.Contain("\"integrations\"").And.Contain("\"overview\"").And.Contain("\"schemaVersion\": 2"));
+        Assert.That(first, Does.Contain("\"entryPoints\"").And.Contain("\"integrations\"").And.Contain("\"overview\"").And.Contain("\"schemaVersion\": 3"));
     }
 
     [Test]

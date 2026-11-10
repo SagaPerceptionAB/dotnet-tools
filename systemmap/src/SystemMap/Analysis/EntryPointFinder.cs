@@ -5,11 +5,13 @@ namespace SystemMap;
 
 /// <summary>
 /// En ingång och vägen som tar dit (en per HTTP-metod och route). <paramref name="Roots"/> är metoderna vars anrop följs:
-/// en action, en lambda i ett minimal API eller en sidas hanterare.
+/// en action, en lambda i ett minimal API, en sidas hanterare, en bakgrundstjänsts ExecuteAsync eller en meddelandehanterares Consume.
+/// <paramref name="Name"/> är namnet på en ingång som inte är HTTP (<c>Bakgrund: OrderCleanupWorker</c>); <paramref name="Method"/> och
+/// <paramref name="CodePath"/> är då tomma.
 /// </summary>
 internal sealed record EntryCandidate(
     EntryKind Kind, IReadOnlyList<IMethodSymbol> Roots, string Method, string CodePath, string Project, string Handler, string File, int Line,
-    DataShape? Input, DataShape? Output)
+    DataShape? Input, DataShape? Output, string? Name = null)
 {
     /// <summary>Nyckel för anropen som följs (lika för ingångar som delar hanterare).</summary>
     public string RootsKey => string.Join("|", Roots.Select(Symbols.Key));
@@ -18,7 +20,9 @@ internal sealed record EntryCandidate(
 /// <summary>
 /// Hittar ingångarna: actions i controllers med attributrouting (<c>[Route]</c>, <c>[HttpPost]</c> ...), både ASP.NET Core
 /// och ASP.NET Web API 2 (<c>ApiController</c>, <c>[RoutePrefix]</c>), minimal API:er (<see cref="MinimalApiFinder"/>) samt
-/// Razor Pages och Blazor-sidor (<see cref="PageFinder"/>). Konventionell routing känns inte igen än.
+/// Razor Pages och Blazor-sidor (<see cref="PageFinder"/>), samt det som inte är HTTP: bakgrundstjänster och konsolprogram
+/// (<see cref="HostedFinder"/>), meddelandehanterare och jobb (<see cref="MessagingFinder"/>) och gRPC-tjänster och SignalR-hubbar
+/// (<see cref="RpcFinder"/>). Konventionell routing känns inte igen än.
 /// </summary>
 internal static class EntryPointFinder
 {
@@ -29,6 +33,7 @@ internal static class EntryPointFinder
     public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, CallSites sites, ServiceResolver services, string root, List<string> warnings)
     {
         var projectList = projects.ToList();
+        var types = Types(projectList, models);
         var entries = new List<EntryCandidate>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in projectList)
@@ -43,7 +48,26 @@ internal static class EntryPointFinder
             }
         entries.AddRange(MinimalApiFinder.Find(models, sites, services, root, warnings));
         entries.AddRange(PageFinder.Find(projectList, models, root));
+        entries.AddRange(HostedFinder.Background(types, root));
+        entries.AddRange(MessagingFinder.Find(types, projectList, models, sites, services, root));
+        entries.AddRange(RpcFinder.Find(types, sites, root));
+        entries.AddRange(HostedFinder.Console(projectList, models, entries, root));
         return entries;
+    }
+
+    /// <summary>Klasserna i projekten (en gång per klass, även om den är delad i flera filer), med projektet de hör till.</summary>
+    internal static List<(INamedTypeSymbol Type, string Project)> Types(IEnumerable<Project> projects, ModelCache models)
+    {
+        var types = new List<(INamedTypeSymbol, string)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var project in projects)
+            foreach (var tree in models.Trees(project))
+            {
+                if (models.For(tree) is not { } model) continue;
+                foreach (var declaration in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
+                    if (model.GetDeclaredSymbol(declaration) is INamedTypeSymbol type && seen.Add(Symbols.TypeKey(type))) types.Add((type, project.Name));
+            }
+        return types;
     }
 
     private static bool IsController(INamedTypeSymbol type) =>

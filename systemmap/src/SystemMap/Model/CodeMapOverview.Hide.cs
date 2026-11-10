@@ -88,6 +88,9 @@ public static partial class CodeMapOverview
             EntryPoints = map.EntryPoints.Select(e => e with { Steps = Without(e.Steps) }).ToList(),
             Apps = map.Apps.Where(a => !hidden.Contains(ProjectId(a.Project)))
                 .Select(a => a with { HttpClients = a.HttpClients.Where(c => !hidden.Contains(IntegrationNodeId(c.IntegrationId))).ToList() }).ToList(),
+            Code = map.Code is null ? null : new CodeInventory(
+                map.Code.Projects.Where(p => !hidden.Contains(ProjectId(p.Name))).ToList(),
+                map.Code.Classes.Where(c => !hidden.Contains(ProjectId(c.Project)) && !hidden.Contains(ClassId(c.Project, c.Name))).ToList()),
         };
     }
 

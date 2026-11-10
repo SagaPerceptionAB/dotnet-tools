@@ -22,6 +22,9 @@ internal sealed class ModelCache
 
     public IEnumerable<Compilation> Compilations => _trees.Values.Select(v => v.Compilation).Distinct();
 
+    public Compilation? CompilationOf(Project project) =>
+        _trees.Values.Where(v => v.Project.Id == project.Id).Select(v => v.Compilation).FirstOrDefault();
+
     public IEnumerable<SyntaxTree> Trees(Project project) => _trees.Where(t => t.Value.Project.Id == project.Id).Select(t => t.Key);
 
     public SemanticModel? For(SyntaxTree tree)

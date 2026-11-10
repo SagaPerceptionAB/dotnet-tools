@@ -13,7 +13,7 @@ public static class Program
 
     private static async Task<int> RunAsync(string[] args, Terminal terminal)
     {
-        var a = Args.Parse(See, "systemmap", args, ["solution", "spec", .. MapFiles.Flags("json")], "no-restore", "no-browser");
+        var a = Args.Parse(See, "systemmap", args, ["solution", "spec", .. MapFiles.Flags("json")], ["no-restore", "no-browser", .. MapFiles.BoolFlags]);
         if (a.Help) { terminal.Out.Write(Help.ToString()); return ExitCodes.Ok; }
         var files = MapFiles.From(a, "json");
         var solution = a.Get("solution") ?? SolutionFinder.Find(Directory.GetCurrentDirectory(), See);
@@ -41,8 +41,8 @@ public static class Program
     {
         Usage = ["dotnet systemmap [--solution <fil>] [--spec <fil|url>] [--html karta.html] [--mermaid karta.mmd] [--json karta.json] [--hide <namn>]"],
         Description = """
-            Följer anropen från varje ingång (controller-action, minimal API, Razor Page eller Blazor-sida) genom projekten ut till integrationerna (databas, HTTP, köer, lagring, e-post).
-            Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog. Den skrivs som text på stdout.
+            Följer anropen från varje ingång (controller-action, minimal API, Razor Page, Blazor-sida, bakgrundstjänst, konsolprogram, meddelandehanterare, jobb, gRPC- eller SignalR-anrop) genom projekten ut till integrationerna (databas, HTTP, köer, lagring, e-post).
+            Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog, och dämpat det som ingen ingång når. Den skrivs som text på stdout.
             Utan filer att skriva öppnas den som webbsida. Projektfilerna läses med MSBuild, precis som vid dotnet build: peka bara på kod du litar på.
             """,
         Flags =
@@ -56,6 +56,7 @@ public static class Program
             new("--entry \"<anrop>\"", "Med --mermaid: bara vägen för ett anrop, t.ex. \"POST /orders\"."),
             new("--json <fil>", "Skriv kartan som JSON."),
             new("--hide <namn>", "Dölj ett projekt, en klass eller en integration (går att upprepa). Vägarna genom dolda projekt och klasser består. Gäller text, --mermaid och --json; i --html är delarna avbockade i sidan."),
+            new("--no-unreached", "Ta inte med projekt, klasser och metoder som ingen ingång når. I --html är \"Visa delar som inte nås\" då avbockad från början."),
             new("--no-browser", "Öppna inte webbläsaren (görs aldrig när CI är satt)."),
             new("--no-restore", "Kör inte dotnet restore."),
             new("--verbose", "Visa tekniska detaljer när något går fel."),

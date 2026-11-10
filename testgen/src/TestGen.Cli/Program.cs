@@ -166,7 +166,7 @@ public static class Program
 
     private static async Task<int> MapAsync(string[] args, ErrorContext ctx, Terminal terminal)
     {
-        var a = CommandArgs.Parse("map", args, ["solution", "spec", .. MapFiles.Flags("out")], "no-restore");
+        var a = CommandArgs.Parse("map", args, ["solution", "spec", .. MapFiles.Flags("out")], ["no-restore", .. MapFiles.BoolFlags]);
         var solution = a.Get("solution")
             ?? throw new UsageException("Ange vilken solution kartan ska ritas för med --solution.", "Skriv t.ex. testgen map --solution samples/Shop.slnx. Se: testgen map --help");
         var files = MapFiles.From(a, "out");

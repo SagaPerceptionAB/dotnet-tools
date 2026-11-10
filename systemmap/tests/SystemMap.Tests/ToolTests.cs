@@ -57,6 +57,55 @@ public class ToolTests
     {
         var description = Run("--help").Out;
         Assert.That(description, Does.Contain("controller-action").And.Contain("minimal API").And.Contain("Razor Page").And.Contain("Blazor-sida"));
+        Assert.That(description, Does.Contain("bakgrundstjänst").And.Contain("konsolprogram").And.Contain("meddelandehanterare").And.Contain("jobb").And.Contain("gRPC").And.Contain("SignalR"));
+        Assert.That(description, Does.Contain("--no-unreached"));
+    }
+
+    /// <summary>En solution på disk med ett bibliotek, en worker (värd + bakgrundstjänst) och ett konsolprogram, och kod som ingen når.</summary>
+    private string ProgramsSolution()
+    {
+        void Write(string path, string text)
+        {
+            var full = Path.Combine(_dir, "Program", path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, text);
+        }
+        const string Props = "<TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>";
+        Write("Lib/Lib.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup>{Props}</PropertyGroup></Project>");
+        Write("Lib/Store.cs", "namespace Lib; public class Store(HttpClient http) { public Task<string> GetAsync() => http.GetStringAsync(\"https://example.com/data\"); public void Unused() { } }\npublic class Orphan { public void Gone() { } }");
+        Write("Worker/Worker.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType>{Props}</PropertyGroup><ItemGroup><FrameworkReference Include=\"Microsoft.AspNetCore.App\" /><ProjectReference Include=\"..\\Lib\\Lib.csproj\" /></ItemGroup></Project>");
+        Write("Worker/Program.cs", "var builder = Host.CreateApplicationBuilder(args);\nbuilder.Services.AddHostedService<Cleanup>();\nbuilder.Build().Run();\npublic class Cleanup(Lib.Store store) : BackgroundService { protected override async Task ExecuteAsync(CancellationToken ct) { await store.GetAsync(); } }");
+        Write("Tool/Tool.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType>{Props}</PropertyGroup><ItemGroup><ProjectReference Include=\"..\\Lib\\Lib.csproj\" /></ItemGroup></Project>");
+        Write("Tool/Program.cs", "Console.WriteLine(await new Lib.Store(new HttpClient()).GetAsync());");
+        Write("Programs.slnx", "<Solution><Project Path=\"Lib/Lib.csproj\" /><Project Path=\"Worker/Worker.csproj\" /><Project Path=\"Tool/Tool.csproj\" /></Solution>");
+        return Path.Combine(_dir, "Program", "Programs.slnx");
+    }
+
+    [Test]
+    public void A_worker_and_a_console_program_are_on_the_map_and_code_nobody_reaches_is_listed_unless_no_unreached()
+    {
+        var solution = ProgramsSolution();
+        var json = Path.Combine(_dir, "karta.json");
+        var (exit, output, err) = Run("--solution", solution, "--no-browser", "--json", json);
+
+        Assert.That(exit, Is.EqualTo(0), err);
+        Assert.That(output, Does.Contain("Bakgrund: Cleanup  Cleanup.ExecuteAsync [Worker]").And.Contain("Konsol: Tool  Program.Main [Tool]"));
+        Assert.That(output, Does.Contain("  Worker: worker").And.Contain("  Tool: console"));
+        Assert.That(output, Does.Contain("→ Store (HTTP): GET https://example.com/data"), "Store nås från båda");
+        Assert.That(output, Does.Contain("Nås inte från någon ingång:\n  Lib: Orphan; metoder i klasser som nås: Store.Unused\n"));
+        Assert.That(err, Does.Not.Contain("Hittade inga ingångar"));
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(json));
+        Assert.That(doc.RootElement.GetProperty("overview").GetProperty("nodes").EnumerateArray().Where(n => n.TryGetProperty("reached", out _)).Select(n => n.GetProperty("id").GetString()),
+            Is.EqualTo(new[] { "class:Lib/Orphan", "method:Lib/Orphan.Gone", "method:Lib/Store.Unused" }));
+
+        var (_, without, _) = Run("--solution", solution, "--no-browser", "--no-unreached", "--json", json);
+        Assert.That(without, Does.Contain("Bakgrund: Cleanup").And.Not.Contain("Nås inte").And.Not.Contain("Orphan"));
+        Assert.That(File.ReadAllText(json), Does.Not.Contain("Orphan").And.Not.Contain("\"reached\""));
+        var page = Path.Combine(_dir, "karta.html");
+        Run("--solution", solution, "--no-browser", "--no-unreached", "--html", page);
+        Assert.That(File.ReadAllText(page), Does.Contain("unreached: false,"), "sidan startar med Visa delar som inte nås avbockad");
+        Run("--solution", solution, "--no-browser", "--html", page);
+        Assert.That(File.ReadAllText(page), Does.Contain("unreached: true,"));
     }
     [Test]
     public void Hide_leaves_the_named_parts_out_of_the_text_Mermaid_and_JSON_but_the_page_gets_them_unchecked()

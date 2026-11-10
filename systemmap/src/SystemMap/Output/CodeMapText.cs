@@ -10,10 +10,10 @@ public static class CodeMapText
         yield return "Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog.";
         if (hidden is { Count: > 0 }) yield return $"Dolda delar: {string.Join(", ", hidden)}. Vägarna genom dem består.";
         yield return map.Projects.Count > 0 ? $"Projekt i den ordning anropen når dem: {string.Join(" → ", map.Projects)}" : "Hittade inga ingångar.";
+        var overview = CodeMapOverview.Build(map);
         if (map.Integrations.Count > 0)
         {
             // Varje integration en gång, med det som görs mot den: läsningar och skrivningar i en databas, meddelandena till en kö.
-            var overview = CodeMapOverview.Build(map);
             yield return "Integrationer:";
             foreach (var integration in map.Integrations)
             {
@@ -33,7 +33,10 @@ public static class CodeMapText
         foreach (var entry in CallGroups.Order(map.EntryPoints))
         {
             yield return "";
-            yield return $"{entry.Method} {entry.Path}{(entry.OperationId is null ? "" : $"  ({entry.OperationId})")}  {entry.Handler} [{entry.Project}]{(entry.Kind == EntryKind.Controller ? "" : $" {CodeMapJson.KindCode(entry.Kind)}")}";
+            // Det som inte är HTTP har sitt namn i stället för metod och sökväg, och namnet säger redan vad det är.
+            yield return entry.Kind.IsHttp()
+                ? $"{entry.Method} {entry.Path}{(entry.OperationId is null ? "" : $"  ({entry.OperationId})")}  {entry.Handler} [{entry.Project}]{(entry.Kind == EntryKind.Controller ? "" : $" {CodeMapJson.KindCode(entry.Kind)}")}"
+                : $"{entry.Key}  {entry.Handler} [{entry.Project}]";
             if (entry.Input is not null || entry.Output is not null)
                 yield return $"  in: {Shape(entry.Input) ?? "–"}   ut: {Shape(entry.Output) ?? "–"}";
             foreach (var line in StepLines(entry.Steps, map, 1)) yield return line;
@@ -49,12 +52,42 @@ public static class CodeMapText
                     ? $"  Bara i koden: {d.Method} {d.Path} ({d.Handler})"
                     : $"  Bara i specen: {d.Method} {d.Path}{(d.OperationId is null ? "" : $" ({d.OperationId})")}";
         }
+
+        foreach (var line in UnreachedLines(overview)) yield return line;
     }
+
+    /// <summary>
+    /// Det som ingen ingång når: per projekt klasserna, och metoderna i klasser som nås. Kort: högst <see cref="MaxListed"/> av varje, resten räknas.
+    /// </summary>
+    private static IEnumerable<string> UnreachedLines(Overview overview)
+    {
+        var unreached = CodeMapOverview.Unreached(overview);
+        if (unreached.Count == 0) yield break;
+        var byId = overview.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        yield return "";
+        yield return "Nås inte från någon ingång:";
+        foreach (var project in overview.Nodes.Where(n => n.Kind == OverviewKind.Project))
+        {
+            var classes = unreached.Where(n => n.Kind == OverviewKind.Class && n.Parent == project.Id).Select(n => n.Name).ToList();
+            var methods = unreached.Where(n => n.Kind == OverviewKind.Method && byId[n.Parent!].Parent == project.Id && byId[n.Parent!].Reached)
+                .Select(n => $"{byId[n.Parent!].Name}.{n.Name}").ToList();
+            if (project.Reached && classes.Count == 0 && methods.Count == 0) continue;
+            var parts = new List<string>();
+            if (classes.Count > 0) parts.Add(Listed(classes));
+            if (methods.Count > 0) parts.Add("metoder i klasser som nås: " + Listed(methods));
+            yield return $"  {project.Name}{(project.Reached ? "" : " (hela projektet)")}{(parts.Count == 0 ? "" : ": " + string.Join("; ", parts))}";
+        }
+    }
+
+    private const int MaxListed = 8;
+
+    private static string Listed(List<string> names) =>
+        names.Count <= MaxListed ? string.Join(", ", names) : $"{string.Join(", ", names.Take(MaxListed))} och {names.Count - MaxListed} till";
 
     /// <summary>"ShopWeb: web, anropar ShopApi via ShopApi:BaseUrl".</summary>
     private static string AppLine(AppFacts app)
     {
-        var parts = new List<string> { string.Join(" och ", app.Kinds.Select(k => k == AppKind.Api ? "api" : "web")) };
+        var parts = new List<string> { string.Join(" och ", app.Kinds.Select(CodeMapJson.KindCode)) };
         if (app.HealthPaths.Count > 0) parts.Add("hälsa " + string.Join(", ", app.HealthPaths));
         parts.AddRange(app.Databases.Select(d => $"databas {d.Provider ?? "okänd"} ({d.Context}{(d.ConfigKey is null ? "" : $", {d.ConfigKey}")})"));
         parts.AddRange(app.HttpClients.Select(c => $"{(c.TargetProject is null ? $"anropar {c.IntegrationId["http:".Length..]}" : $"anropar {c.TargetProject}")}{(c.ConfigKey is null ? "" : $" via {c.ConfigKey}")}"));

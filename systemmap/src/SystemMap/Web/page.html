@@ -32,9 +32,13 @@ __SCRIPTS__
     // sig bara på första raden.
     // Delar som är dolda i sidan (id:n) finns inte i de skrivna filerna, så då får man veta hur man får en fil utan dem.
     hidden: hidden,
-    mermaid: function (level, direction, entry, hiddenNow) {
+    // Delar som ingen ingång når visas från början om inte sidan skapades med --no-unreached; det man själv väljer sparas och gäller före.
+    unreached: __UNREACHED__,
+    mermaid: function (level, direction, entry, hiddenNow, unreachedShown) {
       if (hiddenNow && hiddenNow.length) return Promise.reject({ message: 'Mermaid-filen kan inte följa det som är dolt i sidan.',
         tip: 'Välj Visa allt, eller skapa filen med dotnet systemmap --mermaid karta.mmd --hide <namn>.' });
+      if (unreachedShown === false) return Promise.reject({ message: 'Mermaid-filen kan inte följa det som är dolt i sidan.',
+        tip: 'Bocka i Visa delar som inte nås, eller skapa filen med dotnet systemmap --mermaid karta.mmd --no-unreached.' });
       var text = mermaid[level + '|' + (entry || '')];
       if (!text) return Promise.reject({ message: 'Mermaid-filen för det här valet finns inte i sidan.', tip: 'Skapa sidan på nytt.' });
       return Promise.resolve(direction === 'TB' ? text.replace(/^flowchart LR/, 'flowchart TB') : text);

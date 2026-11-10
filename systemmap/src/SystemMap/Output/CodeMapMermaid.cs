@@ -42,7 +42,8 @@ public sealed record MermaidOptions(MapLevel Level = MapLevel.Classes, bool TopD
 
 /// <summary>
 /// Kartan som Mermaid-flödesschema, att lägga i dokumentation (t.ex. i ett <c>```mermaid</c>-block på GitHub). Ritas från
-/// översikten, så varje del och integration finns en gång, i samma färger som i webbsidan. Samma karta ger samma text.
+/// översikten, så varje del och integration finns en gång, i samma färger som i webbsidan. Det som ingen ingång når ritas dämpat och
+/// streckat (<c>unreached</c>). Samma karta ger samma text.
 /// </summary>
 public static class CodeMapMermaid
 {
@@ -114,17 +115,23 @@ public static class CodeMapMermaid
                 lines.Add($"{indent}subgraph {id}[\"{Label(n)}\"]");
                 foreach (var kid in kids[n.Id]) Add(kid, indent + "  ");
                 lines.Add(indent + "end");
-                styled.Add((id, outside ? "externalarea" : "codearea"));
+                styled.Add((id, !n.Reached ? "unreached" : outside ? "externalarea" : "codearea"));
                 return;
             }
-            // Anropen in som flaggor (sidor som parallellogram), en databas som cylinder och andra integrationer med rundade hörn.
+            // Anropen in som flaggor (sidor som parallellogram, det som inte är HTTP som sexhörningar), en databas som cylinder och andra
+            // integrationer med rundade hörn.
             lines.Add(indent + id + string.Format(n.Kind switch
             {
-                OverviewKind.Entry => n.Ref is "razor-page" or "blazor-page" or "mvc-view" ? "[/\"{0}\"/]" : ">\"{0}\"]",
+                OverviewKind.Entry => n.Ref switch
+                {
+                    "razor-page" or "blazor-page" or "mvc-view" => "[/\"{0}\"/]",
+                    "background" or "console" or "consumer" or "job" or "grpc" or "signalr" => "{{{{\"{0}\"}}}}",
+                    _ => ">\"{0}\"]",
+                },
                 OverviewKind.Integration => IntegrationOf(n)?.Kind == IntegrationKind.Database ? "[(\"{0}\")]" : "(\"{0}\")",
                 _ => "[\"{0}\"]",
             }, Label(n)));
-            styled.Add((id, n.Kind == OverviewKind.Entry ? "entry" : outside ? "external" : "code"));
+            styled.Add((id, n.Kind == OverviewKind.Entry ? "entry" : outside ? "external" : !n.Reached ? "unreached" : "code"));
         }
 
         foreach (var n in nodes.Where(n => n.Kind == OverviewKind.Entry)) Add(n, "  ");
@@ -158,6 +165,8 @@ public static class CodeMapMermaid
         lines.Add("  classDef codearea fill:#f3f8fd,stroke:#2a78d6,color:#1f2933");
         lines.Add("  classDef external fill:#dff0df,stroke:#008300,color:#1f2933");
         lines.Add("  classDef externalarea fill:#f2f9f2,stroke:#008300,color:#1f2933");
+        // Det som ingen ingång når: dämpat och streckat.
+        if (styled.Any(s => s.Style == "unreached")) lines.Add("  classDef unreached fill:#f4f5f7,stroke:#8a96a5,color:#6b7785,stroke-dasharray:4 3");
         if (projects.Count > 0) lines.Add("  style system fill:none,stroke:#6b7a8f,stroke-dasharray:5 5");
         foreach (var group in styled.GroupBy(s => s.Style))
             lines.Add($"  class {string.Join(",", group.Select(s => s.Id))} {group.Key}");

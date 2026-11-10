@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace SystemMap;
 
 /// <summary>
-/// Fakta per app (projekt med <c>Sdk.Web</c> eller <c>WebApplication</c>): sort, hälsovägar, databaser och utgående HTTP-klienter.
+/// Fakta per app (projekt med <c>Sdk.Web</c> eller <c>WebApplication</c>, eller ett program som körs: konsol eller worker): sort, hälsovägar, databaser och utgående HTTP-klienter.
 /// Registreringar i projekt som appen refererar räknas till appen.
 /// </summary>
 internal static partial class AppFinder
@@ -15,15 +15,25 @@ internal static partial class AppFinder
         IReadOnlyDictionary<string, Integration> integrations)
     {
         var ports = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
-        var apps = projects.Where(p => IsApp(p, models)).OrderBy(p => p.Name, StringComparer.Ordinal).ToList();
+        var apps = projects.Where(p => IsApp(p, models) || IsProgram(p, models)).OrderBy(p => p.Name, StringComparer.Ordinal).ToList();
         var result = new List<AppFacts>();
         foreach (var app in apps)
         {
             var names = Closure(app, solution, projects).Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-            var kinds = entries.Where(e => names.Contains(e.Project)).Select(e => e.Kind switch
+            // HTTP följer med från projekten appen använder. Bakgrundsarbete bara i en värd (en webbapp eller ett program som sätter upp en värd), som kan
+            // köra tjänster från ett bibliotek, och ett konsolprogram är bara sitt eget projekt.
+            var host = IsApp(app, models) || HostedFinder.IsHost(app, models);
+            var kinds = entries.Where(e => names.Contains(e.Project) && e.Kind switch
+            {
+                EntryKind.Console => e.Project == app.Name,
+                EntryKind.Background or EntryKind.Consumer or EntryKind.Job => host || e.Project == app.Name,
+                _ => true,
+            }).Select(e => e.Kind switch
             {
                 EntryKind.RazorPage or EntryKind.BlazorPage or EntryKind.MvcView => AppKind.Web,
-                _ => AppKind.Api,
+                EntryKind.Background or EntryKind.Consumer or EntryKind.Job => AppKind.Worker,
+                EntryKind.Console => AppKind.Console,
+                _ => AppKind.Api,   // controller, minimal API, gRPC och SignalR
             }).Distinct().Order().ToList();
 
             var databases = resolver.DbContexts.Where(d => names.Contains(d.Project))
@@ -56,7 +66,7 @@ internal static partial class AppFinder
         }
     }
 
-    private static bool IsApp(Project project, ModelCache models)
+    internal static bool IsApp(Project project, ModelCache models)
     {
         if (project.FilePath is { } path && File.Exists(path) && Sdk().Match(ReadStart(path)) is { Success: true } sdk &&
             sdk.Groups[1].Value.StartsWith("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase))
@@ -68,6 +78,10 @@ internal static partial class AppFinder
                         return true;
         return false;
     }
+
+    /// <summary>Ett program som körs (exe): en worker eller ett konsolprogram. Ett bibliotek med en bakgrundstjänst är ingen app, men programmet som använder det är det.</summary>
+    private static bool IsProgram(Project project, ModelCache models) =>
+        models.CompilationOf(project) is { Options.OutputKind: OutputKind.ConsoleApplication or OutputKind.WindowsApplication };
 
     private static string ReadStart(string path)
     {

@@ -9,10 +9,11 @@ public enum OverviewKind { Entry, Project, Class, Method, Integration, Operation
 /// <param name="Parent">Delen den ligger i, eller null för anrop, projekt och integrationer.</param>
 /// <param name="Ref">För en integration dess id; för ett anrop dess sort (<c>controller</c>, <c>razor-page</c> ...). Namnet på ett anrop är dess nyckel, <c>POST /orders</c>.</param>
 /// <param name="File">För en metod filen där den finns, relativt solutionens katalog.</param>
-/// <param name="Entries">Anropen (nycklar som <c>POST /orders</c>) vars väg går genom delen.</param>
+/// <param name="Entries">Anropen (nycklar som <c>POST /orders</c>, <c>Bakgrund: OrderCleanupWorker</c>) vars väg går genom delen.</param>
+/// <param name="Reached">Falskt för ett projekt, en klass eller en metod som ingen ingång når. Sant för allt annat.</param>
 public sealed record OverviewNode(
     string Id, OverviewKind Kind, string Name, string? Parent, string? Ref, string? File, int? Line, DataShape? In, DataShape? Out,
-    IReadOnlyList<string> Entries);
+    IReadOnlyList<string> Entries, bool Reached = true);
 
 /// <summary>Ett anrop från en del till en annan.</summary>
 /// <param name="File">För ett anrop till en integration: platsen i koden där anropet görs.</param>
@@ -27,8 +28,8 @@ public sealed record Overview(IReadOnlyList<OverviewNode> Nodes, IReadOnlyList<O
 /// </summary>
 public static partial class CodeMapOverview
 {
-    /// <summary>Nyckeln för ett anrop, t.ex. <c>POST /orders</c>.</summary>
-    public static string EntryKey(EntryPoint entry) => $"{entry.Method} {entry.Path}";
+    /// <summary>Nyckeln för ett anrop, t.ex. <c>POST /orders</c>, eller för en ingång som inte är HTTP dess namn, t.ex. <c>Bakgrund: OrderCleanupWorker</c>.</summary>
+    public static string EntryKey(EntryPoint entry) => entry.Key;
 
     /// <summary>Id:t för ett projekt i översikten.</summary>
     public static string ProjectId(string project) => "proj:" + project;
@@ -44,10 +45,18 @@ public static partial class CodeMapOverview
         return dot < 0 ? (member, member) : (member[..dot], member[(dot + 1)..]);
     }
 
+    /// <summary>Delarna som ingen ingång når: projekt, klasser och metoder. De har inga pilar.</summary>
+    public static IReadOnlyList<OverviewNode> Unreached(Overview overview) => overview.Nodes.Where(n => !n.Reached).ToList();
+
+    /// <summary>Kartan utan det som ingen ingång når.</summary>
+    public static Overview WithoutUnreached(Overview overview) =>
+        overview.Nodes.All(n => n.Reached) ? overview : new Overview(overview.Nodes.Where(n => n.Reached).ToList(), overview.Links);
+
     public static Overview Build(CodeMapModel map)
     {
         var builder = new Builder(map);
         foreach (var entry in map.EntryPoints) builder.Add(entry);
+        builder.AddCode(map.Code);
         return builder.Result();
     }
 
@@ -62,6 +71,7 @@ public static partial class CodeMapOverview
         public int? Line { get; init; }
         public DataShape? In { get; init; }
         public DataShape? Out { get; init; }
+        public bool Reached { get; init; } = true;
         public List<string> Entries { get; } = [];
         public List<Node> Children { get; } = [];
 
@@ -70,7 +80,7 @@ public static partial class CodeMapOverview
             if (!Entries.Contains(entry)) Entries.Add(entry);
         }
 
-        public OverviewNode ToRecord() => new(Id, Kind, Name, Parent, Ref, File, Line, In, Out, Entries);
+        public OverviewNode ToRecord() => new(Id, Kind, Name, Parent, Ref, File, Line, In, Out, Entries, Reached);
     }
 
     private sealed class Builder
@@ -117,7 +127,31 @@ public static partial class CodeMapOverview
             }
         }
 
-        private Node Project(string name) => GetOrAdd(ProjectId(name), () => new Node(ProjectId(name), OverviewKind.Project, name, null), _projects);
+        private Node Project(string name, bool reached = true) =>
+            GetOrAdd(ProjectId(name), () => new Node(ProjectId(name), OverviewKind.Project, name, null) { Reached = reached }, _projects);
+
+        /// <summary>
+        /// Det ingen ingång når, sist i sitt projekt: projekt, klasser och metoder med kod (se <see cref="CodeInventory"/>). I en klass som
+        /// kartan ritar läggs bara metoderna som inte nås till. En klass som nås bara via hjälpmetoder som kartan inte ritar ritas inte.
+        /// </summary>
+        public void AddCode(CodeInventory? code)
+        {
+            if (code is null) return;
+            foreach (var project in code.Projects) Project(project.Name, project.Reached);
+            foreach (var c in code.Classes)
+            {
+                var projectNode = Project(c.Project);
+                var id = ClassId(c.Project, c.Name);
+                if (!_nodes.TryGetValue(id, out var type))
+                {
+                    if (c.Reached) continue;
+                    type = GetOrAdd(id, () => new Node(id, OverviewKind.Class, c.Name, projectNode.Id) { File = c.File, Line = c.Line, Reached = false }, projectNode.Children);
+                }
+                foreach (var m in c.Methods.Where(m => !m.Reached))
+                    GetOrAdd($"method:{c.Project}/{c.Name}.{m.Name}", () =>
+                        new Node($"method:{c.Project}/{c.Name}.{m.Name}", OverviewKind.Method, m.Name, type.Id) { File = m.File, Line = m.Line, Reached = false }, type.Children);
+            }
+        }
 
         /// <summary>Metoden, i sin klass i sitt projekt. <c>OrderService.PlaceAsync</c> delas vid sista punkten.</summary>
         private Node Member(string project, string member, string file, int line, DataShape? input, DataShape? output, string key)

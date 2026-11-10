@@ -153,6 +153,15 @@ public class ErrorTests
     }
 
     [Test]
+    public void Map_takes_no_unreached_like_systemmap_and_the_help_says_so()
+    {
+        var (_, _, err) = Cli("map", "--solution", "x.slnx", "--no-unreached");
+        Assert.That(err, Does.Not.Contain("Okänd flagga"), "flaggan är känd, felet är att solutionen saknas");
+        Assert.That(err, Does.Contain("Hittar inte solutionen"));
+        Assert.That(Cli("map", "--help").Out, Does.Contain("--no-unreached").And.Contain("bakgrundstjänst"));
+    }
+
+    [Test]
     public void Unknown_flag_suggests_closest()
     {
         var (exit, _, err) = Cli("run", "--specc", "x.yaml");

@@ -21,6 +21,19 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
     /// <summary>Integrationerna som hittats hittills, per id.</summary>
     public Dictionary<string, Integration> Integrations { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>Nycklarna (<see cref="Symbols.Key"/>) för metoderna som anropen har gått genom, även hjälpmetoder som kartan inte ritar.</summary>
+    public HashSet<string> Visited { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Klasserna (<see cref="Symbols.TypeKey"/>) som någon instans skapas av i koden som följts.</summary>
+    public HashSet<string> Created { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Metoder i solutionen som anropen når men som inte följs här: de som koden skickar vidare som värde (<c>list.Select(Load)</c>,
+    /// <c>handler = OnDone</c>), som anropas av någon annan än den som skickar dem, och de som ligger bortom <see cref="MaxDepth"/>.
+    /// <see cref="CodeInventoryFinder"/> följer dem själv och räknar dem som nådda.
+    /// </summary>
+    public Dictionary<string, IMethodSymbol> Referenced { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Anropen från metoderna (t.ex. en sidas hanterare och dess livscykelmetoder), utan dubbletter.</summary>
     public async Task<IReadOnlyList<Step>> StepsFromAsync(IReadOnlyList<IMethodSymbol> methods, CancellationToken ct)
     {
@@ -32,6 +45,7 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
     private async Task<List<Step>> ChildrenAsync(IMethodSymbol method, ImmutableHashSet<string> path, int depth, Bindings bindings, CancellationToken ct)
     {
         var steps = new List<Step>();
+        Visited.Add(Symbols.Key(method));
         foreach (var body in Bodies(method))
         {
             if (models.For(body.SyntaxTree) is not { } model) continue;
@@ -42,9 +56,13 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
                 ct.ThrowIfCancellationRequested();
                 if (node is BaseObjectCreationExpressionSyntax creation)
                 {
-                    if (SinkCatalog.MatchCreation(creation, context) is { } created) steps.Add(Leave(created, project, creation));
+                    if (model.GetTypeInfo(creation).Type is { } created && Symbols.InSource(created)) Created.Add(Symbols.TypeKey(created));
+                    if (SinkCatalog.MatchCreation(creation, context) is { } sink) steps.Add(Leave(sink, project, creation));
                     continue;
                 }
+                if (node is IdentifierNameSyntax or MemberAccessExpressionSyntax && IsValueContext(node) &&
+                    model.GetSymbolInfo(node).Symbol is IMethodSymbol { MethodKind: MethodKind.Ordinary or MethodKind.LocalFunction } group && Symbols.InSource(group))
+                    Referenced.TryAdd(Symbols.Key(group), group);
                 if (node is not InvocationExpressionSyntax invocation) continue;
                 if (SinkCatalog.Match(invocation, context) is { } hit)
                 {
@@ -59,6 +77,7 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
                     if (path.Contains(key)) continue;   // rekursion
                     if (depth >= MaxDepth)
                     {
+                        Referenced.TryAdd(key, implementation);   // följs inte här, men räknas som nådd (se Referenced)
                         warnings.Add($"Kartan går högst {MaxDepth} anrop djupt; anropen från {method.ContainingType.Name}.{method.Name} till {implementation.ContainingType.Name}.{implementation.Name} visas inte.");
                         continue;
                     }
@@ -72,6 +91,14 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
         }
         return Tidy(steps);
     }
+
+    /// <summary>Ett namn som står där ett värde förväntas (argument, tilldelning, return ...) och inte är anropet självt: kan vara en metod som skickas vidare.</summary>
+    private static bool IsValueContext(SyntaxNode node) => node.Parent switch
+    {
+        ArgumentSyntax or EqualsValueClauseSyntax or ReturnStatementSyntax or ArrowExpressionClauseSyntax or CastExpressionSyntax => true,
+        AssignmentExpressionSyntax assignment => assignment.Right == node,
+        _ => false,
+    };
 
     private async Task<Step?> StepAsync(IMethodSymbol method, ImmutableHashSet<string> path, int depth, Bindings bindings, CancellationToken ct)
     {
@@ -146,17 +173,42 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
     {
         foreach (var reference in method.OriginalDefinition.DeclaringSyntaxReferences)
         {
-            SyntaxNode? body = reference.GetSyntax() switch
+            var syntax = reference.GetSyntax();
+            SyntaxNode? body = syntax switch
             {
                 BaseMethodDeclarationSyntax m => (SyntaxNode?)m.Body ?? m.ExpressionBody,
                 LocalFunctionStatementSyntax f => (SyntaxNode?)f.Body ?? f.ExpressionBody,
                 AnonymousFunctionExpressionSyntax l => l.Body,
                 AccessorDeclarationSyntax a => (SyntaxNode?)a.Body ?? a.ExpressionBody,
+                PropertyDeclarationSyntax p => p.ExpressionBody,   // egenskap med => som get
+                IndexerDeclarationSyntax i => i.ExpressionBody,
+                ArrowExpressionClauseSyntax arrow => arrow,
                 _ => null,
             };
             if (body is not null) yield return body;
+            // Main utan Program-klass (satser på översta nivån): satserna i filen, men inte klasserna som står bredvid dem.
+            if (syntax is CompilationUnitSyntax unit)
+                foreach (var statement in unit.Members.OfType<GlobalStatementSyntax>()) yield return statement;
+            // En konstruktor kör också basanropet och fält- och egenskapsvärdena (också när den är primär eller inte skriven alls).
+            if (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor)
+            {
+                if (syntax is ConstructorDeclarationSyntax { Initializer: { } initializer }) yield return initializer;
+                var owner = syntax as TypeDeclarationSyntax ?? syntax.Parent as TypeDeclarationSyntax;
+                if (owner is null) continue;
+                if (owner.BaseList is { } list && !method.IsStatic) yield return list;
+                foreach (var member in owner.Members)
+                {
+                    var modifiers = member switch { FieldDeclarationSyntax f => f.Modifiers, PropertyDeclarationSyntax p => p.Modifiers, _ => default };
+                    if (modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword)) != method.IsStatic) continue;
+                    if (member is FieldDeclarationSyntax field)
+                        foreach (var variable in field.Declaration.Variables)
+                            if (variable.Initializer is { } value) yield return value;
+                    if (member is PropertyDeclarationSyntax { Initializer: { } property }) yield return property;
+                }
+            }
         }
     }
 
     private (string File, int Line) Where(Location location) => Symbols.Where(location, root);
 }
+

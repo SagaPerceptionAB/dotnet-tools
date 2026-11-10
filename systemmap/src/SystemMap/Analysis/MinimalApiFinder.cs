@@ -61,7 +61,7 @@ internal static class MinimalApiFinder
     }
 
     /// <summary>Hanteraren: en lambda (namnet är metoden där den står), eller en metod eller lokal funktion.</summary>
-    private static (IMethodSymbol? Symbol, string? Name) Handler(ExpressionSyntax expression, SemanticModel model)
+    internal static (IMethodSymbol? Symbol, string? Name) Handler(ExpressionSyntax expression, SemanticModel model)
     {
         while (expression is ParenthesizedExpressionSyntax or CastExpressionSyntax)
             expression = expression is ParenthesizedExpressionSyntax p ? p.Expression : ((CastExpressionSyntax)expression).Expression;
@@ -73,7 +73,7 @@ internal static class MinimalApiFinder
     }
 
     /// <summary>Metoden där anropet står, t.ex. <c>HelloEndpoints.MapHello</c>. Satser på översta nivån hör till <c>Program</c>.</summary>
-    private static string Enclosing(InvocationExpressionSyntax call, SemanticModel model)
+    internal static string Enclosing(SyntaxNode call, SemanticModel model)
     {
         var member = call.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
         return member is not null && model.GetDeclaredSymbol(member) is { } symbol ? $"{symbol.ContainingType.Name}.{symbol.Name}" : "Program.Main";

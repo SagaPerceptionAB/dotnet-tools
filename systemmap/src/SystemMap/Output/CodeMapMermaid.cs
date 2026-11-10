@@ -182,8 +182,11 @@ public static class CodeMapMermaid
     private static string FindEntry(CodeMapModel map, string wanted)
     {
         var normalized = string.Join(' ', wanted.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return map.EntryPoints.Select(e => e.Key).FirstOrDefault(k => string.Equals(k, normalized, StringComparison.OrdinalIgnoreCase))
-            ?? throw new UsageException($"Anropet '{wanted}' finns inte i kartan.", map.EntryPoints.Count == 0
+        if (map.EntryPoints.Select(e => e.Key).FirstOrDefault(k => string.Equals(k, normalized, StringComparison.OrdinalIgnoreCase)) is { } found) return found;
+        // Namnet utan projekt när flera anrop heter så: de heter med projektet i kartan.
+        if (map.EntryPoints.Where(e => e.Qualifier is not null && string.Equals(e.BaseKey, normalized, StringComparison.OrdinalIgnoreCase)).Select(e => e.Key).ToList() is { Count: > 0 } several)
+            throw new UsageException($"Anropet '{wanted}' finns i flera projekt.", $"Skriv det med projektet: {string.Join(", ", several.Select(k => $"\"{k}\""))}.");
+        throw new UsageException($"Anropet '{wanted}' finns inte i kartan.", map.EntryPoints.Count == 0
                 ? "Kartan hittade inga anrop i koden."
                 : $"Skriv metoden och sökvägen som i kartan, t.ex. \"{map.EntryPoints[0].Key}\".");
     }

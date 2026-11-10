@@ -46,6 +46,7 @@ public static class CodeMapper
             .ThenBy(e => Array.IndexOf(MethodOrder, e.Method) is var i and >= 0 ? i : MethodOrder.Length).ThenBy(e => e.Method, StringComparer.Ordinal)
             .ThenBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Handler, StringComparer.Ordinal)
             .ToList();
+        entryPoints = Qualify(entryPoints);
 
         // En app utan någon sort (inga ingångar) är bara ett bibliotek som råkar använda WebApplication.
         var apps = AppFinder.Find(projects, solution, models, resolver, sites, entries, walker.Integrations).Where(a => a.Kinds.Count > 0).ToList();
@@ -68,6 +69,21 @@ public static class CodeMapper
             differences,
             warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList(),
             code);
+    }
+
+    /// <summary>
+    /// Ger ingångar som annars skulle heta lika (två <c>Worker</c> i olika projekt, samma <c>GET /health</c> i två webbappar) var sitt namn: projektet
+    /// efter namnet. Heter de lika också inom ett projekt kommer platsen i koden med. Ingångar med ett unikt namn rörs inte.
+    /// Stora och små bokstäver räknas lika, som när <c>--entry</c> letar upp ett namn.
+    /// </summary>
+    private static List<EntryPoint> Qualify(List<EntryPoint> entries)
+    {
+        var result = entries.ToList();
+        foreach (var same in Enumerable.Range(0, entries.Count).GroupBy(i => entries[i].BaseKey, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+            foreach (var inProject in same.GroupBy(i => entries[i].Project, StringComparer.Ordinal))
+                foreach (var i in inProject)
+                    result[i] = entries[i] with { Qualifier = inProject.Count() > 1 ? $"{entries[i].Project}, {entries[i].File}:{entries[i].Line}" : entries[i].Project };
+        return result;
     }
 
     /// <summary>

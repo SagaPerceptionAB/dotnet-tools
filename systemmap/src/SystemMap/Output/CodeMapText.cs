@@ -37,7 +37,7 @@ public static class CodeMapText
             yield return "";
             // Det som inte är HTTP har sitt namn i stället för metod och sökväg, och namnet säger redan vad det är.
             yield return entry.Kind.IsHttp()
-                ? $"{entry.Method} {entry.Path}{(entry.OperationId is null ? "" : $"  ({entry.OperationId})")}  {entry.Handler} [{entry.Project}]{(entry.Kind == EntryKind.Controller ? "" : $" {CodeMapJson.KindCode(entry.Kind)}")}"
+                ? $"{entry.Key}{(entry.OperationId is null ? "" : $"  ({entry.OperationId})")}  {entry.Handler} [{entry.Project}]{(entry.Kind == EntryKind.Controller ? "" : $" {CodeMapJson.KindCode(entry.Kind)}")}"
                 : $"{entry.Key}  {entry.Handler} [{entry.Project}]";
             if (entry.Input is not null || entry.Output is not null)
                 yield return $"  in: {Shape(entry.Input) ?? "–"}   ut: {Shape(entry.Output) ?? "–"}";

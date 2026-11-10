@@ -1298,7 +1298,7 @@
         p.appendChild(toMap);
         return;
       }
-      var e = systemMap.entryFor(k.operationId, k.method, k.path);
+      var e = systemMap.entryFor(k.operationId, k.method, k.path, (currentProject() || {}).name);   // delar två appar rutten är det systemet som testas som gäller
       if (!e) { p.appendChild(el('p', 'muted', 'Anropet finns inte på systemkartan.')); return; }
       var fold = el('details', 'chainfold'), fsum = el('summary', null, 'Vägen genom koden enligt systemkartan');
       fold.appendChild(fsum);

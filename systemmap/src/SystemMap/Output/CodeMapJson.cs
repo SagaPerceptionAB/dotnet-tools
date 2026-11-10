@@ -8,7 +8,8 @@ namespace SystemMap;
 /// Kartan som JSON (samma form i <c>--json karta.json</c> och i webbsidan). schemaVersion först, camelCase, null utelämnas och
 /// listorna sorterade på stabilt id (ordinalt). <c>projects</c> och <c>steps</c> behåller sin ordning, eftersom den är anropens.
 /// En ingång som inte är HTTP har <c>name</c> (t.ex. <c>Bakgrund: OrderCleanupWorker</c>) men ingen <c>method</c>, <c>path</c> eller <c>codePath</c>.
-/// En del i översikten som ingen ingång når har <c>reached: false</c>; saknas fältet nås den. Ett HTTP-anrop vars adress inte går att läsa ur koden
+/// En ingång vars namn en annan ingång också skulle ha har <c>qualifier</c> (projektet, se <see cref="EntryPoint.Qualifier"/>); namnet i översikten är då
+/// <c>Bakgrund: Worker (Jobs)</c>. En del i översikten som ingen ingång når har <c>reached: false</c>; saknas fältet nås den. Ett HTTP-anrop vars adress inte går att läsa ur koden
 /// (den bestäms vid körning) har <c>address: "runtime"</c> i steget och i översiktens rad; <c>operation</c> och <c>name</c> är då bara verbet.
 /// </summary>
 public static class CodeMapJson
@@ -45,6 +46,7 @@ public static class CodeMapJson
                 method = e.Kind.IsHttp() ? e.Method : null,
                 path = e.Kind.IsHttp() ? e.Path : null,
                 codePath = e.Kind.IsHttp() ? e.CodePath : null,
+                qualifier = e.Qualifier,
                 operationId = e.OperationId,
                 project = e.Project,
                 handler = e.Handler,

@@ -68,7 +68,7 @@ Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev
 Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns eller inte går att läsa), `70` internt fel, `130` avbrutet med Ctrl+C.
 
 JSON-filen börjar med `schemaVersion` (nu 3). null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider. Sedan version 2 (fälten på engelska)
-har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), att delar i `overview` som ingen ingång når har `reached: false`, och att ett HTTP-anrop vars adress varken står i koden eller i konfigurationen (den bestäms vid körning) har `address: "runtime"` i steget och i översiktens rad, medan `operation` och `name` bara är verbet.
+har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), att ett anrop vars namn en annan skulle dela har `qualifier`, att delar i `overview` som ingen ingång når har `reached: false`, och att ett HTTP-anrop vars adress varken står i koden eller i konfigurationen (den bestäms vid körning) har `address: "runtime"` i steget och i översiktens rad, medan `operation` och `name` bara är verbet.
 
 ## I en app
 
@@ -113,6 +113,12 @@ Ingångar: controllers, minimal API (`MapGet`, `MapPost` ..., med `MapGroup`), R
 Typerna känns igen på namnrymd och namn, så paketen behöver inte finnas för kartan. MediatR (`INotificationHandler`, `IRequestHandler`) är inte med: det anropas inom processen och nås från den som anropar det. Azure Functions känns inte igen.
 En ingång som inte är HTTP har `name` i JSON i stället för `method`, `path` och `codePath`, ingår aldrig i jämförelsen med `--spec` och
 väljs i sidan under sin sort (Bakgrundstjänster, Konsolprogram, Meddelanden, Jobb, gRPC, SignalR) efter HTTP-anropen. `--entry` tar namnet, t.ex. `--entry "Bakgrund: OrderCleanupWorker"`.
+
+Namnet på ett anrop är unikt i kartan. Heter två anrop lika, t.ex. två bakgrundstjänster `Worker` i olika projekt eller samma `GET /health` i två webbappar,
+får just de projektet efter namnet: `Bakgrund: Worker (Jobs)` och `GET /health (Api)`. Finns två lika namn också inom samma projekt kommer platsen i koden
+med: `Bakgrund: Worker (Jobs, Jobs/Worker.cs:12)`. Ett namn som redan är unikt är som det alltid varit. `--entry "GET /health"` på ett sådant namn säger vilka
+som finns; skriv det med projektet. I JSON har anropet `qualifier` (projektet) bara när det behövs, och namnet i översikten är det fulla namnet. Sidan väljer
+anropet i projektet som testas när flera har samma rutt (`SystemMap.entryFor(operationId, metod, sökväg, projekt)`).
 
 Fakta per app (JSON `apps`): sort (`api`, `web`, `worker`, `console`), hälsovägar, databaser (leverantör, DbContext, nyckel för anslutningen) och
 utgående HTTP-klienter med projektet i solutionen de pekar på (namnet ur nyckeln, annars porten i `appsettings*.json`). Ett program som körs

@@ -95,12 +95,14 @@
   // Operationen som den visas: verbet, och för ett HTTP-anrop vars adress inte går att läsa ur koden (address: 'runtime') en förklaring.
   // Samma text som CodeMapOverview.RuntimeAddress i C#.
   function operationText(operation, address) { return address === 'runtime' ? operation + ' (adressen bestäms vid körning)' : operation; }
-  // Ingången på kartan för ett anrop (t.ex. i ett test): samma operation i API-beskrivningen, annars samma metod och sökväg.
-  function entryFor(op, method, path) {
+  // Ingången på kartan för ett anrop (t.ex. i ett test): samma operation i API-beskrivningen, annars samma metod och sökväg. Finns anropet i flera
+  // projekt (samma rutt i två webbappar) väljs det i projektet som testas, om det anges; annars det första.
+  function entryFor(op, method, path, project) {
     if (!state.map) return null;
     var list = state.map.entryPoints;
-    return (op && list.find(function (e) { return e.operationId === op; })) ||
-      list.find(function (e) { return e.method === method && (pathKey(e.path) === pathKey(path) || pathKey(e.codePath) === pathKey(path)); }) || null;
+    function pick(found) { return (project && found.find(function (e) { return e.project === project; })) || found[0] || null; }
+    return (op && pick(list.filter(function (e) { return e.operationId === op; }))) ||
+      pick(list.filter(function (e) { return e.method === method && (pathKey(e.path) === pathKey(path) || pathKey(e.codePath) === pathKey(path)); }));
   }
   // Data in och ut för ett steg: "tar X, ger Y" för kod, "skickar X, får Y" för en integration.
   function dataText(s, inVerb, outVerb) {
@@ -261,7 +263,7 @@
     $('map-wrap').hidden = !drawable;
     hideCard();
     if (!some) { if (state.cy) state.cy.elements().remove(); return; }
-    var keep = state.entry && entryFor(state.entry.operationId, state.entry.method, state.entry.path);
+    var keep = state.entry && entryFor(state.entry.operationId, state.entry.method, state.entry.path, state.entry.project);
     state.shut = {};
     if (state.cy) state.cy.elements().remove();       // ny karta: lägg ut allt från början
     selectEntry(keep || null);
@@ -435,7 +437,8 @@
   }
 
   // Ett HTTP-anrop heter metod och sökväg, t.ex. POST /orders; annat (bakgrund, konsol, meddelande, jobb, gRPC, SignalR) har ett eget namn.
-  function entryKey(e) { return e.name || e.method + ' ' + e.path; }
+  // Namnet på anropet i kartan, som EntryPoint.Key i C#: namnet, och när flera anrop heter lika projektet efter (qualifier).
+  function entryKey(e) { return (e.name || e.method + ' ' + e.path) + (e.qualifier ? ' (' + e.qualifier + ')' : ''); }
   function entryByKey(key) { return state.map.entryPoints.find(function (e) { return entryKey(e) === key; }) || null; }
 
   // Ett val av användaren (i menyn eller på kartan): samma som selectEntry, och skärmläsaren får veta vad som visas.

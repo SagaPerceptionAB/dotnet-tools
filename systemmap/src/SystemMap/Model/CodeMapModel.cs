@@ -31,7 +31,7 @@ public sealed record CodeMapModel(
     IReadOnlyList<string> Warnings,
     CodeInventory? Code = null)
 {
-    public const int SchemaVersion = 3;   // 2: fälten heter på engelska. 3: ingångar som inte är HTTP saknar method och path, och delar som inte nås har reached: false. Ett HTTP-anrop vars adress inte går att läsa har address: "runtime"
+    public const int SchemaVersion = 3;   // 2: fälten heter på engelska. 3: ingångar som inte är HTTP saknar method och path, och delar som inte nås har reached: false. Ett HTTP-anrop vars adress inte går att läsa har address: "runtime". Ett anrop vars namn en annan ingång delar har qualifier (projektet)
 }
 
 /// <summary>
@@ -86,12 +86,20 @@ public sealed record Integration(string Id, IntegrationKind Kind, string Name, I
 /// <param name="CodePath">Sökvägen enligt koden (route-attributen), t.ex. <c>/Orders/{id}</c>.</param>
 /// <param name="Handler">Controller och action, t.ex. <c>OrdersController.Create</c>; för en sida dess hanterare, t.ex. <c>AboutModel.OnPost</c>.</param>
 /// <param name="File">Filen relativt solutionens katalog, med snedstreck.</param>
+/// <param name="Qualifier">Bara när en annan ingång har samma <see cref="BaseKey"/>: projektet som ingången finns i (<c>Jobs</c>), och om två i samma projekt
+/// heter lika också platsen i koden (<c>Jobs, Worker.cs:12</c>). Annars null, så att ett namn som redan är unikt är som det alltid varit.</param>
 public sealed record EntryPoint(
     EntryKind Kind, string Method, string Path, string CodePath, string? OperationId, string Project, string Handler, string File, int Line,
-    DataShape? Input, DataShape? Output, IReadOnlyList<Step> Steps, string? Name = null)
+    DataShape? Input, DataShape? Output, IReadOnlyList<Step> Steps, string? Name = null, string? Qualifier = null)
 {
-    /// <summary>Namnet ingången har i kartan och på kommandoraden: <c>POST /orders</c> för HTTP, annars namnet, t.ex. <c>Bakgrund: OrderCleanupWorker</c>.</summary>
-    public string Key => Kind.IsHttp() ? $"{Method} {Path}" : Name ?? Handler;
+    /// <summary>Namnet utan projektet: <c>POST /orders</c> för HTTP, annars namnet, t.ex. <c>Bakgrund: OrderCleanupWorker</c>.</summary>
+    public string BaseKey => Kind.IsHttp() ? $"{Method} {Path}" : Name ?? Handler;
+
+    /// <summary>
+    /// Namnet ingången har i kartan och på kommandoraden, unikt i kartan: <see cref="BaseKey"/>, och när två ingångar annars skulle heta lika
+    /// med <see cref="Qualifier"/> efter, t.ex. <c>Bakgrund: Worker (Jobs)</c> eller <c>GET /health (Api)</c>.
+    /// </summary>
+    public string Key => Qualifier is null ? BaseKey : $"{BaseKey} ({Qualifier})";
 }
 
 /// <summary>

@@ -58,7 +58,7 @@
   // hidden: id → true för delarna användaren bockat av i "Visa". unreached: om delar som ingen ingång når syns. view: översikten utan det
   // dolda (hide) och, om unreached är falskt, utan det som inte nås (dropUnreached), som allt ritas ur.
   // out/into: pilarna från och till varje nod. visible: visibleOf för det som ritas just nu.
-  var state = { map: null, view: null, hidden: {}, unreached: true, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
+  var state = { map: null, allNodes: {}, anyUnreached: false, view: null, hidden: {}, unreached: true, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
     dir: stored('map-direction', ['LR', 'TB'], 'LR'), level: stored('map-level', ['projects', 'classes', 'methods', 'all'], 'classes'),
     layout: null, steps: {}, base: {}, last: 1, card: null, hovered: null, pulses: [], root: null, opts: {}, tools: [], unfitted: false };
 
@@ -92,6 +92,9 @@
   }
   // "ShopDatabase (databas, EF Core och SQL)", som i terminalen.
   function integrationLabel(it) { return it.name + (it.detail ? ' (' + it.detail + ')' : ''); }
+  // Operationen som den visas: verbet, och för ett HTTP-anrop vars adress inte går att läsa ur koden (address: 'runtime') en förklaring.
+  // Samma text som CodeMapOverview.RuntimeAddress i C#.
+  function operationText(operation, address) { return address === 'runtime' ? operation + ' (adressen bestäms vid körning)' : operation; }
   // Ingången på kartan för ett anrop (t.ex. i ett test): samma operation i API-beskrivningen, annars samma metod och sökväg.
   function entryFor(op, method, path) {
     if (!state.map) return null;
@@ -147,9 +150,9 @@
     $('map-export').hidden = !state.opts.mermaid;
     $('map-mermaid').addEventListener('click', downloadMermaid);
     $('map-show-all').addEventListener('click', function () {
-      var off = !state.unreached && hasUnreached(state.map);
+      var off = !state.unreached && state.anyUnreached;
       if (!hiddenIds().length && !off) return;
-      if (off) { state.unreached = true; remember(unreachedKey(state.map), 'show'); }
+      if (off) chooseUnreached(true);
       setHidden({});
     });
     $('map-unreached').addEventListener('change', function () { setUnreached(this.checked); });
@@ -222,6 +225,9 @@
 
   function renderMap(map) {
     state.map = map;
+    state.allNodes = {};   // hela kartans delar, till skillnad från state.nodes som bara har dem som syns
+    map.overview.nodes.forEach(function (x) { state.allNodes[x.id] = x; });
+    state.anyUnreached = hasUnreached(map);
     state.root.hidden = false;
     state.hidden = loadHidden(map);
     state.unreached = loadUnreached(map);
@@ -287,9 +293,13 @@
     if (!overview.nodes.some(isUnreached)) return overview;
     return { nodes: overview.nodes.filter(function (n) { return !isUnreached(n); }), links: overview.links };
   }
-  function setUnreached(on) {
+  // Valet sparas till nästa gång; ritas om gör den som väljer.
+  function chooseUnreached(on) {
     state.unreached = on;
     remember(unreachedKey(state.map), on ? 'show' : 'hide');
+  }
+  function setUnreached(on) {
+    chooseUnreached(on);
     useView();
     syncTree();
     hideCard();
@@ -355,16 +365,14 @@
   }
   // En bock är ikryssad när delen syns. En del i en dold del står avbockad och går inte att ändra: bocka i den som döljer den.
   function syncTree() {
-    var nodes = {};
-    state.map.overview.nodes.forEach(function (x) { nodes[x.id] = x; });
-    $('map-unreached-field').hidden = !hasUnreached(state.map);
+    $('map-unreached-field').hidden = !state.anyUnreached;
     $('map-unreached').checked = state.unreached;
     Array.prototype.forEach.call($('map-tree').querySelectorAll('input[data-part]'), function (box) {
-      var blocked = !!state.hidden[box.getAttribute('data-parent')], off = !state.unreached && isUnreached(nodes[box.getAttribute('data-part')] || {});
-      box.checked = !state.hidden[box.getAttribute('data-part')] && !blocked && !off;
-      box.disabled = blocked || off;
+      var blocked = !!state.hidden[box.getAttribute('data-parent')], dimmed = !state.unreached && isUnreached(state.allNodes[box.getAttribute('data-part')] || {});
+      box.checked = !state.hidden[box.getAttribute('data-part')] && !blocked && !dimmed;
+      box.disabled = blocked || dimmed;
     });
-    var n = hiddenIds().length, hint = $('map-hint'), off = !state.unreached && hasUnreached(state.map);
+    var n = hiddenIds().length, hint = $('map-hint'), off = !state.unreached && state.anyUnreached;
     hint.textContent = (n ? n + ' dolda' : '') + (n && off ? ', ' : '') + (off ? 'inte nådda dolda' : '');
     hint.hidden = n === 0 && !off;
     hint.title = n === 1 && !off ? 'En del av systemet är dold. Öppna Visa för att se den igen.' : 'Delar av systemet är dolda. Öppna Visa för att se dem igen.';
@@ -608,7 +616,7 @@
     nodes.push({ group: 'nodes', data: { id: 'system', label: 'Systemet' + (file ? ' (' + file + ')' : '') }, classes: 'system' });
     var add = function (n, parent) {
       var kids = state.kids[n.id], open = !!kids && isOpen(n.id), color = colorOf(n.kind), kind = iconKind(n);
-      var label = n.kind === 'method' ? n.name + '()' : n.name;
+      var label = n.kind === 'method' ? n.name + '()' : n.kind === 'operation' ? operationText(n.name, n.address) : n.name;
       if (n.kind === 'integration') {
         var short = kindName(integrationOf(n.ref).kind, true);
         if (short !== n.name) label += open ? ' · ' + short : '\n' + short;
@@ -1241,7 +1249,7 @@
     if (!n) return id;
     var parent = n.parent && state.nodes[n.parent];
     if (n.kind === 'method') return (parent ? parent.name + '.' : '') + n.name;
-    if (n.kind === 'operation') return (parent ? parent.name + ': ' : '') + n.name;
+    if (n.kind === 'operation') return (parent ? parent.name + ': ' : '') + operationText(n.name, n.address);
     return n.name;
   }
   function where(file, line) { return file ? file + ', rad ' + line : ''; }
@@ -1316,7 +1324,7 @@
       var li = el('li'), data;
       if (s.integration) {
         li.className = 'external';
-        li.appendChild(document.createTextNode('Ut ur systemet: ' + integrationLabel(integrationOf(s.integration.id)) + ' – ' + s.integration.operation));
+        li.appendChild(document.createTextNode('Ut ur systemet: ' + integrationLabel(integrationOf(s.integration.id)) + ' – ' + operationText(s.integration.operation, s.integration.address)));
         data = dataText(s, 'skickar', 'får');
         if (data) li.appendChild(el('span', 'data', ', ' + data));
       } else {

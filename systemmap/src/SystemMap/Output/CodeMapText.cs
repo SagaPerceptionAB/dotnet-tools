@@ -4,13 +4,15 @@ namespace SystemMap;
 public static class CodeMapText
 {
     /// <param name="hidden">Namnen på delarna som är dolda (kartan är redan utan dem, se <see cref="CodeMapOverview.Hide(CodeMapModel, IReadOnlySet{string})"/>), så att den som läser vet att kartan är ofullständig.</param>
-    public static IEnumerable<string> Lines(CodeMapModel map, IReadOnlyList<string>? hidden = null)
+    public static IEnumerable<string> Lines(CodeMapModel map, IReadOnlyList<string>? hidden = null) => Lines(map, CodeMapOverview.Build(map), hidden);
+
+    /// <summary>Med en översikt som redan är byggd (samma delar som kartan, utan de dolda).</summary>
+    internal static IEnumerable<string> Lines(CodeMapModel map, Overview overview, IReadOnlyList<string>? hidden)
     {
         yield return $"Systemkarta för {map.Solution}";
         yield return "Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog.";
         if (hidden is { Count: > 0 }) yield return $"Dolda delar: {string.Join(", ", hidden)}. Vägarna genom dem består.";
         yield return map.Projects.Count > 0 ? $"Projekt i den ordning anropen når dem: {string.Join(" → ", map.Projects)}" : "Hittade inga ingångar.";
-        var overview = CodeMapOverview.Build(map);
         if (map.Integrations.Count > 0)
         {
             // Varje integration en gång, med det som görs mot den: läsningar och skrivningar i en databas, meddelandena till en kö.
@@ -18,7 +20,7 @@ public static class CodeMapText
             foreach (var integration in map.Integrations)
             {
                 yield return "  " + Label(integration);
-                var operations = overview.Nodes.Where(n => n.Parent == "int:" + integration.Id).Select(n => n.Name).ToList();
+                var operations = overview.Nodes.Where(n => n.Parent == "int:" + integration.Id).Select(CodeMapOverview.DisplayName).ToList();
                 if (operations.Count > 0) yield return "    " + string.Join(", ", operations);
             }
         }
@@ -113,7 +115,7 @@ public static class CodeMapText
                     (null, { } received) => $"  får {received.Type}",
                     _ => "",
                 };
-                yield return $"{indent}→ {(integration is null ? use.Id : Label(integration))}: {use.Operation}{data}";
+                yield return $"{indent}→ {(integration is null ? use.Id : Label(integration))}: {CodeMapOverview.OperationText(use.Operation, use.AddressAtRuntime)}{data}";
                 continue;
             }
             yield return $"{indent}{step.Member} [{step.Project}]";

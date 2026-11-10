@@ -277,7 +277,7 @@ public partial class CodeMapTests
                 "http:PartnerClient | GET {Partner:ApiKey}",
                 "http:PartnerClient | GET {Partner:Empty}",
             }));
-            Assert.That(string.Join("\n", CodeMapText.Lines(map)) + CodeMapJson.Serialize(map) + CodeMapHtml.Write(map), Does.Not.Contain("hidden.partner.test"));
+            Assert.That(string.Join("\n", CodeMapText.Lines(map)) + CodeMapJson.Serialize(map) + CodeMapHtml.Write(map, new HashSet<string>(), showUnreached: true), Does.Not.Contain("hidden.partner.test"));
         });
     }
 

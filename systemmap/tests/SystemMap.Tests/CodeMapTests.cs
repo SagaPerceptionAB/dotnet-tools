@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -227,7 +228,7 @@ public partial class CodeMapTests
     [TestCase("System.Net.Http.IHttpClientFactory _f = null!;",
         "var http = _f.CreateClient(\"lager\"); var id = 1; await http.GetAsync($\"artiklar/{id}\");", "http:lager | GET artiklar/{id}")]
     [TestCase("System.Net.Http.IHttpClientFactory _f = null!; static string Hamta() => \"x\";",
-        "var http = _f.CreateClient(\"oidc\"); await http.PostAsync(Hamta(), null);", "http:oidc | POST (adressen bestäms vid körning)")]
+        "var http = _f.CreateClient(\"oidc\"); await http.PostAsync(Hamta(), null);", "http:oidc | POST")]
     [TestCase("Azure.Messaging.ServiceBus.ServiceBusSender _s = new Azure.Messaging.ServiceBus.ServiceBusClient().CreateSender(\"order-lagd\");",
         "await _s.SendMessageAsync(new Azure.Messaging.ServiceBus.ServiceBusMessage(\"x\"));", "queue:order-lagd | skicka")]
     [TestCase("Azure.Storage.Blobs.BlobContainerClient _b = new Azure.Storage.Blobs.BlobServiceClient().GetBlobContainerClient(\"kvitton\");",
@@ -253,15 +254,50 @@ public partial class CodeMapTests
         Assert.That(Uses(map.EntryPoints.Single()), Is.EqualTo(new[] { expected }));
     }
 
+    private const string DecidedAtRunTime = "(adressen bestäms vid körning)";
+
     [Test]
-    public async Task An_HTTP_call_whose_address_is_decided_at_run_time_says_so_in_text_Mermaid_and_HTML()
+    public async Task An_HTTP_call_whose_address_is_decided_at_run_time_is_data_and_text_and_Mermaid_say_it_in_Swedish()
     {
         var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
-        Assert.That(string.Join("\n", CodeMapText.Lines(map)), Does.Contain("(HTTP): POST (adressen bestäms vid körning)"));
-        Assert.That(CodeMapMermaid.Write(map, new MermaidOptions()), Does.Contain("POST (adressen bestäms vid körning)"));
-        Assert.That(CodeMapHtml.Write(map), Does.Contain("adressen bestäms vid körning"));
+        var use = All(map.EntryPoints.Single().Steps).Single(s => s.Integration is not null).Integration!;
+        Assert.That((use.Operation, use.AddressAtRuntime), Is.EqualTo(("POST", true)), "verbet är data, och att adressen bestäms vid körning är ett eget fält");
+        var node = CodeMapOverview.Build(map).Nodes.Single(n => n.Kind == OverviewKind.Operation);
+        Assert.That((node.Name, node.AddressAtRuntime), Is.EqualTo(("POST", true)));
+        Assert.That(string.Join("\n", CodeMapText.Lines(map)), Does.Contain($"(HTTP): POST {DecidedAtRunTime}").And.Contain($"    POST {DecidedAtRunTime}"));
+        foreach (var level in new[] { "classes", "all" })
+            Assert.That(CodeMapMermaid.Write(map, MermaidOptions.Parse(level, null, null)), Does.Contain($"POST {DecidedAtRunTime}"), level);
+
         var known = await MapAsync(Controller("System.Net.Http.HttpClient _http = new();", "await _http.PostAsync(\"orders\", null);"));
-        Assert.That(string.Join("\n", CodeMapText.Lines(known)), Does.Not.Contain("vid körning"), "en adress som går att läsa visas som den är");
+        Assert.That(All(known.EntryPoints.Single().Steps).Single(s => s.Integration is not null).Integration!.AddressAtRuntime, Is.False, "en adress som går att läsa är som den är");
+        Assert.That(string.Join("\n", CodeMapText.Lines(known)) + CodeMapMermaid.Write(known, new MermaidOptions()), Does.Not.Contain("vid körning"));
+    }
+
+    [Test]
+    public async Task Json_says_address_runtime_for_a_call_whose_address_is_decided_at_run_time_and_keeps_the_verb_as_the_operation()
+    {
+        var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
+        using var doc = JsonDocument.Parse(CodeMapJson.Serialize(map));
+        var step = Walk(doc.RootElement.GetProperty("entryPoints")).Single(e => e.ValueKind == JsonValueKind.Object && e.TryGetProperty("integration", out _)).GetProperty("integration");
+        Assert.That((step.GetProperty("operation").GetString(), step.GetProperty("address").GetString()), Is.EqualTo(("POST", "runtime")));
+        var row = doc.RootElement.GetProperty("overview").GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("kind").GetString() == "operation");
+        Assert.That((row.GetProperty("name").GetString(), row.GetProperty("address").GetString()), Is.EqualTo(("POST", "runtime")));
+        Assert.That(doc.RootElement.GetRawText(), Does.Not.Contain("vid körning"), "texten hör inte hemma i data");
+
+        var known = await MapAsync(Controller("System.Net.Http.HttpClient _http = new();", "await _http.PostAsync(\"orders\", null);"));
+        Assert.That(CodeMapJson.Serialize(known), Does.Not.Contain("\"address\""), "fältet finns bara när adressen bestäms vid körning");
+    }
+
+    [Test]
+    public async Task Page_says_so_when_the_address_of_an_HTTP_call_is_decided_at_run_time()
+    {
+        var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
+        await WithPageAsync(map, async (page, ready) =>
+        {
+            await page.ClickAsync("[data-level='all']");
+            await ready();
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-operation').map(n => n.data('label'))"), Is.EqualTo(new[] { $"POST {DecidedAtRunTime}" }));
+        });
     }
 
     [Test]
@@ -481,7 +517,7 @@ public partial class CodeMapTests
         Assert.That(map.Warnings, Has.Member($"MSBuild: {Path.Combine("Api", "Api.csproj")} saknar ett paket."),
             "sökvägen relativt solutionens katalog, som filerna i kartan: kartan kan delas");
 
-        var html = CodeMapHtml.Write(map);
+        var html = CodeMapHtml.Write(map, new HashSet<string>(), showUnreached: true);
         Assert.That(html, Does.StartWith("<!DOCTYPE html>").And.Contain("<title>Systemkarta – Test.sln</title>"));
         Assert.That(html, Does.Contain("Content-Security-Policy\" content=\"default-src 'none';"), "sidan hämtar inget utifrån");
         Assert.That(html, Does.Contain("window.SystemMap = { create: create, summary: summary, groups: callGroups").And.Contain("cytoscape").And.Contain(".map-view {"));
@@ -496,7 +532,7 @@ public partial class CodeMapTests
         Assert.That(variants, Has.Count.EqualTo(MermaidOptions.Levels.Length * (1 + map.EntryPoints.Count)));
         Assert.That(variants["classes|POST /kunder"], Is.EqualTo(CodeMapMermaid.Write(map with { Solution = "Test.sln" }, MermaidOptions.Parse("classes", "LR", "POST /kunder"))));
         Assert.That(variants["projects|"], Does.StartWith("flowchart LR\n"));
-        Assert.That(CodeMapHtml.Write(map), Is.EqualTo(html), "samma karta ger samma sida");
+        Assert.That(CodeMapHtml.Write(map, new HashSet<string>(), showUnreached: true), Is.EqualTo(html), "samma karta ger samma sida");
     }
 
     [Test]

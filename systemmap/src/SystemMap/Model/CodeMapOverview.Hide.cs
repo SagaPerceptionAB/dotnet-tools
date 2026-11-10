@@ -19,7 +19,7 @@ public static partial class CodeMapOverview
     public static Overview Hide(Overview overview, IReadOnlySet<string> hidden)
     {
         if (hidden.Count == 0) return overview;
-        var byId = overview.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var byId = ById(overview);
         // Borta: de dolda delarna och allt som ligger i dem.
         var gone = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in overview.Nodes)
@@ -95,12 +95,20 @@ public static partial class CodeMapOverview
     }
 
     /// <summary>Namnet som används på kommandoraden och i felen: <c>projekt:Api</c>, <c>Api/OrderService</c> eller <c>integration:ShopDatabase</c>.</summary>
-    public static string HideName(OverviewNode node, Overview overview) => node.Kind switch
+    public static string HideName(OverviewNode node, Overview overview) => HideName(node, ById(overview));
+
+    private static string HideName(OverviewNode node, IReadOnlyDictionary<string, OverviewNode> byId) => node.Kind switch
     {
         OverviewKind.Project => "projekt:" + node.Name,
-        OverviewKind.Class => (overview.Nodes.FirstOrDefault(n => n.Id == node.Parent)?.Name ?? "") + "/" + node.Name,
+        OverviewKind.Class => (node.Parent is not null && byId.TryGetValue(node.Parent, out var project) ? project.Name : "") + "/" + node.Name,
         _ => "integration:" + node.Name,
     };
+
+    /// <summary>Namnen på delarna i <paramref name="hidden"/> (projekt, klasser och integrationer), som kartan visar dem: "Dolda delar: ...".</summary>
+    public static List<string> HiddenNames(Overview overview, IReadOnlySet<string> hidden) =>
+        hidden.Count == 0 ? [] : overview.Nodes.Where(n => Hideable(n.Kind) && hidden.Contains(n.Id)).Select(n => n.Name).ToList();
+
+    private static Dictionary<string, OverviewNode> ById(Overview overview) => overview.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
 
     /// <summary>
     /// Id:n på delarna som namnen på kommandoraden står för. Ett namn är ett projekt, en klass eller en integration, utan hänsyn till
@@ -111,6 +119,7 @@ public static partial class CodeMapOverview
     public static IReadOnlySet<string> ResolveHidden(Overview overview, IEnumerable<string> names)
     {
         var parts = overview.Nodes.Where(n => Hideable(n.Kind)).ToList();
+        var byId = ById(overview);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var raw in names)
         {
@@ -118,30 +127,30 @@ public static partial class CodeMapOverview
             var kind = (OverviewKind?)null;
             foreach (var (prefix, k) in new[] { ("projekt:", OverviewKind.Project), ("klass:", OverviewKind.Class), ("integration:", OverviewKind.Integration) })
                 if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { kind = k; name = name[prefix.Length..].Trim(); break; }
-            var found = parts.Where(n => (kind is null || n.Kind == kind) && Matches(n, name, overview, loose: false)).ToList();
+            var found = parts.Where(n => (kind is null || n.Kind == kind) && Matches(n, name, byId, loose: false)).ToList();
             // Hittas inget med exakt namn går en klass också att ange med namnrymd (Orders.OrderService); namnrymden ingår inte i kartan.
-            if (found.Count == 0) found = parts.Where(n => (kind is null || n.Kind == kind) && Matches(n, name, overview, loose: true)).ToList();
+            if (found.Count == 0) found = parts.Where(n => (kind is null || n.Kind == kind) && Matches(n, name, byId, loose: true)).ToList();
             if (found.Count == 1) { ids.Add(found[0].Id); continue; }
             if (found.Count > 1)
-                throw new UsageException($"--hide '{raw}' kan vara flera delar: {string.Join(", ", found.Select(n => HideName(n, overview)))}.",
-                    "Skriv vilken du menar, t.ex. " + HideName(found[0], overview) + ".");
+                throw new UsageException($"--hide '{raw}' kan vara flera delar: {string.Join(", ", found.Select(n => HideName(n, byId)))}.",
+                    "Skriv vilken du menar, t.ex. " + HideName(found[0], byId) + ".");
             var close = parts.Select(n => (Node: n, D: Suggest.Distance(name.ToLowerInvariant(), n.Name.ToLowerInvariant())))
-                .Where(x => x.D <= Math.Max(2, name.Length / 4)).OrderBy(x => x.D).Select(x => HideName(x.Node, overview)).Take(5).ToList();
+                .Where(x => x.D <= Math.Max(2, name.Length / 4)).OrderBy(x => x.D).Select(x => HideName(x.Node, byId)).Take(5).ToList();
             throw new UsageException($"--hide '{raw}' finns inte i kartan.", close.Count > 0
                 ? $"Menade du {string.Join(", ", close)}? Skriv namnet på ett projekt, en klass eller en integration som det står i kartan."
                 : parts.Count == 0 ? "Kartan har inga projekt, klasser eller integrationer att dölja."
-                : $"Skriv namnet på ett projekt, en klass eller en integration som det står i kartan, t.ex. {Suggest.List(parts.Select(n => HideName(n, overview)), 5)}.");
+                : $"Skriv namnet på ett projekt, en klass eller en integration som det står i kartan, t.ex. {Suggest.List(parts.Select(n => HideName(n, byId)), 5)}.");
         }
         return ids;
     }
 
-    private static bool Matches(OverviewNode node, string name, Overview overview, bool loose)
+    private static bool Matches(OverviewNode node, string name, IReadOnlyDictionary<string, OverviewNode> byId, bool loose)
     {
         if (name.Length == 0) return false;
         bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         if (node.Kind != OverviewKind.Class) return !loose && Same(node.Name, name);
         string Last(string text) => text[(text.LastIndexOf('.') + 1)..];
         // Klassen: namnet eller med sitt projekt (Projekt/Klass); löst: bara sista delen av namnet jämförs.
-        return loose ? Same(Last(node.Name), Last(name)) : Same(node.Name, name) || Same(HideName(node, overview), name);
+        return loose ? Same(Last(node.Name), Last(name)) : Same(node.Name, name) || Same(HideName(node, byId), name);
     }
 }

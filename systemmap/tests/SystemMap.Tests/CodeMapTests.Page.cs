@@ -97,7 +97,7 @@ public partial class CodeMapTests
     private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test, IReadOnlySet<string>? hidden = null, bool showUnreached = true)
     {
         var file = Path.Combine(Path.GetTempPath(), $"systemmap-page-{Guid.NewGuid():N}.html");
-        await File.WriteAllTextAsync(file, CodeMapHtml.Write(map, hidden, showUnreached));
+        await File.WriteAllTextAsync(file, CodeMapHtml.Write(map, hidden ?? new HashSet<string>(), showUnreached));
         try
         {
             using var playwright = await Playwright.CreateAsync();

@@ -31,7 +31,7 @@ public sealed record CodeMapModel(
     IReadOnlyList<string> Warnings,
     CodeInventory? Code = null)
 {
-    public const int SchemaVersion = 3;   // 2: fälten heter på engelska. 3: ingångar som inte är HTTP saknar method och path, och delar som inte nås har reached: false
+    public const int SchemaVersion = 3;   // 2: fälten heter på engelska. 3: ingångar som inte är HTTP saknar method och path, och delar som inte nås har reached: false. Ett HTTP-anrop vars adress inte går att läsa har address: "runtime"
 }
 
 /// <summary>
@@ -107,7 +107,13 @@ public sealed record Step(
 }
 
 /// <param name="Operation">Vad som görs, t.ex. "POST payments", "läsa Customers" eller "skicka".</param>
-public sealed record IntegrationUse(string Id, string Operation);
+/// <param name="AddressAtRuntime">Sant för ett HTTP-anrop vars adress varken är en sökväg i koden eller en nyckel i konfigurationen (den kommer först vid körning,
+/// t.ex. ur OIDC-discovery). <see cref="Operation"/> är då bara verbet; texten som säger det är <see cref="CodeMapOverview.RuntimeAddress"/>.</param>
+public sealed record IntegrationUse(string Id, string Operation, bool AddressAtRuntime = false)
+{
+    /// <summary>Det som skiljer ett integrationsanrop från ett annat i samma metod (för dubbletter).</summary>
+    internal string Key => AddressAtRuntime ? $"{Id}|{Operation}|runtime" : $"{Id}|{Operation}";
+}
 
 /// <summary>En datatyp och dess fält (publika egenskaper), t.ex. <c>PaymentRequest {CustomerId, Amount, Currency}</c>.</summary>
 public sealed record DataShape(string Type, IReadOnlyList<string> Fields);

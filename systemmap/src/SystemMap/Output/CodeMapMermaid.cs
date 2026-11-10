@@ -47,19 +47,24 @@ public sealed record MermaidOptions(MapLevel Level = MapLevel.Classes, bool TopD
 /// </summary>
 public static class CodeMapMermaid
 {
-    public static string Write(CodeMapModel map, MermaidOptions options) => Write(map, options, CodeMapOverview.Build(map));
-
-    /// <summary>Med en översikt som redan är byggd, när flera varianter skrivs för samma karta.</summary>
-    internal static string Write(CodeMapModel map, MermaidOptions options, Overview overview)
+    public static string Write(CodeMapModel map, MermaidOptions options)
     {
-        var entry = options.Entry is null ? null : EntryKey(map, options.Entry);
-        var hiddenNames = options.Hidden is { Count: > 0 } hide
-            ? overview.Nodes.Where(n => hide.Contains(n.Id) && n.Kind is OverviewKind.Project or OverviewKind.Class or OverviewKind.Integration).Select(n => n.Name).ToList()
-            : [];
-        if (hiddenNames.Count > 0) overview = CodeMapOverview.Hide(overview, options.Hidden!);
-        var byId = overview.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
-        var integrations = map.Integrations.ToDictionary(i => i.Id, StringComparer.Ordinal);
+        var overview = CodeMapOverview.Build(map);
+        var hidden = options.Hidden ?? new HashSet<string>();
+        return Write(map, options, CodeMapOverview.Hide(overview, hidden), CodeMapOverview.HiddenNames(overview, hidden));
+    }
+
+    /// <summary>
+    /// Med en översikt som redan är byggd och redan utan de dolda delarna (<see cref="MermaidOptions.Hidden"/> gäller inte här), när flera
+    /// varianter skrivs för samma karta. <paramref name="hiddenNames"/> är namnen på de dolda delarna (se <see cref="CodeMapOverview.HiddenNames"/>).
+    /// </summary>
+    internal static string Write(CodeMapModel map, MermaidOptions options, Overview overview, IReadOnlyList<string> hiddenNames)
+    {
+        var entry = options.Entry is null ? null : FindEntry(map, options.Entry);
+        // Bara det som ingången går genom; föräldrarna ingår alltid, eftersom en del som ritas har gått igenom sin klass och sitt projekt.
         var nodes = overview.Nodes.Where(n => entry is null || n.Entries.Contains(entry)).ToList();
+        var byId = nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var integrations = map.Integrations.ToDictionary(i => i.Id, StringComparer.Ordinal);
         var kids = nodes.Where(n => n.Parent is not null).ToLookup(n => n.Parent!, StringComparer.Ordinal);
         var level = options.Level;
         var ids = new Ids();
@@ -87,11 +92,11 @@ public static class CodeMapMermaid
             OverviewKind.Class => "class_" + n.Name,
             OverviewKind.Method => $"method_{byId[n.Parent!].Name}_{n.Name}",
             OverviewKind.Integration => "int_" + n.Name,
-            _ => $"op_{byId[n.Parent!].Name}_{n.Name}",
+            _ => $"op_{byId[n.Parent!].Name}_{CodeMapOverview.DisplayName(n)}",
         });
         Integration? IntegrationOf(OverviewNode n) => n.Ref is null ? null : integrations.GetValueOrDefault(n.Ref);
         // Namnet, och för en integration vad den är på en egen rad (på en rad blir rubriken bredare än ytan och kapas).
-        string Label(OverviewNode n) => Escape(n.Name) + (n.Kind == OverviewKind.Method ? "()"
+        string Label(OverviewNode n) => Escape(CodeMapOverview.DisplayName(n)) + (n.Kind == OverviewKind.Method ? "()"
             : IntegrationOf(n) is { Detail.Length: > 0 } i ? "<br/>" + Escape(i.Detail) : "");
 
         // Bara solutionens filnamn: filen hamnar i dokumentation, och sökvägen på den här datorn hör inte hemma där.
@@ -125,8 +130,8 @@ public static class CodeMapMermaid
                 OverviewKind.Entry => n.Ref switch
                 {
                     "razor-page" or "blazor-page" or "mvc-view" => "[/\"{0}\"/]",
-                    "background" or "console" or "consumer" or "job" or "grpc" or "signalr" => "{{{{\"{0}\"}}}}",
-                    _ => ">\"{0}\"]",
+                    "controller" or "minimal-api" => ">\"{0}\"]",
+                    _ => "{{{{\"{0}\"}}}}",
                 },
                 OverviewKind.Integration => IntegrationOf(n)?.Kind == IntegrationKind.Database ? "[(\"{0}\")]" : "(\"{0}\")",
                 _ => "[\"{0}\"]",
@@ -155,7 +160,7 @@ public static class CodeMapMermaid
             var key = (Shown(byId[link.From]), Shown(to));
             if (key.Item1 == key.Item2) continue;
             if (!index.TryGetValue(key, out var i)) { index[key] = i = edges.Count; edges.Add((key.Item1, key.Item2, [])); }
-            if (to.Kind == OverviewKind.Operation && level != MapLevel.All && !edges[i].Labels.Contains(to.Name)) edges[i].Labels.Add(to.Name);
+            if (to.Kind == OverviewKind.Operation && level != MapLevel.All && CodeMapOverview.DisplayName(to) is var text && !edges[i].Labels.Contains(text)) edges[i].Labels.Add(text);
         }
         foreach (var (from, to, labels) in edges)
             lines.Add($"  {IdOf(byId[from])} -->{(labels.Count == 0 ? "" : $"|\"{string.Join("<br/>", labels.Select(Escape))}\"|")} {IdOf(byId[to])}");
@@ -174,13 +179,13 @@ public static class CodeMapMermaid
     }
 
     /// <summary>Anropets nyckel som den står i kartan. Stora och små bokstäver och extra mellanslag spelar ingen roll.</summary>
-    private static string EntryKey(CodeMapModel map, string wanted)
+    private static string FindEntry(CodeMapModel map, string wanted)
     {
         var normalized = string.Join(' ', wanted.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return map.EntryPoints.Select(CodeMapOverview.EntryKey).FirstOrDefault(k => string.Equals(k, normalized, StringComparison.OrdinalIgnoreCase))
+        return map.EntryPoints.Select(e => e.Key).FirstOrDefault(k => string.Equals(k, normalized, StringComparison.OrdinalIgnoreCase))
             ?? throw new UsageException($"Anropet '{wanted}' finns inte i kartan.", map.EntryPoints.Count == 0
                 ? "Kartan hittade inga anrop i koden."
-                : $"Skriv metoden och sökvägen som i kartan, t.ex. \"{CodeMapOverview.EntryKey(map.EntryPoints[0])}\".");
+                : $"Skriv metoden och sökvägen som i kartan, t.ex. \"{map.EntryPoints[0].Key}\".");
     }
 
     /// <summary>Tecken som Mermaid läser som syntax i en text inom citattecken skrivs som Mermaids teckenkoder.</summary>

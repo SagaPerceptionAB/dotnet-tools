@@ -68,7 +68,7 @@ Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev
 Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns eller inte går att läsa), `70` internt fel, `130` avbrutet med Ctrl+C.
 
 JSON-filen börjar med `schemaVersion` (nu 3). null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider. Sedan version 2 (fälten på engelska)
-har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), och att delar i `overview` som ingen ingång når har `reached: false`.
+har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), att delar i `overview` som ingen ingång når har `reached: false`, och att ett HTTP-anrop vars adress varken står i koden eller i konfigurationen (den bestäms vid körning) har `address: "runtime"` i steget och i översiktens rad, medan `operation` och `name` bara är verbet.
 
 ## I en app
 

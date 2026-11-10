@@ -18,18 +18,20 @@ public static partial class CodeMapHtml
     /// <param name="hidden">Id:n på delar som är avbockade i sidan när den öppnas (se <see cref="CodeMapOverview.Hide(Overview, IReadOnlySet{string})"/>).
     /// Kartan innehåller allt, så att man kan bocka i dem igen.</param>
     /// <param name="showUnreached">Om "Visa delar som inte nås" är ibockad när sidan öppnas (det man själv väljer i sidan sparas och gäller före).</param>
-    public static string Write(CodeMapModel map, IReadOnlySet<string>? hidden = null, bool showUnreached = true)
+    public static string Write(CodeMapModel map, IReadOnlySet<string> hidden, bool showUnreached) => Write(map, CodeMapOverview.Build(map), hidden, showUnreached);
+
+    /// <param name="overview">Översikten av hela kartan (inte bara det som syns), om den redan är byggd.</param>
+    internal static string Write(CodeMapModel map, Overview overview, IReadOnlySet<string> hidden, bool showUnreached)
     {
         // Bara solutionens filnamn: sidan kan delas, och sökvägen på den här datorn hör inte hemma där.
         var shown = map with { Solution = Path.GetFileName(map.Solution) };
-        var overview = CodeMapOverview.Build(shown);
 
         // Mermaid-texten för varje nivå och anrop, vänster till höger. Uppifrån och ned skiljer sig bara på första raden,
         // som sidan byter själv.
         var mermaid = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        foreach (var entry in map.EntryPoints.Select(CodeMapOverview.EntryKey).Prepend(""))
+        foreach (var entry in map.EntryPoints.Select(e => e.Key).Prepend(""))
             foreach (var level in MermaidOptions.Levels)
-                mermaid[$"{level}|{entry}"] = CodeMapMermaid.Write(shown, MermaidOptions.Parse(level, null, entry), overview);
+                mermaid[$"{level}|{entry}"] = CodeMapMermaid.Write(shown, MermaidOptions.Parse(level, null, entry), overview, []);
 
         var scripts = new StringBuilder();
         foreach (var name in CodeMapAssets.Scripts)
@@ -40,7 +42,7 @@ public static partial class CodeMapHtml
             ["STYLE"] = CodeMapAssets.Text(CodeMapAssets.Style),
             ["MAP"] = InlineJson(CodeMapJson.ToDto(shown, overview)),
             ["MERMAID"] = InlineJson(mermaid),
-            ["HIDDEN"] = InlineJson((hidden ?? new HashSet<string>()).Order(StringComparer.Ordinal).ToList()),
+            ["HIDDEN"] = InlineJson(hidden.Order(StringComparer.Ordinal).ToList()),
             ["UNREACHED"] = showUnreached ? "true" : "false",
             ["SCRIPTS"] = scripts.ToString().TrimEnd('\n'),
         };

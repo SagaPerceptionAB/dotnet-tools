@@ -11,9 +11,11 @@ public enum OverviewKind { Entry, Project, Class, Method, Integration, Operation
 /// <param name="File">För en metod filen där den finns, relativt solutionens katalog.</param>
 /// <param name="Entries">Anropen (nycklar som <c>POST /orders</c>, <c>Bakgrund: OrderCleanupWorker</c>) vars väg går genom delen.</param>
 /// <param name="Reached">Falskt för ett projekt, en klass eller en metod som ingen ingång når. Sant för allt annat.</param>
+/// <param name="AddressAtRuntime">Sant för en rad i en integration (ett HTTP-anrop) vars adress inte går att läsa ur koden; <see cref="Name"/> är då bara verbet
+/// (se <see cref="CodeMapOverview.DisplayName"/>).</param>
 public sealed record OverviewNode(
     string Id, OverviewKind Kind, string Name, string? Parent, string? Ref, string? File, int? Line, DataShape? In, DataShape? Out,
-    IReadOnlyList<string> Entries, bool Reached = true);
+    IReadOnlyList<string> Entries, bool Reached = true, bool AddressAtRuntime = false);
 
 /// <summary>Ett anrop från en del till en annan.</summary>
 /// <param name="File">För ett anrop till en integration: platsen i koden där anropet görs.</param>
@@ -28,8 +30,14 @@ public sealed record Overview(IReadOnlyList<OverviewNode> Nodes, IReadOnlyList<O
 /// </summary>
 public static partial class CodeMapOverview
 {
-    /// <summary>Nyckeln för ett anrop, t.ex. <c>POST /orders</c>, eller för en ingång som inte är HTTP dess namn, t.ex. <c>Bakgrund: OrderCleanupWorker</c>.</summary>
-    public static string EntryKey(EntryPoint entry) => entry.Key;
+    /// <summary>Visas efter verbet när ett HTTP-anrops adress inte går att läsa ur koden (<see cref="IntegrationUse.AddressAtRuntime"/>). Sidan (systemmap.js) har samma text.</summary>
+    public const string RuntimeAddress = "(adressen bestäms vid körning)";
+
+    /// <summary>Operationen som den visas: verbet, och för ett HTTP-anrop med en adress som inte går att läsa ur koden även <see cref="RuntimeAddress"/>.</summary>
+    public static string OperationText(string operation, bool addressAtRuntime) => addressAtRuntime ? $"{operation} {RuntimeAddress}" : operation;
+
+    /// <summary>Namnet som visas för delen: som <see cref="OverviewNode.Name"/>, men en rad som har en adress som bestäms vid körning säger det.</summary>
+    public static string DisplayName(OverviewNode node) => OperationText(node.Name, node.AddressAtRuntime);
 
     /// <summary>Id:t för ett projekt i översikten.</summary>
     public static string ProjectId(string project) => "proj:" + project;
@@ -72,6 +80,7 @@ public static partial class CodeMapOverview
         public DataShape? In { get; init; }
         public DataShape? Out { get; init; }
         public bool Reached { get; init; } = true;
+        public bool AddressAtRuntime { get; init; }
         public List<string> Entries { get; } = [];
         public List<Node> Children { get; } = [];
 
@@ -80,7 +89,7 @@ public static partial class CodeMapOverview
             if (!Entries.Contains(entry)) Entries.Add(entry);
         }
 
-        public OverviewNode ToRecord() => new(Id, Kind, Name, Parent, Ref, File, Line, In, Out, Entries, Reached);
+        public OverviewNode ToRecord() => new(Id, Kind, Name, Parent, Ref, File, Line, In, Out, Entries, Reached, AddressAtRuntime);
     }
 
     private sealed class Builder
@@ -101,7 +110,7 @@ public static partial class CodeMapOverview
 
         public void Add(EntryPoint entry)
         {
-            var key = EntryKey(entry);
+            var key = entry.Key;
             var node = GetOrAdd("in:" + key, () => new Node("in:" + key, OverviewKind.Entry, key, null) { Ref = CodeMapJson.KindCode(entry.Kind) }, _entries);
             node.Touch(key);
             var handler = Member(entry.Project, entry.Handler, entry.File, entry.Line, entry.Input, entry.Output, key);
@@ -174,8 +183,9 @@ public static partial class CodeMapOverview
             var integration = _integrations.GetValueOrDefault(use.Id) ?? new Integration(use.Id, IntegrationKind.Http, use.Id, []);
             var parent = GetOrAdd(IntegrationNodeId(use.Id), () => new Node(IntegrationNodeId(use.Id), OverviewKind.Integration, integration.Name, null) { Ref = use.Id }, _external);
             var label = integration.Kind == IntegrationKind.Queue && step.In is { } message ? $"{use.Operation} {message.Type}" : use.Operation;
-            var operation = GetOrAdd($"op:{use.Id}|{label}", () =>
-                new Node($"op:{use.Id}|{label}", OverviewKind.Operation, label, parent.Id) { In = step.In, Out = step.Out }, parent.Children);
+            var id = $"op:{use.Id}|{label}" + (use.AddressAtRuntime ? "|runtime" : "");
+            var operation = GetOrAdd(id, () =>
+                new Node(id, OverviewKind.Operation, label, parent.Id) { In = step.In, Out = step.Out, AddressAtRuntime = use.AddressAtRuntime }, parent.Children);
             parent.Touch(key);
             operation.Touch(key);
             return operation;
@@ -221,7 +231,7 @@ public static partial class CodeMapOverview
             foreach (var integration in _external)
             {
                 nodes.Add(integration.ToRecord());
-                nodes.AddRange(integration.Children.OrderBy(o => o.Name, StringComparer.Ordinal).Select(o => o.ToRecord()));
+                nodes.AddRange(integration.Children.OrderBy(o => o.Name, StringComparer.Ordinal).ThenBy(o => o.AddressAtRuntime).Select(o => o.ToRecord()));
             }
             return new Overview(nodes, _links);
         }

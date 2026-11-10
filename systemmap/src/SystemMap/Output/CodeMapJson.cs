@@ -8,7 +8,8 @@ namespace SystemMap;
 /// Kartan som JSON (samma form i <c>--json karta.json</c> och i webbsidan). schemaVersion först, camelCase, null utelämnas och
 /// listorna sorterade på stabilt id (ordinalt). <c>projects</c> och <c>steps</c> behåller sin ordning, eftersom den är anropens.
 /// En ingång som inte är HTTP har <c>name</c> (t.ex. <c>Bakgrund: OrderCleanupWorker</c>) men ingen <c>method</c>, <c>path</c> eller <c>codePath</c>.
-/// En del i översikten som ingen ingång når har <c>reached: false</c>; saknas fältet nås den.
+/// En del i översikten som ingen ingång når har <c>reached: false</c>; saknas fältet nås den. Ett HTTP-anrop vars adress inte går att läsa ur koden
+/// (den bestäms vid körning) har <c>address: "runtime"</c> i steget och i översiktens rad; <c>operation</c> och <c>name</c> är då bara verbet.
 /// </summary>
 public static class CodeMapJson
 {
@@ -73,6 +74,7 @@ public static class CodeMapJson
             id = n.Id,
             kind = KindCode(n.Kind),
             name = n.Name,
+            address = n.AddressAtRuntime ? "runtime" : null,
             parent = n.Parent,
             @ref = n.Ref,
             file = n.File,
@@ -136,7 +138,7 @@ public static class CodeMapJson
         line = s.Line,
         @in = Shape(s.In),
         @out = Shape(s.Out),
-        integration = s.Integration is { } i ? new { id = i.Id, operation = i.Operation } : null,
+        integration = s.Integration is { } i ? new { id = i.Id, operation = i.Operation, address = i.AddressAtRuntime ? "runtime" : null } : null,
         steps = s.Steps.Select(Step).ToList(),
     };
 

@@ -39,24 +39,26 @@ public static class CodeMapRun
 
         // Delarna som --hide pekar ut. Ett namn som inte finns ska stoppa innan något skrivs, liksom ett anrop som inte finns i kartan.
         // Det ingen ingång når finns med i allt utom när --no-unreached är satt (webbsidan får det ändå, avbockat).
-        var overview = CodeMapOverview.Build(map);
-        var hidden = CodeMapOverview.ResolveHidden(overview, files.Hide ?? []);
-        var hiddenNames = overview.Nodes.Where(n => hidden.Contains(n.Id)).Select(n => n.Name).ToList();
+        var everything = CodeMapOverview.Build(map);
+        var hidden = CodeMapOverview.ResolveHidden(everything, files.Hide ?? []);
+        var hiddenNames = CodeMapOverview.HiddenNames(everything, hidden);
         var shown = CodeMapOverview.Hide(map, hidden);
+        var overview = everything;
         if (files.NoUnreached)
         {
             shown = shown with { Code = null };
             overview = CodeMapOverview.WithoutUnreached(overview);
         }
+        overview = CodeMapOverview.Hide(overview, hidden);
 
         // Filerna byggs först: ett anrop som inte finns i kartan ska stoppa innan något skrivs.
         // Webbsidan får allt och bara avbockat, så att man kan bocka i delarna igen; de andra filerna blir utan dem.
         var writes = new List<(string Path, string Text, string What)>();
-        if (files.Json is { } json) writes.Add((json, CodeMapJson.Serialize(shown, CodeMapOverview.Hide(overview, hidden), hidden), "karta som JSON"));
-        if (files.Mermaid is { } mmd) writes.Add((mmd, CodeMapMermaid.Write(map, files.MermaidOptions with { Hidden = hidden }, overview), "karta som Mermaid"));
-        if (files.Html is { } page) writes.Add((page, CodeMapHtml.Write(map, hidden, showUnreached: !files.NoUnreached), "webbsida"));
+        if (files.Json is { } json) writes.Add((json, CodeMapJson.Serialize(shown, overview, hidden), "karta som JSON"));
+        if (files.Mermaid is { } mmd) writes.Add((mmd, CodeMapMermaid.Write(map, files.MermaidOptions, overview, hiddenNames), "karta som Mermaid"));
+        if (files.Html is { } page) writes.Add((page, CodeMapHtml.Write(map, everything, hidden, showUnreached: !files.NoUnreached), "webbsida"));
 
-        foreach (var line in CodeMapText.Lines(shown, hiddenNames)) terminal.Out.WriteLine(line);
+        foreach (var line in CodeMapText.Lines(shown, overview, hiddenNames)) terminal.Out.WriteLine(line);
         foreach (var warning in map.Warnings) terminal.Warning(warning);
         foreach (var (path, text, what) in writes)
         {

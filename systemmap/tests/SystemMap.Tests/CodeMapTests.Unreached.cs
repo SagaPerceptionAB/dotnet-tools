@@ -245,13 +245,13 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<string>("() => SystemMap.cy().getElementById('method:Api/OrderService.Used').style('border-style')"), Is.EqualTo("solid"));
 
             // Texten: titel på kartan och kortet.
-            await page.EvaluateAsync("() => SystemMap.cy().getElementById('method:Api/OrderService.Archive').emit('mouseover')");
+            await page.EvaluateAsync("() => { SystemMap.cy().getElementById('method:Api/OrderService.Archive').emit('mouseover'); }");
             Assert.That(await page.GetAttributeAsync("#map-view", "title"), Is.EqualTo("Nås inte från någon ingång"));
-            await page.EvaluateAsync("() => SystemMap.cy().getElementById('method:Api/OrderService.Archive').emit('mouseout')");
+            await page.EvaluateAsync("() => { SystemMap.cy().getElementById('method:Api/OrderService.Archive').emit('mouseout'); }");
             Assert.That(await page.GetAttributeAsync("#map-view", "title"), Is.EqualTo(""));
-            await page.EvaluateAsync("() => SystemMap.cy().getElementById('method:Api/OrderService.Archive').emit('tap')");
+            await page.EvaluateAsync("() => { SystemMap.cy().getElementById('method:Api/OrderService.Archive').emit('tap'); }");
             Assert.That(await page.InnerTextAsync("#map-card"), Does.Contain("Status: Nås inte från någon ingång").And.Not.Contain("Används av anropen"));
-            await page.EvaluateAsync("() => SystemMap.cy().getElementById('method:Api/OrderService.Used').emit('tap')");
+            await page.EvaluateAsync("() => { SystemMap.cy().getElementById('method:Api/OrderService.Used').emit('tap'); }");
             Assert.That(await page.InnerTextAsync("#map-card"), Does.Contain("Används av anropen: GET /orders").And.Not.Contain("Nås inte"));
 
             // Ett valt anrop dämpar dem som allt annat som inte är på vägen.

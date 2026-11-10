@@ -35,21 +35,12 @@ internal static class EntryPointFinder
         var projectList = projects.ToList();
         var types = Types(projectList, models);
         var entries = new List<EntryCandidate>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var project in projectList)
-            foreach (var tree in models.Trees(project))
-            {
-                if (models.For(tree) is not { } model) continue;
-                foreach (var declaration in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
-                {
-                    if (model.GetDeclaredSymbol(declaration) is not INamedTypeSymbol type || !IsController(type) || !seen.Add(Symbols.TypeKey(type))) continue;
-                    entries.AddRange(Actions(type, project.Name, models, services, root, warnings));
-                }
-            }
+        foreach (var (type, project) in types)
+            if (IsController(type)) entries.AddRange(Actions(type, project, models, services, root, warnings));
         entries.AddRange(MinimalApiFinder.Find(models, sites, services, root, warnings));
         entries.AddRange(PageFinder.Find(projectList, models, root));
         entries.AddRange(HostedFinder.Background(types, root));
-        entries.AddRange(MessagingFinder.Find(types, projectList, models, sites, services, root));
+        entries.AddRange(MessagingFinder.Find(types, models, sites, services, root));
         entries.AddRange(RpcFinder.Find(types, sites, root));
         entries.AddRange(HostedFinder.Console(projectList, models, entries, root));
         return entries;
@@ -95,7 +86,7 @@ internal static class EntryPointFinder
             }
 
             var action = AttributeString(method, "ActionName") ?? (method.Name.EndsWith("Async") ? method.Name[..^5] : method.Name);
-            var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
+            var (file, line) = Symbols.Where(method, root);
             var input = Input(method, services);
             var output = Output(method, models);
             var kind = ReturnsView(method, models) ? EntryKind.MvcView : EntryKind.Controller;

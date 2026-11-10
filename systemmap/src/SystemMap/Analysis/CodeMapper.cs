@@ -41,7 +41,7 @@ public static class CodeMapper
                 ? new EntryPoint(e.Kind, e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey], e.Name)
                 : new EntryPoint(e.Kind, e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey], e.Name))
             // HTTP först (sökväg, metod), sedan det andra efter sort och namn.
-            .OrderBy(e => e.Kind.IsHttp() ? 0 : 1).ThenBy(e => e.Kind.IsHttp() ? 0 : (int)e.Kind)
+            .OrderBy(e => e.Kind.IsHttp() ? 0 : 1 + (int)e.Kind)
             .ThenBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Path, StringComparer.Ordinal)
             .ThenBy(e => Array.IndexOf(MethodOrder, e.Method) is var i and >= 0 ? i : MethodOrder.Length).ThenBy(e => e.Method, StringComparer.Ordinal)
             .ThenBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Handler, StringComparer.Ordinal)
@@ -58,7 +58,7 @@ public static class CodeMapper
 
         warnings.AddRange(resolver.Warnings);
         var order = ProjectOrder(entryPoints);
-        var code = await CodeInventoryFinder.FindAsync(projects, models, walker, new CallWalker(resolver, models, origins, root, []), order.ToHashSet(StringComparer.Ordinal), root, ct);
+        var code = await CodeInventoryFinder.FindAsync(projects, models, walker, order.ToHashSet(StringComparer.Ordinal), root, ct);
         return new CodeMapModel(
             solutionPath,
             order,

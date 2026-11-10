@@ -22,7 +22,7 @@ internal static class HostedFinder
                 !Symbols.Is(type, "Microsoft.Extensions.Hosting.BackgroundService", "Microsoft.Extensions.Hosting.IHostedService")) continue;
             var roots = HostedMethods.Select(name => Declared(type, name)).OfType<IMethodSymbol>().DistinctBy(Symbols.Key).ToList();
             if (roots.Count == 0) continue;
-            var (file, line) = Symbols.Where(roots[0].Locations.First(l => l.IsInSource), root);
+            var (file, line) = Symbols.Where(roots[0], root);
             yield return new EntryCandidate(EntryKind.Background, roots, "", "", project, $"{type.Name}.{roots[0].Name}", file, line, null, null, "Bakgrund: " + type.Name);
         }
     }
@@ -32,9 +32,8 @@ internal static class HostedFinder
         foreach (var project in projects)
         {
             if (found.Any(e => e.Project == project.Name) || AppFinder.IsApp(project, models)) continue;
-            var compilation = models.CompilationOf(project);
-            if (compilation is not { Options.OutputKind: OutputKind.ConsoleApplication } || compilation.GetEntryPoint(CancellationToken.None) is not { } main || StartsHost(main, models)) continue;
-            var location = main.Locations.FirstOrDefault(l => l.IsInSource) ?? FirstStatement(compilation)?.GetLocation();
+            if (models.EntryPointOf(project, CancellationToken.None) is not { } main || IsHost(project, models)) continue;
+            var location = main.Locations.FirstOrDefault(l => l.IsInSource) ?? FirstStatement(models.CompilationOf(project)!)?.GetLocation();
             if (location is null) continue;
             var (file, line) = Symbols.Where(location, root);
             yield return new EntryCandidate(EntryKind.Console, [main], "", "", project.Name, $"{main.ContainingType.Name}.Main", file, line, null, null, "Konsol: " + project.Name);
@@ -43,8 +42,7 @@ internal static class HostedFinder
 
     /// <summary>Ett program vars Main sätter upp en värd (se <see cref="StartsHost"/>).</summary>
     internal static bool IsHost(Project project, ModelCache models) =>
-        models.CompilationOf(project) is { Options.OutputKind: OutputKind.ConsoleApplication or OutputKind.WindowsApplication } compilation &&
-        compilation.GetEntryPoint(CancellationToken.None) is { } main && StartsHost(main, models);
+        models.Fact(project, "host", () => models.EntryPointOf(project, CancellationToken.None) is { } main && StartsHost(main, models));
 
     /// <summary>Main som sätter upp en värd (<c>Host.CreateApplicationBuilder</c>, <c>AddHostedService</c> ...) är uppstart av en worker, inget konsolprogram.</summary>
     private static bool StartsHost(IMethodSymbol main, ModelCache models)

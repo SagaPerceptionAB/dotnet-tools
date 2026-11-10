@@ -9,7 +9,8 @@ namespace SystemMap;
 /// integration hoppas över. Ett steg visas om det går via ett gränssnitt (en "port"), leder till en integration eller
 /// är en tjänst i ett annat projekt; andra hjälpmetoder (t.ex. <c>Pricing.For</c>) visas inte, men deras anrop följs ändå.
 /// </summary>
-internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Origins origins, string root, List<string> warnings)
+/// <param name="mainWalker">Satt för en <see cref="ForReachability"/>-vandrare: den följer bara vad som nås och bygger inga steg.</param>
+internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Origins origins, string root, List<string> warnings, CallWalker? mainWalker = null)
 {
     public const int MaxDepth = 8;
 
@@ -34,6 +35,25 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
     /// </summary>
     public Dictionary<string, IMethodSymbol> Referenced { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// En vandrare som bara håller reda på vad anropen når (<see cref="Visited"/>, <see cref="Created"/>, <see cref="Referenced"/>), för koden som
+    /// ramverket eller uppstarten anropar: den bygger inga steg och letar inga integrationer, och hoppar över det den här vandraren redan följt.
+    /// </summary>
+    public CallWalker ForReachability() => new(resolver, models, origins, root, [], this);
+
+    /// <summary>Har anropen gått genom metoden (nyckel enligt <see cref="Symbols.Key"/>), här eller i vandraren som den här bygger på?</summary>
+    public bool HasVisited(string key) => Visited.Contains(key) || mainWalker?.HasVisited(key) == true;
+
+    /// <summary>Skapas en instans av klassen (nyckel enligt <see cref="Symbols.TypeKey"/>) av koden som följts, här eller i vandraren som den här bygger på?</summary>
+    public bool HasCreated(string typeKey) => Created.Contains(typeKey) || mainWalker?.HasCreated(typeKey) == true;
+
+    /// <summary>Följer anropen från metoderna utan att bygga steg (bara för en <see cref="ForReachability"/>-vandrare).</summary>
+    public async Task ReachFromAsync(IEnumerable<IMethodSymbol> methods, CancellationToken ct)
+    {
+        foreach (var method in methods)
+            if (!HasVisited(Symbols.Key(method))) await ChildrenAsync(method, [Symbols.Key(method)], 1, Bindings.None, ct);
+    }
+
     /// <summary>Anropen från metoderna (t.ex. en sidas hanterare och dess livscykelmetoder), utan dubbletter.</summary>
     public async Task<IReadOnlyList<Step>> StepsFromAsync(IReadOnlyList<IMethodSymbol> methods, CancellationToken ct)
     {
@@ -50,21 +70,21 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
         {
             if (models.For(body.SyntaxTree) is not { } model) continue;
             var project = models.ProjectOf(body.SyntaxTree) ?? "";
-            var context = new SinkContext(method, body, model, resolver, origins, project, bindings);
+            var context = mainWalker is null ? new SinkContext(method, body, model, resolver, origins, project, bindings) : null;
             foreach (var node in body.DescendantNodesAndSelf())   // en lambda med uttryck som kropp är själva anropet
             {
                 ct.ThrowIfCancellationRequested();
                 if (node is BaseObjectCreationExpressionSyntax creation)
                 {
                     if (model.GetTypeInfo(creation).Type is { } created && Symbols.InSource(created)) Created.Add(Symbols.TypeKey(created));
-                    if (SinkCatalog.MatchCreation(creation, context) is { } sink) steps.Add(Leave(sink, project, creation));
+                    if (context is not null && SinkCatalog.MatchCreation(creation, context) is { } sink) steps.Add(Leave(sink, project, creation));
                     continue;
                 }
                 if (node is IdentifierNameSyntax or MemberAccessExpressionSyntax && IsValueContext(node) &&
                     model.GetSymbolInfo(node).Symbol is IMethodSymbol { MethodKind: MethodKind.Ordinary or MethodKind.LocalFunction } group && Symbols.InSource(group))
                     Referenced.TryAdd(Symbols.Key(group), group);
                 if (node is not InvocationExpressionSyntax invocation) continue;
-                if (SinkCatalog.Match(invocation, context) is { } hit)
+                if (context is not null && SinkCatalog.Match(invocation, context) is { } hit)
                 {
                     steps.Add(Leave(hit, project, invocation));
                     continue;
@@ -79,6 +99,12 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
                     {
                         Referenced.TryAdd(key, implementation);   // följs inte här, men räknas som nådd (se Referenced)
                         warnings.Add($"Kartan går högst {MaxDepth} anrop djupt; anropen från {method.ContainingType.Name}.{method.Name} till {implementation.ContainingType.Name}.{implementation.Name} visas inte.");
+                        continue;
+                    }
+                    if (mainWalker is not null)
+                    {
+                        if (!HasVisited(key) && implementation.OriginalDefinition.DeclaringSyntaxReferences.Length > 0)
+                            await ChildrenAsync(implementation, path.Add(key), depth + 1, Bindings.None, ct);
                         continue;
                     }
                     var inner = Bindings.For(implementation, invocation, target, model, bindings, method.ContainingType);
@@ -146,7 +172,7 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
     {
         Integrations[hit.Integration.Id] = Integrations.TryGetValue(hit.Integration.Id, out var known) ? known.Merge(hit.Integration) : hit.Integration;
         var (file, line) = Where(node.GetLocation());
-        return new Step(project, hit.Member, file, line, hit.Sent, hit.Received, new IntegrationUse(hit.Integration.Id, hit.Operation), []);
+        return new Step(project, hit.Member, file, line, hit.Sent, hit.Received, new IntegrationUse(hit.Integration.Id, hit.Operation, hit.AddressAtRuntime), []);
     }
 
     /// <summary>Tar bort dubbletter, och "spara ändringar" när samma metod redan visar vilken tabell som skrivs.</summary>
@@ -156,7 +182,7 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
         var seen = new HashSet<string>(StringComparer.Ordinal);
         return steps
             .Where(s => s.Integration is not { } i || !SinkCatalog.IsSaveChanges(i.Operation) || !tabled.Contains(i.Id))
-            .Where(s => seen.Add(s.Integration is { } i ? $"{s.Project}|{i.Id}|{i.Operation}" : $"{s.Project}|{s.Member}|{string.Join(';', Uses(s))}"))
+            .Where(s => seen.Add(s.Integration is { } i ? $"{s.Project}|{i.Key}" : $"{s.Project}|{s.Member}|{string.Join(';', Uses(s))}"))
             .ToList();
     }
 
@@ -164,7 +190,7 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
     private string[] Uses(Step step)
     {
         if (!_uses.TryGetValue(step, out var uses))
-            _uses[step] = uses = (step.Integration is { } i ? [$"{i.Id}|{i.Operation}"] : step.Steps.SelectMany(s => Uses(s)))
+            _uses[step] = uses = (step.Integration is { } i ? [i.Key] : step.Steps.SelectMany(s => Uses(s)))
                 .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         return uses;
     }

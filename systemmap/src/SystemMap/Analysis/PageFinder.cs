@@ -52,7 +52,7 @@ internal static class PageFinder
             var get = lifecycle.FirstOrDefault(m => !m.Name.EndsWith("Async", StringComparison.Ordinal)) ?? lifecycle.FirstOrDefault();
             result.Add(new EntryCandidate(EntryKind.BlazorPage, lifecycle, "GET", path, project, $"{type.Name}.{get?.Name ?? "OnInitialized"}", file, line, null, null));
             if (!hasForm) continue;
-            var (postFile, postLine) = submit is { MethodKind: MethodKind.Ordinary } m ? Symbols.Where(m.Locations.First(l => l.IsInSource), root) : (file, line);
+            var (postFile, postLine) = submit is { MethodKind: MethodKind.Ordinary } m ? Symbols.Where(m, root) : (file, line);
             result.Add(new EntryCandidate(EntryKind.BlazorPage, submit is null ? [] : [submit], "POST", path, project,
                 $"{type.Name}.{(submit is { MethodKind: MethodKind.Ordinary } ? submit.Name : "OnValidSubmit")}", postFile, postLine,
                 form is null ? null : DataShapes.Of(form.Type), null));
@@ -123,7 +123,7 @@ internal static class PageFinder
         var result = new List<EntryCandidate>();
         foreach (var (verb, name, method) in handlers.OrderBy(h => h.Verb, StringComparer.Ordinal).ThenBy(h => h.Name, StringComparer.Ordinal))
         {
-            var (f, l) = Symbols.Where(method.Locations.First(x => x.IsInSource), root);
+            var (f, l) = Symbols.Where(method, root);
             var input = verb is "GET" or "DELETE" or "HEAD" ? null : DataShapes.Of(bind?.Type) ?? DataShapes.FromParameters(method);
             result.Add(new EntryCandidate(EntryKind.RazorPage, [method], verb, name.Length == 0 ? route : $"{route}?handler={name}", project.Name,
                 $"{(SymbolEqualityComparer.Default.Equals(method.ContainingType, page) ? ownerName : method.ContainingType.Name)}.{method.Name}", f, l, input, null));

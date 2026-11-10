@@ -35,7 +35,7 @@ internal static class RpcFinder
             foreach (var method in t.GetMembers().OfType<IMethodSymbol>())
             {
                 if (method is not { MethodKind: MethodKind.Ordinary, DeclaredAccessibility: Accessibility.Public, IsStatic: false } || !Symbols.InSource(method) || !seen.Add(method.Name)) continue;
-                var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
+                var (file, line) = Symbols.Where(method, root);
                 yield return new EntryCandidate(EntryKind.SignalR, [method], "", "", project, $"{type.Name}.{method.Name}", file, line,
                     DataShapes.FromParameters(method), DataShapes.Of(method.ReturnType), $"SignalR: {type.Name}.{method.Name}");
             }
@@ -56,7 +56,7 @@ internal static class RpcFinder
         {
             if (method is not { MethodKind: MethodKind.Ordinary, IsOverride: true, DeclaredAccessibility: Accessibility.Public } || !Symbols.InSource(method) ||
                 !Overrides(method, baseType)) continue;
-            var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
+            var (file, line) = Symbols.Where(method, root);
             yield return new EntryCandidate(EntryKind.Grpc, [method], "", "", project, $"{type.Name}.{method.Name}", file, line,
                 DataShapes.FromParameters(method), DataShapes.Of(method.ReturnType), $"gRPC: {service}/{method.Name}");
         }

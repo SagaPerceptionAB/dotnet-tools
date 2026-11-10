@@ -44,7 +44,7 @@ internal static class MinimalApiFinder
                 }
                 var handler = Handler(arguments[^1].Expression, model);
                 var (file, line) = handler.Symbol is { } m && m.MethodKind == MethodKind.Ordinary
-                    ? Symbols.Where(m.Locations.First(l => l.IsInSource), root)
+                    ? Symbols.Where(m, root)
                     : Symbols.Where(call.GetLocation(), root);
                 var input = handler.Symbol is { } h ? Body(h, services) : null;
                 var output = handler.Symbol is { } o ? EntryPointFinder.Output(o, models) : null;

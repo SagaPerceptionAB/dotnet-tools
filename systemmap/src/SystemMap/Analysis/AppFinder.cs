@@ -66,7 +66,9 @@ internal static partial class AppFinder
         }
     }
 
-    internal static bool IsApp(Project project, ModelCache models)
+    internal static bool IsApp(Project project, ModelCache models) => models.Fact(project, "app", () => ReadIsApp(project, models));
+
+    private static bool ReadIsApp(Project project, ModelCache models)
     {
         if (project.FilePath is { } path && File.Exists(path) && Sdk().Match(ReadStart(path)) is { Success: true } sdk &&
             sdk.Groups[1].Value.StartsWith("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase))
@@ -80,8 +82,7 @@ internal static partial class AppFinder
     }
 
     /// <summary>Ett program som körs (exe): en worker eller ett konsolprogram. Ett bibliotek med en bakgrundstjänst är ingen app, men programmet som använder det är det.</summary>
-    private static bool IsProgram(Project project, ModelCache models) =>
-        models.CompilationOf(project) is { Options.OutputKind: OutputKind.ConsoleApplication or OutputKind.WindowsApplication };
+    private static bool IsProgram(Project project, ModelCache models) => models.IsProgram(project);
 
     private static string ReadStart(string path)
     {

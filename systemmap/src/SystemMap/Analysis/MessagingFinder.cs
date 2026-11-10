@@ -22,7 +22,7 @@ internal static class MessagingFinder
     private static readonly string[] HangfireMethods = ["AddOrUpdate", "Enqueue", "Schedule"];
 
     public static IEnumerable<EntryCandidate> Find(
-        IEnumerable<(INamedTypeSymbol Type, string Project)> types, IReadOnlyList<Project> projects, ModelCache models, CallSites sites, ServiceResolver services, string root)
+        IEnumerable<(INamedTypeSymbol Type, string Project)> types, ModelCache models, CallSites sites, ServiceResolver services, string root)
     {
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (type, project) in types)
@@ -33,21 +33,21 @@ internal static class MessagingFinder
                     if (Implementation(type, iface, methodName) is { } method)
                     {
                         var message = iface.TypeArguments[0];
-                        var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
+                        var (file, line) = Symbols.Where(method, root);
                         var name = $"Meddelande: {message.Name} → {type.Name}";
                         if (names.Add(name))
                             yield return new EntryCandidate(EntryKind.Consumer, [method], "", "", project, $"{type.Name}.{method.Name}", file, line, DataShapes.Of(message), null, name);
                     }
             if (type.AllInterfaces.FirstOrDefault(i => Symbols.FullName(i) == "Quartz.IJob") is { } job && Implementation(type, job, "Execute") is { } execute)
             {
-                var (file, line) = Symbols.Where(execute.Locations.First(l => l.IsInSource), root);
+                var (file, line) = Symbols.Where(execute, root);
                 var name = "Jobb: " + type.Name;
                 if (names.Add(name))
                     yield return new EntryCandidate(EntryKind.Job, [execute], "", "", project, $"{type.Name}.{execute.Name}", file, line, null, null, name);
             }
         }
 
-        foreach (var entry in ServiceBus(models, root, names)) yield return entry;
+        foreach (var entry in ServiceBus(sites, root, names)) yield return entry;
         foreach (var entry in Hangfire(sites, models, services, root, names)) yield return entry;
     }
 
@@ -57,9 +57,9 @@ internal static class MessagingFinder
             .FirstOrDefault(m => m is not null && Symbols.InSource(m) && !m.IsAbstract);
 
     /// <summary><c>processor.ProcessMessageAsync += HandleAsync;</c>: hanteraren är ingången, och kön står i namnet om den går att läsa.</summary>
-    private static IEnumerable<EntryCandidate> ServiceBus(ModelCache models, string root, HashSet<string> names)
+    private static IEnumerable<EntryCandidate> ServiceBus(CallSites sites, string root, HashSet<string> names)
     {
-        foreach (var (assignment, model, project) in Assignments(models))
+        foreach (var (assignment, model, project) in sites.Additions)
         {
             if (assignment.Left is not MemberAccessExpressionSyntax left || !ProcessorEvents.Contains(left.Name.Identifier.ValueText) ||
                 model.GetSymbolInfo(left).Symbol is not IEventSymbol { ContainingType: { } owner } || !Processors.Contains(Symbols.FullName(owner))) continue;
@@ -68,22 +68,11 @@ internal static class MessagingFinder
             var queue = QueueOf(left.Expression, model) ?? "Service Bus";
             var name = $"Meddelande: {queue} → {handler}";
             var (file, line) = symbol is { } m && m.MethodKind == MethodKind.Ordinary && Symbols.InSource(m)
-                ? Symbols.Where(m.Locations.First(l => l.IsInSource), root)
+                ? Symbols.Where(m, root)
                 : Symbols.Where(assignment.GetLocation(), root);
             if (names.Add(name))
                 yield return new EntryCandidate(EntryKind.Consumer, symbol is not null && Symbols.InSource(symbol) ? [symbol] : [], "", "", project, handler, file, line, null, null, name);
         }
-    }
-
-    private static IEnumerable<(AssignmentExpressionSyntax Assignment, SemanticModel Model, string Project)> Assignments(ModelCache models)
-    {
-        foreach (var compilation in models.Compilations)
-            foreach (var tree in compilation.SyntaxTrees)
-            {
-                if (models.For(tree) is not { } model || models.ProjectOf(tree) is not { } project) continue;
-                foreach (var assignment in tree.GetRoot().DescendantNodes().OfType<AssignmentExpressionSyntax>())
-                    if (assignment.IsKind(SyntaxKind.AddAssignmentExpression)) yield return (assignment, model, project);
-            }
     }
 
     /// <summary>Kön (eller ämnet och prenumerationen) i <c>client.CreateProcessor("kö")</c> som processorn kommer från, om den står som text.</summary>
@@ -118,7 +107,7 @@ internal static class MessagingFinder
                 if (!names.Add(name)) continue;
                 IReadOnlyList<IMethodSymbol> roots = [.. services.Resolve(job).Select(t => t.Target).DistinctBy(Symbols.Key)];
                 var shown = roots.Count > 0 ? roots[0] : job;
-                var (file, line) = Symbols.InSource(shown) ? Symbols.Where(shown.Locations.First(l => l.IsInSource), root) : Symbols.Where(call.GetLocation(), root);
+                var (file, line) = Symbols.InSource(shown) ? Symbols.Where(shown, root) : Symbols.Where(call.GetLocation(), root);
                 yield return new EntryCandidate(EntryKind.Job, roots, "", "", project, handler, file, line, null, null, name);
             }
     }

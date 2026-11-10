@@ -82,11 +82,12 @@ Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick
   många anrop som går igenom ("2 av 13 anrop"). Ett fält med kryss har blå kant och ett **×** som tar bort kryssen i den listan; med flera kryss står
   antalet ("2 klasser") och title listar namnen.
 - Anrop markerar vägarna för de kryssade anropen och dämpar resten (det är inget filter); listan visar bara anropen som går genom filtren.
-- Detaljnivån väljs överst i listorna med radioknappar: Klass: Alla eller Visas inte (bara projekten), Funktion: Visas inte eller Alla (metoderna i
-  klasserna), Integration: Alla eller Alla, med läsningar och skrivningar (allt utfällt). Klassen "Visas inte" stänger av Funktion.
+- Detaljnivån är en enda och väljs överst i listorna Klass, Funktion och Integration med radioknappar; listorna visar den: Klass: Visas inte är bara
+  projekten, Klass: Alla klasserna, Funktion: Alla metoderna i klasserna och Integration: Alla, med läsningar och skrivningar allt utfällt. Ett val byter
+  nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion.
 - **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
 - Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
-  filen med `--mermaid` och `--entry`.
+  filen med `--mermaid` och `--entry`. Den vägrar också i den fristående sidan när något är dolt eller "Visa delar som inte nås" är avbockat (filerna skrevs utan det valet).
 
 ### Zoom
 

@@ -1198,6 +1198,8 @@
   var mapBody = null, mapLoading = false, mapStarted = false;
   var systemMap = SystemMap.create($('map'), {
     onError: function (e) { showMapError({ message: e.message, tip: e.tip }); },
+    // Det som är dolt följer filen med (hide); valet om delar som inte nås följer den inte, och kartan vägrar inte för det.
+    mermaidAccepts: { hidden: true, unreached: true },
     // Kartan som Mermaid: samma källkod som kartan lästes från, med kartans riktning, nivå, valda anrop och dolda delar.
     mermaid: async function (level, direction, entry, hidden) {
       hideMapError();

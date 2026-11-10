@@ -26,7 +26,7 @@ public partial class CodeMapTests
             await ready();
             Assert.That(await page.InputValueAsync("#map-fn"), Is.EqualTo("Alla"));
             Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("Alla"));
-            Assert.That(await page.EvaluateAsync<bool>("() => document.getElementById('map-fn').parentElement.classList.contains('has-value')"), Is.False, "ett nivåval är inget filter: ingen blå kant");
+            Assert.That(await HasValueAsync(page, "fn"), Is.False, "ett nivåval är inget filter: ingen blå kant");
             Assert.That(await page.IsHiddenAsync("#map-status"), Is.True);
             Assert.That(await page.EvaluateAsync<string[]>(Methods), Is.EqualTo(new[]
             {
@@ -65,13 +65,13 @@ public partial class CodeMapTests
             Assert.That(await page.InputValueAsync("#map-fn"), Is.EqualTo("Visas inte"));
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-class').length"), Is.Zero, "bara projekten");
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-project').length"), Is.EqualTo(1));
-            Assert.That(await page.EvaluateAsync<string>("() => sessionStorage.getItem('map-level')"), Is.EqualTo("projects"));
+            Assert.That(await StoredLevelAsync(page), Is.EqualTo("projects"));
 
             // Ett kryss i en klass ger nivån klasser.
             await PickAsync(page, "cls", "AuthService");
             await ready();
             Assert.That(await page.IsDisabledAsync("#map-fn"), Is.False);
-            Assert.That(await page.EvaluateAsync<string>("() => sessionStorage.getItem('map-level')"), Is.EqualTo("classes"));
+            Assert.That(await StoredLevelAsync(page), Is.EqualTo("classes"));
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-class').length"), Is.GreaterThan(0));
         });
     }

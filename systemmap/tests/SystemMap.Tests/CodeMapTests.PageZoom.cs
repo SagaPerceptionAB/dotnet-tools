@@ -72,6 +72,13 @@ public partial class CodeMapTests
         });
     }
 
+    /// <summary>Klickar knappen tills den blir avstängd (aria-disabled): en avstängd knapp går inte att klicka.</summary>
+    private static async Task ClickWhileEnabledAsync(IPage page, string button)
+    {
+        for (var i = 0; i < 40 && !await page.IsDisabledAsync(button); i++) await page.ClickAsync(button);
+        Assert.That(await page.IsDisabledAsync(button), Is.True, "knappen har nått gränsen");
+    }
+
     [Test]
     public async Task Page_zoom_button_is_aria_disabled_at_the_limits_and_max_zoom_is_4()
     {
@@ -80,12 +87,12 @@ public partial class CodeMapTests
         {
             Assert.That(await page.EvaluateAsync<double>("() => SystemMap.cy().maxZoom()"), Is.EqualTo(4));
             Assert.That(await page.GetAttributeAsync("#map-zoom-in", "aria-disabled"), Is.EqualTo("false"));
-            for (var i = 0; i < 20; i++) await page.ClickAsync("#map-zoom-in", new PageClickOptions { Force = true });
+            await ClickWhileEnabledAsync(page, "#map-zoom-in");
             Assert.That(await page.EvaluateAsync<double>(Zoom), Is.EqualTo(4).Within(1e-6));
             Assert.That(await page.InnerTextAsync(ZoomPct), Is.EqualTo("400 %"));
             Assert.That(await page.GetAttributeAsync("#map-zoom-in", "aria-disabled"), Is.EqualTo("true"));
             Assert.That(await page.GetAttributeAsync("#map-zoom-out", "aria-disabled"), Is.EqualTo("false"));
-            for (var i = 0; i < 30; i++) await page.ClickAsync("#map-zoom-out", new PageClickOptions { Force = true });
+            await ClickWhileEnabledAsync(page, "#map-zoom-out");
             Assert.That(await page.EvaluateAsync<double>(Zoom), Is.EqualTo(0.2).Within(1e-6));
             Assert.That(await page.GetAttributeAsync("#map-zoom-out", "aria-disabled"), Is.EqualTo("true"));
             Assert.That(await page.GetAttributeAsync("#map-zoom-in", "aria-disabled"), Is.EqualTo("false"));

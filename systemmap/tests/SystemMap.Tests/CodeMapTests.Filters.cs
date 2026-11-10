@@ -16,14 +16,32 @@ public partial class CodeMapTests
         await page.Keyboard.PressAsync("Escape");
     }
 
-    /// <summary>Alternativen i en lista (nivåvalen först), som de står.</summary>
+    /// <summary>Alternativen i den öppna listan som syns (nivåvalen först), som de står.</summary>
+    private static Task<string[]> ListOptionsAsync(IPage page, string field) =>
+        page.EvaluateAsync<string[]>($"() => [...document.querySelectorAll('#map-{field}-list [role=option]')].filter(o => !o.hidden).map(o => o.textContent)");
+
+    /// <summary>De valda alternativen (nivåvalet och kryssen) i den öppna listan.</summary>
+    private static Task<string[]> SelectedOptionsAsync(IPage page, string field) =>
+        page.EvaluateAsync<string[]>($"() => [...document.querySelectorAll('#map-{field}-list [role=option][aria-selected=true]')].filter(o => !o.hidden).map(o => o.textContent)");
+
+    /// <summary>Alternativen i en lista, som de står: öppnar listan, läser den och stänger den.</summary>
     private static async Task<string[]> OptionTextsAsync(IPage page, string field)
     {
         await page.ClickAsync($"#map-{field}");
-        var texts = await page.EvaluateAsync<string[]>($"() => [...document.querySelectorAll('#map-{field}-list [role=option]')].map(o => o.textContent)");
+        var texts = await ListOptionsAsync(page, field);
         await page.Keyboard.PressAsync("Escape");
         return texts;
     }
+
+    /// <summary>Det som skärmläsaren senast fick höra.</summary>
+    private static Task<string> LiveAsync(IPage page) => page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent");
+
+    /// <summary>Klickar på anropets nod i kartan.</summary>
+    private static Task TapEntryAsync(IPage page, string label) =>
+        page.EvaluateAsync("label => SystemMap.cy().nodes('.t-entry').filter(n => n.data('label') === label)[0].emit('tap')", label);
+
+    /// <summary>Nivån som sparats i webbläsaren.</summary>
+    private static Task<string> StoredLevelAsync(IPage page) => page.EvaluateAsync<string>("() => sessionStorage.getItem('map-level')");
 
     /// <summary>Grupperna i en lista som "etikett (antal)", utan nivåvalen.</summary>
     private static async Task<string[]> GroupsAsync(IPage page, string field)
@@ -35,29 +53,15 @@ public partial class CodeMapTests
         return groups;
     }
 
-    /// <summary>Väljer detaljnivån (projects, classes, methods eller all) i listorna Klass, Funktion och Integration.</summary>
-    private static async Task LevelAsync(IPage page, string level)
+    /// <summary>Väljer detaljnivån (projects, classes, methods eller all) med ett val i en lista: Klass Visas inte, Funktion Visas inte (classes, när nivån är högre),
+    /// Funktion Alla (methods, från classes) och Integration med läsningar och skrivningar (all).</summary>
+    private static Task LevelAsync(IPage page, string level) => level switch
     {
-        switch (level)
-        {
-            case "projects": await PickAsync(page, "cls", "Visas inte"); break;
-            case "classes":
-                await PickAsync(page, "cls", "Alla");
-                await PickAsync(page, "fn", "Visas inte");
-                await PickAsync(page, "integ", "Alla");
-                break;
-            case "methods":
-                await PickAsync(page, "cls", "Alla");
-                await PickAsync(page, "fn", "Alla");
-                await PickAsync(page, "integ", "Alla");
-                break;
-            default:
-                await PickAsync(page, "cls", "Alla");
-                await PickAsync(page, "fn", "Visas inte");
-                await PickAsync(page, "integ", "Alla, med läsningar och skrivningar");
-                break;
-        }
-    }
+        "projects" => PickAsync(page, "cls", "Visas inte"),
+        "classes" => PickAsync(page, "fn", "Visas inte"),
+        "methods" => PickAsync(page, "fn", "Alla"),
+        _ => PickAsync(page, "integ", "Alla, med läsningar och skrivningar"),
+    };
 
     private const string PathEntries = "() => SystemMap.cy().nodes('.t-entry').filter(n => n.hasClass('path')).map(n => n.data('label')).sort()";
     private const string DimmedEntries = "() => SystemMap.cy().nodes('.t-entry').filter(n => n.hasClass('dimmed')).map(n => n.data('label')).sort()";
@@ -91,7 +95,7 @@ public partial class CodeMapTests
             Assert.That(await page.IsVisibleAsync("button[aria-label='Ta bort filtret Klass']"), Is.True);
             Assert.That(await page.IsHiddenAsync("button[aria-label='Ta bort filtret Projekt']"), Is.True);
             Assert.That(await OptionTextsAsync(page, "entry"), Is.EqualTo(new[] { "POST /v1/auth/in", "POST /v1/auth/out" }), "Anrop visar bara anropen genom filtret");
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Is.EqualTo("2 av 5 anrop går genom AuthService."));
+            Assert.That(await LiveAsync(page), Is.EqualTo("2 av 5 anrop går genom AuthService."));
 
             // Kartans inpassning lämnar plats för rutan.
             Assert.That(await page.EvaluateAsync<bool>("() => SystemMap.cy().elements().not('.anchor').renderedBoundingBox().y1 >= document.getElementById('map-status').offsetHeight + 10"), Is.True);
@@ -117,12 +121,12 @@ public partial class CodeMapTests
             Assert.That(await page.InnerTextAsync("#map-status"), Is.EqualTo("3 av 5 anrop"));
             Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("2 klasser"));
             Assert.That(await page.GetAttributeAsync("#map-cls", "title"), Is.EqualTo("AuthService, MeController"), "title listar namnen");
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Is.EqualTo("3 av 5 anrop går genom AuthService och MeController."));
+            Assert.That(await LiveAsync(page), Is.EqualTo("3 av 5 anrop går genom AuthService och MeController."));
 
             await PickAsync(page, "cls", "FamilyService");
             await ready();
             Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("3 klasser"));
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Is.EqualTo("5 av 5 anrop går genom 3 klasser."));
+            Assert.That(await LiveAsync(page), Is.EqualTo("5 av 5 anrop går genom 3 klasser."));
 
             // Ett kryss som tas bort ur listan går tillbaka till de andra.
             await PickAsync(page, "cls", "FamilyService", "MeController");
@@ -184,7 +188,7 @@ public partial class CodeMapTests
             Assert.That(await page.InputValueAsync("#map-fn"), Is.EqualTo("Check()"));
             Assert.That(await page.InnerTextAsync("#map-status"), Is.EqualTo("2 av 5 anrop"));
             Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("Alla"), "klassen fylls inte i");
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Is.EqualTo("2 av 5 anrop går genom AuthService.Check."));
+            Assert.That(await LiveAsync(page), Is.EqualTo("2 av 5 anrop går genom AuthService.Check."));
         });
     }
 
@@ -204,7 +208,7 @@ public partial class CodeMapTests
             await ready();
             Assert.That(await page.InputValueAsync("#map-integ"), Is.EqualTo(integration));
             Assert.That(await page.InnerTextAsync("#map-status"), Is.EqualTo("5 av 5 anrop"));
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Does.StartWith("5 av 5 anrop går till "));
+            Assert.That(await LiveAsync(page), Does.StartWith("5 av 5 anrop går till "));
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-integration').length"), Is.EqualTo(1), "integrationen visas");
 
             // Och med en kod: OCH.
@@ -212,7 +216,7 @@ public partial class CodeMapTests
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(EntryNodes), Is.EqualTo(new[] { "GET /v1/me" }));
             Assert.That(await page.InnerTextAsync("#map-status"), Is.EqualTo("1 av 5 anrop"));
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Does.Contain("går genom MeController till "));
+            Assert.That(await LiveAsync(page), Does.Contain("går genom MeController till "));
         });
 
         var unreached = await WithUnreached();
@@ -221,7 +225,7 @@ public partial class CodeMapTests
             await PickAsync(page, "cls", "LegacyExporter");
             await ready();
             Assert.That(await page.InnerTextAsync("#map-status"), Is.EqualTo("Inga anrop"));
-            Assert.That(await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent"), Is.EqualTo("Inga anrop går genom LegacyExporter."));
+            Assert.That(await LiveAsync(page), Is.EqualTo("Inga anrop går genom LegacyExporter."));
             Assert.That(await page.EvaluateAsync<string[]>(EntryNodes), Is.Empty);
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().getElementById('class:Api/LegacyExporter').length"), Is.EqualTo(1), "den valda delen visas alltid");
             Assert.That(await OptionTextsAsync(page, "entry"), Is.Empty);
@@ -286,10 +290,10 @@ public partial class CodeMapTests
             await PickAsync(page, "entry", "GET /v1/me", "POST /v1/auth/in");
             await ready();
             Assert.That(await page.InputValueAsync("#map-entry"), Is.EqualTo("2 anrop"));
-            await page.EvaluateAsync("() => { const n = SystemMap.cy().nodes('.t-entry').filter(n => n.data('label') === 'POST /v1/auth/out')[0]; n.emit('tap'); }");
+            await TapEntryAsync(page, "POST /v1/auth/out");
             await ready();
             Assert.That(await page.InputValueAsync("#map-entry"), Is.EqualTo("POST /v1/auth/out"), "exakt det anropet");
-            await page.EvaluateAsync("() => { const n = SystemMap.cy().nodes('.t-entry').filter(n => n.data('label') === 'POST /v1/auth/out')[0]; n.emit('tap'); }");
+            await TapEntryAsync(page, "POST /v1/auth/out");
             await ready();
             Assert.That(await page.InputValueAsync("#map-entry"), Is.EqualTo("Hela systemet"));
         });
@@ -304,8 +308,7 @@ public partial class CodeMapTests
         await WithPageAsync(map, async (page, ready) =>
         {
             Assert.That(await page.GetAttributeAsync("#map-clear", "aria-disabled"), Is.EqualTo("true"), "inget är valt");
-            await page.EvaluateAsync("() => document.getElementById('map-clear').click()");   // grå: gör ingenting
-            Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("Alla"));
+            Assert.That(await page.IsDisabledAsync("#map-clear"), Is.True, "grå: går inte att klicka");
 
             await page.UncheckAsync("#map-unreached");
             await ready();
@@ -318,7 +321,7 @@ public partial class CodeMapTests
             await LevelAsync(page, "all");
             await ready();
             Assert.That(await page.GetAttributeAsync("#map-clear", "aria-disabled"), Is.EqualTo("false"));
-            Assert.That(await page.EvaluateAsync<string>("() => sessionStorage.getItem('map-level')"), Is.EqualTo("all"));
+            Assert.That(await StoredLevelAsync(page), Is.EqualTo("all"));
 
             await page.ClickAsync("#map-clear");
             await ready();
@@ -329,7 +332,7 @@ public partial class CodeMapTests
             }
             Assert.That(await page.GetAttributeAsync("#map-clear", "aria-disabled"), Is.EqualTo("true"), "grå när allt är nollställt");
             Assert.That(await page.IsHiddenAsync("#map-status"), Is.True);
-            Assert.That(await page.EvaluateAsync<string>("() => sessionStorage.getItem('map-level')"), Is.EqualTo("classes"), "nivån är Klasser");
+            Assert.That(await StoredLevelAsync(page), Is.EqualTo("classes"), "nivån är Klasser");
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-method, .t-operation').length"), Is.Zero);
             Assert.That(await page.GetAttributeAsync("[data-direction='TB']", "aria-pressed"), Is.EqualTo("true"), "riktningen är orörd");
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False, "valet om det som inte nås är orört");
@@ -380,7 +383,7 @@ public partial class CodeMapTests
             await page.FocusAsync("#map-cls");
             await page.Keyboard.PressAsync("ArrowDown");
             Assert.That(await page.GetAttributeAsync("#map-cls", "aria-expanded"), Is.EqualTo("true"));
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list [role=option]')].map(o => o.textContent)"), Is.EqualTo(new[]
+            Assert.That(await ListOptionsAsync(page, "cls"), Is.EqualTo(new[]
                 { "Alla", "Visas inte", "AuthClient", "AuthController", "AuthService", "FamilyController", "FamilyService", "MeController" }));
             Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list [role=option]')].map(o => o.firstElementChild.className + ':' + o.getAttribute('aria-selected'))"),
                 Is.EqualTo(new[] { "map-radio:true", "map-radio:false" }.Concat(Enumerable.Repeat("map-check:false", 6))), "den dekorativa rutan före namnet, och Alla är valt");
@@ -389,20 +392,21 @@ public partial class CodeMapTests
 
             // Skriv: filtrerar (skiftlägesokänsligt, delsträng) och markerar träffen.
             await page.Keyboard.TypeAsync("SERVICE");
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list [role=option]')].map(o => o.textContent)"), Is.EqualTo(new[] { "Alla", "Visas inte", "AuthService", "FamilyService" }), "nivåvalen står kvar vid sökning");
+            Assert.That(await ListOptionsAsync(page, "cls"), Is.EqualTo(new[] { "Alla", "Visas inte", "AuthService", "FamilyService" }), "nivåvalen står kvar vid sökning");
             Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list mark')].map(m => m.textContent)"), Is.EqualTo(new[] { "Service", "Service" }));
+            Assert.That(await page.EvaluateAsync<int>("() => document.querySelectorAll('#map-cls-list .active').length"), Is.EqualTo(1), "bara ett alternativ är markerat, första träffen");
 
             // Pil ned och Enter kryssar. Listan står kvar öppen.
             await page.Keyboard.PressAsync("ArrowDown");
             await page.Keyboard.PressAsync("Enter");
             await ready();
             Assert.That(await page.GetAttributeAsync("#map-cls", "aria-expanded"), Is.EqualTo("true"));
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list [aria-selected=true]')].map(o => o.textContent)"), Is.EqualTo(new[] { "Alla", "FamilyService" }));
+            Assert.That(await SelectedOptionsAsync(page, "cls"), Is.EqualTo(new[] { "Alla", "FamilyService" }));
             Assert.That(await page.InnerTextAsync("#map-status"), Is.EqualTo("3 av 5 anrop"));
             await page.Keyboard.PressAsync("ArrowUp");
             await page.Keyboard.PressAsync("Enter");
             await ready();
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list [aria-selected=true]')].map(o => o.textContent)"), Is.EqualTo(new[] { "Alla", "AuthService", "FamilyService" }));
+            Assert.That(await SelectedOptionsAsync(page, "cls"), Is.EqualTo(new[] { "Alla", "AuthService", "FamilyService" }));
 
             // Esc stänger bara listan (inte något annat) och texten är åter det valda.
             await page.EvaluateAsync("() => { window.escapes = 0; document.addEventListener('keydown', e => { if (e.key === 'Escape') window.escapes++; }); }");
@@ -416,7 +420,7 @@ public partial class CodeMapTests
             await page.Keyboard.PressAsync("End");
             Assert.That(await page.GetAttributeAsync("#map-cls", "aria-activedescendant"), Is.EqualTo("map-cls-o7"));
             await page.Keyboard.PressAsync("Home");
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-cls-list [aria-selected=true]')].map(o => o.textContent)"),
+            Assert.That(await SelectedOptionsAsync(page, "cls"),
                 Is.EqualTo(new[] { "Alla", "AuthService", "FamilyService" }));
             await page.Keyboard.PressAsync("ArrowDown");
             await page.Keyboard.PressAsync("Space");
@@ -429,7 +433,7 @@ public partial class CodeMapTests
             await page.Keyboard.PressAsync("ArrowDown");
             await page.Keyboard.TypeAsync("zzz");
             Assert.That(await page.InnerTextAsync("#map-cls-list"), Is.EqualTo("Alla\nVisas inte\nInga träffar"), "nivåvalen står kvar");
-            Assert.That(await page.EvaluateAsync<int>("() => document.querySelectorAll('#map-cls-list [role=option]:not(.map-level)').length"), Is.Zero);
+            Assert.That(await ListOptionsAsync(page, "cls"), Is.EqualTo(new[] { "Alla", "Visas inte" }), "bara nivåvalen");
             await page.Keyboard.PressAsync("Tab");
             Assert.That(await page.GetAttributeAsync("#map-cls", "aria-expanded"), Is.EqualTo("false"));
             Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("Visas inte"));
@@ -438,7 +442,7 @@ public partial class CodeMapTests
             await page.ClickAsync("#map-entry");
             Assert.That(await page.InnerTextAsync("#map-entry-list .map-note"), Is.EqualTo("Inget kryss = hela systemet"));
             await page.Keyboard.TypeAsync("POST /v1/auth/i");
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-entry-list [role=option]')].map(o => o.textContent)"), Is.EqualTo(new[] { "POST /v1/auth/in" }));
+            Assert.That(await ListOptionsAsync(page, "entry"), Is.EqualTo(new[] { "POST /v1/auth/in" }));
             await page.Mouse.ClickAsync(700, 600);
             Assert.That(await page.GetAttributeAsync("#map-entry", "aria-expanded"), Is.EqualTo("false"));
             Assert.That(await page.InputValueAsync("#map-entry"), Is.EqualTo("Hela systemet"));

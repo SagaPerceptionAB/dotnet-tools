@@ -46,10 +46,10 @@ public static class SolutionFinder
     /// <summary>Tipset när ingenting hittades uppåt: <c>Gör så här: systemmap --solution backend/Butik.slnx</c>. Null när det inte finns någon solution i en undermapp.</summary>
     public static string? HintBelow(string start, string see)
     {
-        var below = FindBelow(start);
+        var below = FindBelow(start).Select(p => p.Replace('\\', '/')).ToList();
         if (below.Count == 0) return null;
         var more = below.Count > 1 ? $" (andra: {string.Join(", ", below.Skip(1).Take(3))}{(below.Count > 4 ? ", ..." : "")})" : "";
-        return $"Gör så här: {see} --solution {below[0].Replace('\\', '/')}{more}";
+        return $"Gör så här: {see} --solution {below[0]}{more}";
     }
 
     private static IEnumerable<DirectoryInfo> Folders(DirectoryInfo parent)

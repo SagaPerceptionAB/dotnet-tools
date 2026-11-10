@@ -88,6 +88,13 @@ Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick
 - Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
   filen med `--mermaid` och `--entry`.
 
+### Zoom
+
+Nere till höger i kartan finns **+**, **−**, **Passa in hela kartan** och under dem zoomen i procent. Knapparna zoomar 25 % åt gången runt kartans mitt, från 20 % till 400 %
+(så att små metodnamn går att läsa i stora kartor); Passa in visar hela kartan, eller vägen för de valda anropen, och zoomar aldrig in mer än 120 %.
+Med fokus i kartan eller på zoomknapparna gör tangenterna `+` (eller `=`), `-` och `0` samma sak. Ctrl + rullhjul (⌘ + rullhjul på Mac) zoomar, på pekskärm nyper man med två
+fingrar; vanligt rullhjul rullar sidan.
+
 ## I en app
 
 Kartan kan också visas i en ASP.NET Core-app, som Swagger UI, med `app.MapSystemMap();` (den ligger i namnrymden

@@ -41,11 +41,18 @@
     '    <details class="map-extra" id="map-diff" name="map-extra" hidden><summary id="map-diff-summary" title="Anrop som bara finns i koden eller bara i API-beskrivningen"></summary><ul id="map-diff-list"></ul></details>' +
     '    <details class="map-extra" id="map-warnings" name="map-extra" hidden><summary id="map-warnings-summary"></summary><ul id="map-warnings-list"></ul></details>' +
     '  </div>' +
-    '  <div class="map-view" id="map-view"></div>' +
+    '  <div class="map-view" id="map-view" tabindex="0" role="group" aria-label="Systemkarta. Tangenterna + och − zoomar, 0 passar in hela kartan."></div>' +
     '  <div class="map-status" id="map-status" hidden></div>' +
     '  <div class="map-legend" id="map-legend" role="group" aria-label="Förklaring" hidden>' +
     '    <label class="map-unreached" id="map-unreached-field" hidden><input type="checkbox" id="map-unreached"><span class="map-swatch" aria-hidden="true"></span><span>Visa delar som inte nås</span></label>' +
     '    <span class="map-hidden-row" id="map-hidden-row" hidden><span class="map-hint" id="map-hint"></span><button type="button" id="map-show-all">Visa dem</button></span>' +
+    '  </div>' +
+    '  <div class="map-zoom-hint" id="map-zoom-hint" aria-hidden="true"></div>' +
+    '  <div class="map-zoom" id="map-zoom" role="group" aria-label="Zoom">' +
+    '    <button type="button" id="map-zoom-in" aria-label="Zooma in (+)" title="Zooma in (+)">+</button>' +
+    '    <button type="button" id="map-zoom-out" aria-label="Zooma ut (−)" title="Zooma ut (−)">−</button>' +
+    '    <button type="button" id="map-zoom-fit" aria-label="Passa in hela kartan (0)" title="Passa in hela kartan (0)"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 6.5V2.5H6.5M11.5 2.5H15.5V6.5M15.5 11.5V15.5H11.5M6.5 15.5H2.5V11.5"/></svg></button>' +
+    '    <div class="map-zoom-pct" id="map-zoom-pct" aria-live="off">100 %</div>' +
     '  </div>' +
     '  <div class="map-card" id="map-card" hidden></div>' +
     '</div>' +
@@ -162,6 +169,7 @@
       changeFilter(function () { state.f = fromLevel('classes'); setPicked([]); state.shut = {}; }, 'Filtren är borttagna.');
       $('map-clear').blur();
     });
+    initZoom(root);
     // Esc stänger detaljkortet, och skillnader och varningar som fällts ut över kartan (fokus går då tillbaka till rubriken).
     // En öppen lista stänger sig själv och stoppar Esc, så att inget annat stängs samtidigt.
     document.addEventListener('keydown', function (ev) {
@@ -1415,16 +1423,23 @@
   function render(after, fresh) {
     var view = $('map-view'), cy = state.cy;
     if (!cy) {
-      cy = state.cy = cytoscape({ container: view, style: CY_STYLE, elements: [], minZoom: 0.2, maxZoom: 2.5,
+      cy = state.cy = cytoscape({ container: view, style: CY_STYLE, elements: [], minZoom: 0.2, maxZoom: 4,
         userZoomingEnabled: false, boxSelectionEnabled: false, autounselectify: true });
       cy.on('tap', 'node', function (ev) { tapNode(ev.target.id()); });
       cy.on('tap', function (ev) { if (ev.target === cy) hideCard(); });
       cy.on('mouseover', 'node', function (ev) { view.style.cursor = 'pointer'; view.title = ev.target.hasClass('unreached') ? 'Nås inte från någon ingång' : ''; hover(ev.target); });
       cy.on('mouseout', 'node', function () { view.style.cursor = ''; view.title = ''; hover(null); });
       cy.on('viewport', placeCard);
+      cy.on('viewport', updateZoom);
       cy.on('position', 'node', placeCard);
       // Rullhjulet zoomar bara med Ctrl (⌘ på Mac); annars rullar sidan som vanligt.
       view.addEventListener('wheel', function (ev) { cy.userZoomingEnabled(ev.ctrlKey || ev.metaKey); }, true);
+      // Nyp med två fingrar zoomar: Cytoscape styr nyp med samma userZoomingEnabled, så det slås på bara medan två fingrar rör skärmen.
+      view.addEventListener('touchstart', function (ev) { if (ev.touches.length >= 2) cy.userZoomingEnabled(true); }, true);
+      var pinchOff = function (ev) { if (ev.touches.length < 2) cy.userZoomingEnabled(false); };
+      view.addEventListener('touchend', pinchOff, true);
+      view.addEventListener('touchcancel', pinchOff, true);
+      updateZoom();
       if (window.ResizeObserver) new ResizeObserver(function () {
         cy.resize();
         placeStatus();
@@ -1519,6 +1534,46 @@
     var pan = { x: cy.width() / 2 - zoom * (bb.x1 + bb.w / 2), y: top + (cy.height() - top) / 2 - zoom * (bb.y1 + bb.h / 2) };
     if (motion()) cy.animate({ zoom: zoom, pan: pan }, { duration: 450, easing: 'ease-in-out-cubic', complete: done });
     else { cy.viewport({ zoom: zoom, pan: pan }); if (done) done(); }
+  }
+  // Zoomknapparna nere till höger, procenten och tangenterna + (=), - och 0 när fokus är i kartan eller på zoomknapparna.
+  function initZoom(root) {
+    var mac = /Mac|iPhone|iPad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+    $('map-zoom-hint').textContent = (mac ? '⌘' : 'Ctrl') + ' + rullhjul zoomar';
+    $('map-zoom-in').addEventListener('click', function () { zoomBy(1.25, this); });
+    $('map-zoom-out').addEventListener('click', function () { zoomBy(1 / 1.25, this); });
+    $('map-zoom-fit').addEventListener('click', function () { fitView(); });
+    root.addEventListener('keydown', function (ev) {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.defaultPrevented) return;
+      var t = ev.target;
+      if (t !== $('map-view') && !$('map-zoom').contains(t)) return;
+      if (ev.key === '+' || ev.key === '=') zoomBy(1.25);
+      else if (ev.key === '-' || ev.key === '−') zoomBy(1 / 1.25);
+      else if (ev.key === '0') fitView();
+      else return;
+      ev.preventDefault();
+    });
+  }
+  // Zoomar med faktorn runt kartans mitt, mjukt om det går, inom minZoom och maxZoom.
+  function zoomBy(factor) {
+    var cy = state.cy;
+    if (!cy) return;
+    var from = cy.animated() && state.zoomGoal ? state.zoomGoal : cy.zoom();
+    var to = Math.max(cy.minZoom(), Math.min(cy.maxZoom(), from * factor));
+    if (Math.abs(to - from) < 1e-6) return;
+    var center = { x: cy.width() / 2, y: cy.height() / 2 };
+    if (motion()) {
+      state.zoomGoal = to;
+      cy.animate({ zoom: { level: to, renderedPosition: center } }, { duration: 200, easing: 'ease-in-out-cubic', complete: function () { state.zoomGoal = null; } });
+    } else cy.zoom({ level: to, renderedPosition: center });
+  }
+  // Procenten och att knapparna är avstängda vid gränsen.
+  function updateZoom() {
+    var cy = state.cy;
+    if (!cy) return;
+    var z = cy.zoom();
+    $('map-zoom-pct').textContent = Math.round(z * 100) + ' %';
+    $('map-zoom-in').setAttribute('aria-disabled', z >= cy.maxZoom() - 1e-6 ? 'true' : 'false');
+    $('map-zoom-out').setAttribute('aria-disabled', z <= cy.minZoom() + 1e-6 ? 'true' : 'false');
   }
   // Vägen för det valda anropet, annars hela kartan.
   function fitView(done) { fitTo(state.picked.length ? '.path' : '*', done); }
@@ -1642,6 +1697,8 @@
     if (x + box.offsetWidth > view.clientWidth - 8) x = p.x - r - box.offsetWidth;
     x = Math.max(8, Math.min(x, view.clientWidth - box.offsetWidth - 8));
     y = Math.max(8, Math.min(y, view.clientHeight - box.offsetHeight - 8));
+    // Zoomrutan nere till höger (56 px bred, cirka 175 px hög) ska inte täckas: kortet flyttas då upp ovanför den.
+    if (x + box.offsetWidth > view.clientWidth - 70 && y + box.offsetHeight > view.clientHeight - 185) y = Math.max(8, view.clientHeight - 185 - box.offsetHeight);
     box.style.left = (x + view.offsetLeft) + 'px'; box.style.top = (y + view.offsetTop) + 'px';   // kortet ligger i map-wrap, under verktygsraden
   }
 

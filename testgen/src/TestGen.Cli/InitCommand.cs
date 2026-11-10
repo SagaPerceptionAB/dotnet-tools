@@ -303,10 +303,9 @@ internal static partial class InitCommand
     {
         var driver = Path.Combine(AppContext.BaseDirectory, ".playwright");
         var node = Environment.GetEnvironmentVariable("PLAYWRIGHT_NODEJS_PATH") is { Length: > 0 } custom ? custom
-            : Directory.Exists(Path.Combine(driver, "node")) ? Directory.EnumerateFiles(Path.Combine(driver, "node"), "node*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => Path.GetFileName(f) is "node" or "node.exe") : null;
+            : Path.Combine(driver, "node", NodePlatform(), OperatingSystem.IsWindows() ? "node.exe" : "node");
         var cli = Path.Combine(driver, "package", "cli.js");
-        if (node is null || !File.Exists(cli)) return new ChromiumInstallResult(false, "Error: Playwrights medföljande drivrutin hittades inte i " + driver);
+        if (!File.Exists(node) || !File.Exists(cli)) return new ChromiumInstallResult(false, "Error: Playwrights medföljande drivrutin för den här plattformen hittades inte: " + node);
         try
         {
             var start = new ProcessStartInfo(node) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
@@ -330,11 +329,15 @@ internal static partial class InitCommand
         }
     }
 
+    /// <summary>Mappen under .playwright/node för den här datorn, med Playwrights namn. Paketet kan ha flera plattformars node.</summary>
+    private static string NodePlatform() =>
+        (OperatingSystem.IsWindows() ? "win32" : OperatingSystem.IsMacOS() ? "darwin" : "linux")
+        + (OperatingSystem.IsWindows() ? "_" : "-")
+        + (System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64");
+
     [GeneratedRegex("\\u001b\\[[0-9;]*m")]
     private static partial Regex Ansi();
 
-    /// <summary>Var hela Playwright-utskriften sparas när installationen misslyckas, så att den går att läsa utan att fylla terminalen.</summary>
-    internal static string ChromiumLogPath => Path.Combine(Path.GetTempPath(), "testgen-chromium-install.log");
 
     internal static bool InstallChromium(Terminal terminal, Func<ChromiumInstallResult> install)
     {
@@ -343,8 +346,11 @@ internal static partial class InitCommand
         string? log = null;
         try
         {
-            File.WriteAllText(ChromiumLogPath, result.Output);
-            log = ChromiumLogPath;
+            // Hela Playwright-utskriften, så att den går att läsa utan att fylla terminalen. Ett nytt namn varje gång och CreateNew:
+            // temp-mappen kan vara delad, och en fil eller länk som någon annan lagt dit ska aldrig skrivas över.
+            var path = Path.Combine(Path.GetTempPath(), $"testgen-chromium-install-{Guid.NewGuid():N}.log");
+            using (var writer = new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write))) writer.Write(result.Output);
+            log = path;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* loggen är en extra; varningen räcker */ }
         terminal.Warning(ChromiumFailure(result.Output, log, Path.Combine(AppContext.BaseDirectory, "playwright.ps1")));

@@ -129,7 +129,7 @@ public static class HelpText
     {
         Usage = ["testgen map --solution <.sln|.slnx|.csproj> [--spec <fil|url>] [--out karta.json] [--mermaid karta.mmd] [--html karta.html]"],
         Description = """
-            Följer anropen från varje controller-action genom projekten ut till integrationerna. Kartan skrivs som text på stdout.
+            Följer anropen från varje ingång (controller-action, minimal API, Razor Page eller Blazor-sida) genom projekten ut till integrationerna. Kartan skrivs som text på stdout.
             Den visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog.
             Projektfilerna läses med MSBuild, precis som vid dotnet build: peka bara på kod du litar på.
             """,

@@ -14,7 +14,8 @@ public static class StatusView
         if (solution is null)
         {
             terminal.Out.WriteLine("testgen – ingen solution hittades här.");
-            terminal.Out.WriteLine("Gå till mappen där solutionen ligger, eller se kommandona: testgen --help");
+            terminal.Out.WriteLine(SolutionFinder.HintBelow(Directory.GetCurrentDirectory(), "testgen")
+                ?? "Gå till mappen där solutionen ligger, eller se kommandona: testgen --help");
             return ExitCodes.Ok;
         }
         var facts = RepositoryFacts.Read(solution);

@@ -119,6 +119,17 @@ public class StatusViewTests
     }
 
     [Test]
+    public void At_a_repo_root_with_the_solution_in_a_subfolder_it_names_that_solution()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, "backend"));
+        File.WriteAllText(Path.Combine(_dir, "backend", "Butik.slnx"), "<Solution />");
+        Directory.SetCurrentDirectory(_dir);
+        var (exit, o, e) = Cli();
+        Assert.That((exit, e), Is.EqualTo((0, "")));
+        Assert.That(o, Does.Contain("ingen solution").And.Contain("Gör så här: testgen --solution backend/Butik.slnx"));
+    }
+
+    [Test]
     public void No_arguments_in_a_folder_with_a_solution_shows_the_status()
     {
         File.WriteAllText(Path.Combine(_dir, "Butik.slnx"), "<Solution />");

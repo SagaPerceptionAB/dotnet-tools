@@ -316,11 +316,13 @@ public class InitCommandTests
 
         Assert.That(ok, Is.False);
         var text = e.ToString();
-        Assert.That(text, Does.Contain("cdn.playwright.dev").And.Contain("brandvägg eller proxy").And.Contain("Kör testgen init igen")
-            .And.Contain(InitCommand.ChromiumLogPath));
+        Assert.That(text, Does.Contain("cdn.playwright.dev").And.Contain("brandvägg eller proxy").And.Contain("Kör testgen init igen"));
+        var log = Regex.Match(text, @"Hela utskriften: (.+?\.log)\.").Groups[1].Value;
+        Assert.That(log, Does.StartWith(Path.GetTempPath()).And.Contain("testgen-chromium-install-"), "varningen säger var loggen ligger");
         Assert.That(text, Does.Not.Contain("coreBundle").And.Not.Contain("Download failed"), "stackspåret och Playwrights engelska ska inte visas");
         Assert.That(Regex.Matches(text, "Chromium gick inte att installera").Count, Is.EqualTo(1));
-        Assert.That(File.ReadAllText(InitCommand.ChromiumLogPath), Does.Contain("coreBundle"), "hela utskriften finns kvar i loggen");
+        Assert.That(File.ReadAllText(log), Does.Contain("coreBundle"), "hela utskriften finns kvar i loggen");
+        File.Delete(log);
     }
 
     [Test]

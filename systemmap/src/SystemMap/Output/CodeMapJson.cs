@@ -12,10 +12,15 @@ public static class CodeMapJson
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    public static string Serialize(CodeMapModel map) => JsonSerializer.Serialize(ToDto(map), Options) + "\n";
+    /// <param name="overview">Översikten om den redan är byggd (och i så fall redan utan de dolda delarna), annars byggs den här.</param>
+    /// <param name="hidden">Id:n på delarna som är dolda i kartan (se <see cref="CodeMapOverview.Hide(CodeMapModel, IReadOnlySet{string})"/>), så att den som läser
+    /// vet att kartan är ofullständig. Utelämnas när inget är dolt.</param>
+    public static string Serialize(CodeMapModel map, Overview? overview = null, IReadOnlySet<string>? hidden = null) =>
+        JsonSerializer.Serialize(ToDto(map, overview, hidden), Options) + "\n";
 
     /// <param name="overview">Översikten om den redan är byggd, annars byggs den här.</param>
-    public static object ToDto(CodeMapModel map, Overview? overview = null) => new
+    /// <param name="hidden">Se <see cref="Serialize"/>.</param>
+    public static object ToDto(CodeMapModel map, Overview? overview = null, IReadOnlySet<string>? hidden = null) => new
     {
         schemaVersion = CodeMapModel.SchemaVersion,
         solution = Path.GetFileName(map.Solution.Replace('\\', '/')),   // bara filnamnet: kartan innehåller inga sökvägar från den här datorn
@@ -53,6 +58,7 @@ public static class CodeMapJson
             handler = d.Handler,
         }).ToList(),
         warnings = map.Warnings.Order(StringComparer.Ordinal).ToList(),
+        hidden = hidden is { Count: > 0 } ? hidden.Order(StringComparer.Ordinal).ToList() : null,
         overview = Overview(overview ?? CodeMapOverview.Build(map)),
     };
 

@@ -139,10 +139,11 @@ public static class HelpText
             new("--spec <fil|url>", "OpenAPI-spec. Kopplar anropen till specens operationer och visar skillnader."),
             new("--out <fil>", "Skriv kartan som JSON."),
             new("--mermaid <fil>", "Skriv kartan som Mermaid-flödesschema."),
-            new("--level <nivå>", "Med --mermaid: projects, classes (standard) eller all."),
+            new("--level <nivå>", "Med --mermaid: projects, classes (standard), methods eller all."),
             new("--direction <LR|TB>", "Med --mermaid: LR (standard) eller TB."),
             new("--entry \"<anrop>\"", "Med --mermaid: bara vägen för ett anrop, t.ex. \"POST /orders\"."),
             new("--html <fil>", "Skriv kartan som webbsida. Sidan hämtar inget utifrån."),
+            new("--hide <namn>", "Dölj ett projekt, en klass eller en integration (går att upprepa). Vägarna genom dolda projekt och klasser består. Gäller text, --mermaid och --out; i --html är delarna avbockade i sidan."),
             new("--no-restore", "Kör inte dotnet restore."),
         ],
         Examples =

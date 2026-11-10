@@ -9,8 +9,11 @@
 //   mermaid(level, direction, entry): texten till "Exportera som Mermaid" i verktygsraden. Utan den syns inte knappen. Ett fel ges som
 //     { message, tip }.
 //   onError(error): när Mermaid-filen inte gick att hämta. Utan den står felet bredvid knappen.
+//   hidden: id:n på delar som är avbockade i "Visa" när kartan öppnas första gången (det man själv bockat av sparas och gäller före).
+//   mermaid får som fjärde värde id:n på det som är dolt, så att filen kan följa kartan.
 // Kartan fyller ytan sidan ger den: sidan sätter höjden med --map-height (annars hela fönstret). Anrop, riktning och nivå
 // väljs i raden ovanför kartan, där också exporten finns. Ett anrop går också att välja genom att klicka på dess nod.
+// "Visa" i raden väljer vilka projekt, klasser och integrationer som syns. SystemMap.hide(overview, ids) är regeln för det som döljs.
 // SystemMap.summary(json) ger "4 anrop, 3 delar av systemet och 6 integrationer.".
 (function () {
   'use strict';
@@ -29,7 +32,12 @@
     '    <span class="map-field"><span class="map-label" aria-hidden="true">Riktning</span>' +
     '      <span class="segmented" role="group" aria-label="Riktning"><button type="button" data-direction="LR" title="Anropen går från vänster till höger">→</button><button type="button" data-direction="TB" title="Anropen går uppifrån och ned">↓</button></span></span>' +
     '    <span class="map-field"><span class="map-label" aria-hidden="true">Nivå</span>' +
-    '      <span class="segmented" role="group" aria-label="Nivå"><button type="button" data-level="projects" title="Bara projekten och integrationerna">Projekt</button><button type="button" data-level="classes" title="Klasserna i varje projekt">Klasser</button><button type="button" data-level="all" title="Även metoderna, läsningarna, skrivningarna och meddelandena">Allt</button></span></span>' +
+    '      <span class="segmented" role="group" aria-label="Nivå"><button type="button" data-level="projects" title="Bara projekten och integrationerna">Projekt</button><button type="button" data-level="classes" title="Klasserna i varje projekt">Klasser</button><button type="button" data-level="methods" title="Metoderna i varje klass. Läsningar, skrivningar och meddelanden ligger kvar i integrationen.">Funktioner</button><button type="button" data-level="all" title="Allt: även läsningarna, skrivningarna och meddelandena i integrationerna">Allt</button></span></span>' +
+    '    <details class="map-extra map-show" id="map-show" name="map-extra" hidden><summary id="map-show-summary" title="Välj vad som syns på kartan">Visa</summary>' +
+    '      <div class="map-panel" id="map-show-panel" role="group" aria-labelledby="map-show-title"><h3 id="map-show-title">Välj vad som syns</h3>' +
+    '        <p class="map-panel-help">Avbockade delar döljs med det som ligger i dem. Vägarna genom dem finns kvar.</p>' +
+    '        <button type="button" id="map-show-all">Visa allt</button><div id="map-tree"></div></div></details>' +
+    '    <span class="map-hint" id="map-hint" hidden></span>' +
     '    <span id="map-export"><button type="button" id="map-mermaid" aria-label="Exportera som Mermaid" title="Exportera som Mermaid. Ett flödesschema att lägga i dokumentation. Filen följer riktningen, nivån och anropet du valt."><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.5 V11 M5.5 7.5 L9 11 L12.5 7.5"/><path d="M2.5 11.5 V15 H15.5 V11.5"/></svg></button>' +
     '      <span class="map-sr" id="map-mermaid-status"></span></span>' +
     '    <details class="map-extra" id="map-diff" name="map-extra" hidden><summary id="map-diff-summary" title="Anrop som bara finns i koden eller bara i API-beskrivningen"></summary><ul id="map-diff-list"></ul></details>' +
@@ -41,10 +49,11 @@
     '<div class="map-sr" id="map-live" role="status" aria-live="polite"></div>';
 
   // open: delar användaren fällt ut. shut: delar på det valda anropets väg som användaren fällt ihop. card: noden i detaljkortet.
-  // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects, classes eller all (vad som är utfällt från början).
+  // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects, classes, methods eller all (vad som är utfällt från början).
+  // hidden: id → true för delarna användaren bockat av i "Visa". view: översikten utan dem (hide), som allt ritas ur.
   // out/into: pilarna från och till varje nod. visible: visibleOf för det som ritas just nu.
-  var state = { map: null, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
-    dir: stored('map-direction', ['LR', 'TB'], 'LR'), level: stored('map-level', ['projects', 'classes', 'all'], 'classes'),
+  var state = { map: null, view: null, hidden: {}, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
+    dir: stored('map-direction', ['LR', 'TB'], 'LR'), level: stored('map-level', ['projects', 'classes', 'methods', 'all'], 'classes'),
     layout: null, steps: {}, base: {}, last: 1, card: null, hovered: null, pulses: [], root: null, opts: {}, tools: [], unfitted: false };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -62,6 +71,10 @@
   function announce(text) { var live = $('map-live'); live.textContent = ''; setTimeout(function () { live.textContent = text; }, 30); }
   function stored(key, allowed, fallback) {
     try { var v = sessionStorage.getItem(key); return allowed.indexOf(v) >= 0 ? v : fallback; } catch (e) { return fallback; }
+  }
+  // En sparad lista (JSON), eller null om ingen finns. En tom lista är ett val ("visa allt") och skiljer sig från ingen.
+  function storedList(key) {
+    try { var v = JSON.parse(sessionStorage.getItem(key)); return Array.isArray(v) ? v : null; } catch (e) { return null; }
   }
   function remember(key, value) { try { sessionStorage.setItem(key, value); } catch (e) { /* privat läge eller en fil utan lagring */ } }
   function motion() { return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
@@ -118,6 +131,14 @@
     root.innerHTML = MARKUP;
     $('map-export').hidden = !state.opts.mermaid;
     $('map-mermaid').addEventListener('click', downloadMermaid);
+    $('map-show-all').addEventListener('click', function () { if (hiddenIds().length) setHidden({}); });
+    $('map-tree').addEventListener('change', function (ev) {
+      var id = ev.target.getAttribute('data-part');
+      if (!id) return;
+      var next = Object.assign({}, state.hidden);
+      if (ev.target.checked) delete next[id]; else next[id] = true;
+      setHidden(next);
+    });
     // Esc stänger detaljkortet, och skillnader och varningar som fällts ut över kartan (fokus går då tillbaka till rubriken).
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape') return;
@@ -160,7 +181,7 @@
     status.textContent = '';
     try {
       var key = state.entry ? entryKey(state.entry) : null;
-      var text = await state.opts.mermaid(state.level, state.dir, key);
+      var text = await state.opts.mermaid(state.level, state.dir, key, hiddenIds());
       var name = 'systemmap' + (key ? '-' + key.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '') : '') + '.mmd';
       var link = document.createElement('a');
       link.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
@@ -181,16 +202,9 @@
   function renderMap(map) {
     state.map = map;
     state.root.hidden = false;
-    state.nodes = {}; state.kids = {}; state.out = {}; state.into = {};
-    map.overview.nodes.forEach(function (n) {
-      state.nodes[n.id] = n;
-      if (n.parent) (state.kids[n.parent] = state.kids[n.parent] || []).push(n.id);
-    });
-    map.overview.links.forEach(function (k) {
-      (state.out[k.from] = state.out[k.from] || []).push(k);
-      (state.into[k.to] = state.into[k.to] || []).push(k);
-    });
-    computeSteps();
+    state.hidden = loadHidden(map);
+    buildTree();
+    useView();
     if (!state.open) openLevel(state.level);
     syncTools();
     var list = $('map-entry'); list.textContent = '';
@@ -223,6 +237,142 @@
     state.shut = {};
     if (state.cy) state.cy.elements().remove();       // ny karta: lägg ut allt från början
     selectEntry(keep || null);
+  }
+
+  // ---- Visa: välj vad som syns ----
+  // Delarna som går att dölja: projekt, klasser och integrationer. Anrop går inte att dölja.
+  function hideable(n) { return n.kind === 'project' || n.kind === 'class' || n.kind === 'integration'; }
+  function hiddenKey(map) { return 'map-hidden:' + (map.solution || ''); }
+  // Det som är dolt när kartan öppnas: det användaren bockat av förut (sparat), annars det sidan ber om. Delar som inte finns hoppas över.
+  function loadHidden(map) {
+    var exists = {}, keep = {};
+    map.overview.nodes.forEach(function (n) { if (hideable(n)) exists[n.id] = true; });
+    (storedList(hiddenKey(map)) || state.opts.hidden || []).forEach(function (id) { if (exists[id]) keep[id] = true; });
+    return keep;
+  }
+  function hiddenIds() { return Object.keys(state.hidden); }
+  // Kartan utan de dolda delarna, så att allt annat ritas ur state.view och bygger sina uppslag ur den.
+  function useView() {
+    state.view = hideParts(state.map.overview, hiddenIds());
+    state.nodes = {}; state.kids = {}; state.out = {}; state.into = {};
+    state.view.nodes.forEach(function (n) {
+      state.nodes[n.id] = n;
+      if (n.parent) (state.kids[n.parent] = state.kids[n.parent] || []).push(n.id);
+    });
+    state.view.links.forEach(function (k) {
+      (state.out[k.from] = state.out[k.from] || []).push(k);
+      (state.into[k.to] = state.into[k.to] || []).push(k);
+    });
+    computeSteps();
+  }
+  // Det användaren valt: sparas, och kartan ritas om utan de dolda delarna.
+  function setHidden(next) {
+    state.hidden = next;
+    remember(hiddenKey(state.map), JSON.stringify(hiddenIds()));
+    useView();
+    syncTree();
+    hideCard();
+    var n = hiddenIds().length;
+    announce(n ? n + (n === 1 ? ' del är dold.' : ' delar är dolda.') : 'Alla delar visas.');
+    if (state.cy && state.map.entryPoints.length) render(function () { fitView(); }, true);
+  }
+  // Bockarna: projekten med sina klasser, sedan integrationerna. Byggs om när en karta visas; syncTree sätter bockarna.
+  function buildTree() {
+    var nodes = state.map.overview.nodes, box = $('map-tree'), item = function (n, label) {
+      var li = el('li'), name = el('label'), input = el('input');
+      input.type = 'checkbox'; input.setAttribute('data-part', n.id);
+      if (n.parent) input.setAttribute('data-parent', n.parent);
+      name.appendChild(input); name.appendChild(el('span', null, label));
+      li.appendChild(name);
+      return li;
+    };
+    box.textContent = '';
+    var code = el('ul', 'map-tree'), outside = el('ul', 'map-tree');
+    nodes.filter(function (n) { return n.kind === 'project'; }).forEach(function (p) {
+      var li = code.appendChild(item(p, p.name)), classes = nodes.filter(function (c) { return c.kind === 'class' && c.parent === p.id; });
+      if (!classes.length) return;
+      var sub = li.appendChild(el('ul', 'map-tree'));
+      classes.forEach(function (c) { sub.appendChild(item(c, c.name)); });
+    });
+    nodes.filter(function (n) { return n.kind === 'integration'; }).forEach(function (i) {
+      var short = kindName(integrationOf(i.ref).kind, true);
+      outside.appendChild(item(i, short !== i.name ? i.name + ' · ' + short : i.name));
+    });
+    [['Systemets egen kod', code], ['Utanför systemet', outside]].forEach(function (g) {
+      if (!g[1].children.length) return;
+      var set = el('fieldset'), legend = el('legend', null, g[0]);
+      set.appendChild(legend); set.appendChild(g[1]); box.appendChild(set);
+    });
+    $('map-show').hidden = !box.children.length;
+    syncTree();
+  }
+  // En bock är ikryssad när delen syns. En del i en dold del står avbockad och går inte att ändra: bocka i den som döljer den.
+  function syncTree() {
+    Array.prototype.forEach.call($('map-tree').querySelectorAll('input[data-part]'), function (box) {
+      var blocked = !!state.hidden[box.getAttribute('data-parent')];
+      box.checked = !state.hidden[box.getAttribute('data-part')] && !blocked;
+      box.disabled = blocked;
+    });
+    var n = hiddenIds().length, hint = $('map-hint');
+    hint.textContent = n + ' dolda';
+    hint.hidden = n === 0;
+    hint.title = n === 1 ? 'En del av systemet är dold. Öppna Visa för att se den igen.' : 'Delar av systemet är dolda. Öppna Visa för att se dem igen.';
+    $('map-show-summary').setAttribute('aria-label', n ? 'Visa, ' + n + ' dolda' : 'Visa');
+    $('map-show-all').setAttribute('aria-disabled', n ? 'false' : 'true');
+  }
+
+  // Kartan utan de dolda delarna (samma regel som CodeMapOverview.Hide i C#). Ett dolt projekt eller en dold klass tas bort med sina
+  // metoder, men vägarna genom dem består: en pil A → dold → B blir A → B (kedjor och cykler räknas igenom), med de anrop som går
+  // hela vägen, och finns pilen redan slås de ihop. En dold integration tas bort med sina rader och pilarna dit. Anrop går inte att dölja.
+  // overview: { nodes, links } som i JSON. hidden: id:n. Ger en ny översikt, eller samma om inget döljs.
+  function hideParts(overview, hidden) {
+    var hide = {}, byId = {}, gone = {}, any = false;
+    (hidden || []).forEach(function (id) { hide[id] = true; });
+    overview.nodes.forEach(function (n) { byId[n.id] = n; });
+    overview.nodes.forEach(function (node) {
+      for (var n = node; n; n = n.parent ? byId[n.parent] : null)
+        if (hideable(n) && hide[n.id]) { gone[node.id] = true; any = true; break; }
+    });
+    if (!any) return overview;
+    var outgoing = {}, kept = [], index = {};
+    overview.links.forEach(function (l) { (outgoing[l.from] = outgoing[l.from] || []).push(l); });
+    function emit(from, to, file, line, entries) {
+      if (from === to) return;
+      var key = from + '\u0000' + to, k = index[key];
+      if (!k) {
+        k = index[key] = { from: from, to: to, entries: [] };
+        if (file != null) k.file = file;
+        if (line != null) k.line = line;
+        kept.push(k);
+      }
+      entries.forEach(function (e) { if (k.entries.indexOf(e) < 0) k.entries.push(e); });
+    }
+    overview.links.forEach(function (link) {
+      if (gone[link.from]) return;
+      if (!gone[link.to]) { emit(link.from, link.to, link.file, link.line, link.entries); return; }
+      // Pilen går in i en dold del: följ den vidare tills den kommer ut. Vid varje del noteras vilka anrop som redan gått igenom
+      // den, så att en cykel av dolda delar tar slut.
+      var seen = {}, work = [{ node: link.to, entries: link.entries.slice() }];
+      seen[link.to] = {};
+      link.entries.forEach(function (e) { seen[link.to][e] = true; });
+      while (work.length) {
+        var item = work.pop();
+        (outgoing[item.node] || []).forEach(function (next) {
+          var through = item.entries.filter(function (e) { return next.entries.indexOf(e) >= 0; });
+          if (!through.length) return;
+          if (!gone[next.to]) { emit(link.from, next.to, next.file, next.line, through); return; }
+          var done = seen[next.to] = seen[next.to] || {};
+          var fresh = through.filter(function (e) { if (done[e]) return false; done[e] = true; return true; });
+          if (fresh.length) work.push({ node: next.to, entries: fresh });
+        });
+      }
+    });
+    // Anropen i pilarna i anropens ordning, oavsett i vilken ordning vägarna följdes.
+    var order = {};
+    overview.nodes.forEach(function (n, i) { if (n.kind === 'entry') order[n.name] = i; });
+    var rank = function (e) { return e in order ? order[e] : Infinity; };
+    kept.forEach(function (k) { k.entries.sort(function (a, b) { return rank(a) === rank(b) ? 0 : rank(a) < rank(b) ? -1 : 1; }); });
+    return { nodes: overview.nodes.filter(function (n) { return !gone[n.id]; }), links: kept };
   }
 
   function entryKey(e) { return e.method + ' ' + e.path; }
@@ -260,12 +410,13 @@
     hideCard();
     render();
   }
-  // Detaljnivån: bara projekten, klasserna i projekten (från början) eller allt utfällt. Det man sedan fäller ut eller ihop
-  // själv gäller tills man väljer en nivå igen.
+  // Detaljnivån: bara projekten, klasserna i projekten (från början), metoderna i klasserna eller allt utfällt. Det man sedan
+  // fäller ut eller ihop själv gäller tills man väljer en nivå igen.
   function openLevel(level) {
     state.level = level; state.open = {}; state.shut = {};
     Object.keys(state.kids).forEach(function (id) {
-      if (level === 'all' || (level === 'classes' && state.nodes[id].kind === 'project')) state.open[id] = true;
+      var kind = state.nodes[id].kind;
+      if (level === 'all' || (level === 'classes' && kind === 'project') || (level === 'methods' && (kind === 'project' || kind === 'class'))) state.open[id] = true;
       else if (level === 'projects') state.shut[id] = true;
     });
   }
@@ -302,7 +453,7 @@
       return n;
     };
     Object.keys(state.nodes).forEach(function (id) { if (state.nodes[id].kind === 'class') steps[id] = 1; });
-    state.map.overview.links.forEach(function (k) {
+    state.view.links.forEach(function (k) {
       var a = owner(k.from), b = owner(k.to);
       if (!a || !b || a === b || b.kind !== 'class') return;
       if (a.kind === 'entry' || projectOf(a) !== projectOf(b)) roots[b.id] = true;
@@ -316,7 +467,7 @@
       });
     }
     Object.keys(steps).forEach(function (id) { var p = projectOf(state.nodes[id]); span[p] = Math.max(span[p] || 1, steps[id]); });
-    state.map.projects.forEach(function (p) { base[p] = next; next += span[p] || 1; });
+    state.map.projects.forEach(function (p) { if (!state.hidden['proj:' + p]) { base[p] = next; next += span[p] || 1; } });
     state.steps = steps; state.base = base; state.last = next;
   }
   function stepOf(n) {
@@ -423,12 +574,12 @@
       fixed[gid] = true;
       keys.forEach(function (k) { callGroup['in:' + k] = gid; });
     });
-    map.overview.nodes.forEach(function (n) {
+    state.view.nodes.forEach(function (n) {
       if (n.kind === 'entry') add(n, callGroup[n.id] || null);
       else if (n.kind === 'integration') add(n, null);
       else if (n.kind === 'project') add(n, 'system');
     });
-    map.overview.links.forEach(function (k) {
+    state.view.links.forEach(function (k) {
       var a = visibleOf(k.from), b = visibleOf(k.to);
       if (!a || !b || a === b) return;
       var id = 'k:' + a + '>' + b, e = byId[id];
@@ -1107,5 +1258,5 @@
     return ol;
   }
   // groups, cy och steps används av testerna.
-  window.SystemMap = { create: create, summary: summary, groups: callGroups, cy: function () { return state.cy; }, steps: function () { return state.steps; } };
+  window.SystemMap = { create: create, summary: summary, groups: callGroups, hide: hideParts, cy: function () { return state.cy; }, steps: function () { return state.steps; } };
 })();

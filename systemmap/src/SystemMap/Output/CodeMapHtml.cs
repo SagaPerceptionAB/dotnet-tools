@@ -15,7 +15,9 @@ public static partial class CodeMapHtml
 {
     private static readonly JsonSerializerOptions Json = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    public static string Write(CodeMapModel map)
+    /// <param name="hidden">Id:n på delar som är avbockade i sidan när den öppnas (se <see cref="CodeMapOverview.Hide(Overview, IReadOnlySet{string})"/>).
+    /// Kartan innehåller allt, så att man kan bocka i dem igen.</param>
+    public static string Write(CodeMapModel map, IReadOnlySet<string>? hidden = null)
     {
         // Bara solutionens filnamn: sidan kan delas, och sökvägen på den här datorn hör inte hemma där.
         var shown = map with { Solution = Path.GetFileName(map.Solution) };
@@ -37,6 +39,7 @@ public static partial class CodeMapHtml
             ["STYLE"] = CodeMapAssets.Text(CodeMapAssets.Style),
             ["MAP"] = InlineJson(CodeMapJson.ToDto(shown, overview)),
             ["MERMAID"] = InlineJson(mermaid),
+            ["HIDDEN"] = InlineJson((hidden ?? new HashSet<string>()).Order(StringComparer.Ordinal).ToList()),
             ["SCRIPTS"] = scripts.ToString().TrimEnd('\n'),
         };
         // En genomgång: det som sätts in letas inte igenom igen.
@@ -53,6 +56,6 @@ public static partial class CodeMapHtml
     private static string InlineJson(object value) =>
         JsonSerializer.Serialize(value, Json).Replace("</", "<\\/").Replace("<!--", "\\u003C!--");
 
-    [GeneratedRegex("__(TITLE|STYLE|MAP|MERMAID|SCRIPTS)__")]
+    [GeneratedRegex("__(TITLE|STYLE|MAP|MERMAID|HIDDEN|SCRIPTS)__")]
     private static partial Regex Placeholder();
 }

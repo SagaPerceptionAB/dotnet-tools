@@ -3,26 +3,31 @@ using System.Text;
 
 namespace SystemMap;
 
-/// <summary>Hur mycket som ritas: projekten, klasserna i projekten, eller allt (även metoder, läsningar, skrivningar och meddelanden).</summary>
-public enum MapLevel { Projects, Classes, All }
+/// <summary>
+/// Hur mycket som ritas: projekten, klasserna i projekten, metoderna i klasserna (med läsningar, skrivningar och meddelanden på
+/// pilarna till integrationerna), eller allt (även raderna i integrationerna).
+/// </summary>
+public enum MapLevel { Projects, Classes, Methods, All }
 
 /// <param name="TopDown">Uppifrån och ned i stället för vänster till höger.</param>
 /// <param name="Entry">Bara vägen för det här anropet, t.ex. <c>POST /orders</c>, eller null för hela systemet.</param>
-public sealed record MermaidOptions(MapLevel Level = MapLevel.Classes, bool TopDown = false, string? Entry = null)
+/// <param name="Hidden">Id:n på delar som inte ritas (se <see cref="CodeMapOverview.Hide(Overview, IReadOnlySet{string})"/>), eller null.</param>
+public sealed record MermaidOptions(MapLevel Level = MapLevel.Classes, bool TopDown = false, string? Entry = null, IReadOnlySet<string>? Hidden = null)
 {
     /// <summary>Nivåerna som de skrivs på kommandoraden och i webbsidan, i ordning från minst till mest.</summary>
-    public static readonly string[] Levels = ["projects", "classes", "all"];
+    public static readonly string[] Levels = ["projects", "classes", "methods", "all"];
     /// <summary>Riktningarna: vänster till höger och uppifrån och ned.</summary>
     public static readonly string[] Directions = ["LR", "TB"];
 
     /// <summary>Värdena som de skrivs på kommandoraden och skickas från webbsidan: <see cref="Levels"/> och <see cref="Directions"/>.</summary>
-    public static MermaidOptions Parse(string? level, string? direction, string? entry) => new(
+    public static MermaidOptions Parse(string? level, string? direction, string? entry, IEnumerable<string>? hidden = null) => new(
         level?.Trim().ToLowerInvariant() switch
         {
             null or "" or "classes" => MapLevel.Classes,
             "projects" => MapLevel.Projects,
+            "methods" => MapLevel.Methods,
             "all" => MapLevel.All,
-            _ => throw new UsageException($"--level måste vara projects, classes eller all, inte '{level}'.", "Skriv t.ex. --level classes"),
+            _ => throw new UsageException($"--level måste vara projects, classes, methods eller all, inte '{level}'.", "Skriv t.ex. --level classes"),
         },
         direction?.Trim().ToUpperInvariant() switch
         {
@@ -31,7 +36,8 @@ public sealed record MermaidOptions(MapLevel Level = MapLevel.Classes, bool TopD
             _ => throw new UsageException($"--direction måste vara LR (vänster till höger) eller TB (uppifrån och ned), inte '{direction}'.",
                 "Skriv t.ex. --direction TB"),
         },
-        string.IsNullOrWhiteSpace(entry) ? null : entry.Trim());
+        string.IsNullOrWhiteSpace(entry) ? null : entry.Trim(),
+        hidden is null ? null : new HashSet<string>(hidden, StringComparer.Ordinal));
 }
 
 /// <summary>
@@ -46,6 +52,10 @@ public static class CodeMapMermaid
     internal static string Write(CodeMapModel map, MermaidOptions options, Overview overview)
     {
         var entry = options.Entry is null ? null : EntryKey(map, options.Entry);
+        var hiddenNames = options.Hidden is { Count: > 0 } hide
+            ? overview.Nodes.Where(n => hide.Contains(n.Id) && n.Kind is OverviewKind.Project or OverviewKind.Class or OverviewKind.Integration).Select(n => n.Name).ToList()
+            : [];
+        if (hiddenNames.Count > 0) overview = CodeMapOverview.Hide(overview, options.Hidden!);
         var byId = overview.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
         var integrations = map.Integrations.ToDictionary(i => i.Id, StringComparer.Ordinal);
         var nodes = overview.Nodes.Where(n => entry is null || n.Entries.Contains(entry)).ToList();
@@ -56,13 +66,19 @@ public static class CodeMapMermaid
         // Delen som noden ritas som på nivån: en metod i sin klass (på projektnivå i sitt projekt), en rad i sin integration.
         string Shown(OverviewNode n) => n.Kind switch
         {
-            OverviewKind.Method when level != MapLevel.All => Shown(byId[n.Parent!]),
+            OverviewKind.Method when level is MapLevel.Projects or MapLevel.Classes => Shown(byId[n.Parent!]),
             OverviewKind.Class when level == MapLevel.Projects => n.Parent!,
             OverviewKind.Operation when level != MapLevel.All => n.Parent!,
             _ => n.Id,
         };
-        bool IsBox(OverviewNode n) => n.Kind == OverviewKind.Project ? level != MapLevel.Projects
-            : n.Kind is OverviewKind.Class or OverviewKind.Integration && level == MapLevel.All;
+        // En del med delar i är en ruta; en utan (t.ex. ett projekt vars klasser är dolda) ritas som en vanlig nod.
+        bool IsBox(OverviewNode n) => kids[n.Id].Any() && n.Kind switch
+        {
+            OverviewKind.Project => level != MapLevel.Projects,
+            OverviewKind.Class => level is MapLevel.Methods or MapLevel.All,
+            OverviewKind.Integration => level == MapLevel.All,
+            _ => false,
+        };
         string IdOf(OverviewNode n) => ids.Of(n.Id, n.Kind switch
         {
             OverviewKind.Entry => "in_" + n.Name,
@@ -85,6 +101,7 @@ public static class CodeMapMermaid
             $"  %% Systemkarta för {solution}: vägar som är möjliga enligt koden.",
         };
         if (entry is not null) lines.Add($"  %% Bara vägen för {entry}.");
+        if (hiddenNames.Count > 0) lines.Add($"  %% Dolda delar: {string.Join(", ", hiddenNames)}. Vägarna genom dem består.");
         var styled = new List<(string Id, string Style)>();
 
         void Add(OverviewNode n, string indent)
@@ -120,7 +137,7 @@ public static class CodeMapMermaid
         }
         foreach (var n in nodes.Where(n => n.Kind == OverviewKind.Integration)) Add(n, "  ");
 
-        // Pilarna mellan det som ritas. På nivåerna Projekt och Klasser står läsningarna, skrivningarna och meddelandena på
+        // Pilarna mellan det som ritas. På nivåerna Projekt, Klasser och Funktioner står läsningarna, skrivningarna och meddelandena på
         // pilen till integrationen.
         var edges = new List<(string From, string To, List<string> Labels)>();
         var index = new Dictionary<(string, string), int>();

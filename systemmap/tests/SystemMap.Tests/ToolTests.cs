@@ -58,4 +58,54 @@ public class ToolTests
         var description = Run("--help").Out;
         Assert.That(description, Does.Contain("controller-action").And.Contain("minimal API").And.Contain("Razor Page").And.Contain("Blazor-sida"));
     }
+    [Test]
+    public void Hide_leaves_the_named_parts_out_of_the_text_Mermaid_and_JSON_but_the_page_gets_them_unchecked()
+    {
+        var (mmd, json, html) = (Path.Combine(_dir, "karta.mmd"), Path.Combine(_dir, "karta.json"), Path.Combine(_dir, "karta.html"));
+        var (exit, output, err) = Run("--solution", TestPaths.Solution, "--no-browser", "--level", "methods", "--hide", "orderservice", "--hide", "shopinfrastructure/StockService",
+            "--hide", "LagerService", "--mermaid", mmd, "--json", json, "--html", html);
+
+        Assert.That(exit, Is.EqualTo(0), err);
+        Assert.That(output, Does.Contain("Dolda delar: OrderService, StockService, LagerService. Vägarna genom dem består."));
+        Assert.That(output, Does.Not.Contain("OrderService.").And.Not.Contain("StockService.").And.Not.Contain("Reservera"), "text: varken klasserna eller integrationen");
+        Assert.That(output, Does.Contain("OrdersController.Create [ShopApi]").And.Contain("PaymentGateway.ChargeAsync [ShopInfrastructure]"), "anropets egen rad och klassen efter står kvar");
+        var written = File.ReadAllText(mmd);
+        Assert.That(written, Does.StartWith("flowchart LR\n").And.Contain("%% Dolda delar: OrderService, StockService, LagerService."));
+        var diagram = string.Join("\n", written.Split('\n').Where(l => !l.StartsWith("  %% Dolda delar")));
+        Assert.That(diagram, Does.Not.Contain("OrderService").And.Not.Contain("StockService").And.Not.Contain("LagerService"));
+        Assert.That(diagram, Does.Contain("method_OrdersController_Create --> method_CustomerRepository_GetAsync"), "pilen går förbi den dolda klassen");
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(json));
+        Assert.That(doc.RootElement.GetProperty("hidden").EnumerateArray().Select(e => e.GetString()),
+            Is.EqualTo(new[] { "class:ShopApplication/OrderService", "class:ShopInfrastructure/StockService", "int:wcf:ILagerService" }));
+        Assert.That(File.ReadAllText(json), Does.Not.Contain("Reservera").And.Not.Contain("OrderService."));
+        var page = File.ReadAllText(html);
+        Assert.That(page, Does.Contain("id=\"hidden-data\">[\"class:ShopApplication/OrderService\",\"class:ShopInfrastructure/StockService\",\"int:wcf:ILagerService\"]</script>"), "sidan startar med delarna avbockade");
+        Assert.That(page, Does.Contain("Reservera").And.Contain("OrderService"), "men kartan i sidan är komplett, så att man kan bocka i dem igen");
+    }
+
+    [Test]
+    public void Hide_with_a_name_that_is_unknown_or_fits_several_parts_stops_before_anything_is_written()
+    {
+        var mmd = Path.Combine(_dir, "karta.mmd");
+        var unknown = Run("--solution", TestPaths.Solution, "--mermaid", mmd, "--hide", "OrderServise");
+        Assert.That(unknown.Exit, Is.EqualTo(2));
+        Assert.That(unknown.Err, Does.Contain("--hide 'OrderServise' finns inte i kartan.").And.Contain("Gör så här: Menade du ShopApplication/OrderService?"));
+        Assert.That(unknown.Out, Is.Empty, "inget skrivs på stdout");
+        Assert.That(File.Exists(mmd), Is.False, "ingen fil skrivs");
+
+        var ambiguous = Run("--solution", TestPaths.Solution, "--hide", "ShopApi");
+        Assert.That(ambiguous.Exit, Is.EqualTo(2));
+        Assert.That(ambiguous.Err, Does.Contain("--hide 'ShopApi' kan vara flera delar: projekt:ShopApi, integration:ShopApi.").And.Contain("Gör så här: Skriv vilken du menar, t.ex. projekt:ShopApi."));
+        Assert.That(Run("--solution", TestPaths.Solution, "--no-browser", "--hide", "integration:shopapi").Exit, Is.EqualTo(0), "med integration: är det entydigt");
+
+        Assert.That(Run("--solution", TestPaths.Solution, "--hide").Err, Does.Contain("Flaggan --hide kräver ett värde."));
+    }
+
+    [Test]
+    public void Help_describes_hide_and_all_four_levels()
+    {
+        var help = Run("--help").Out;
+        Assert.That(help, Does.Contain("--hide <namn>").And.Contain("projects, classes (standard), methods eller all"));
+        Assert.That(Run("--level", "funktioner", "--mermaid", "x.mmd").Err, Does.Contain("--level måste vara projects, classes, methods eller all, inte 'funktioner'."));
+    }
 }

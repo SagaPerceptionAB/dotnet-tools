@@ -94,10 +94,10 @@ public partial class CodeMapTests
         """;
 
     // Kör ett test mot sidan för en karta i en riktig webbläsare; sidan är klar när #map-view har data-ready.
-    private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test)
+    private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test, IReadOnlySet<string>? hidden = null)
     {
         var file = Path.Combine(Path.GetTempPath(), $"systemmap-page-{Guid.NewGuid():N}.html");
-        await File.WriteAllTextAsync(file, CodeMapHtml.Write(map));
+        await File.WriteAllTextAsync(file, CodeMapHtml.Write(map, hidden));
         try
         {
             using var playwright = await Playwright.CreateAsync();

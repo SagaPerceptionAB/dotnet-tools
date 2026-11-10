@@ -3,10 +3,12 @@ namespace SystemMap;
 /// <summary>Kartan som text i terminalen: ett träd per ingång.</summary>
 public static class CodeMapText
 {
-    public static IEnumerable<string> Lines(CodeMapModel map)
+    /// <param name="hidden">Namnen på delarna som är dolda (kartan är redan utan dem, se <see cref="CodeMapOverview.Hide(CodeMapModel, IReadOnlySet{string})"/>), så att den som läser vet att kartan är ofullständig.</param>
+    public static IEnumerable<string> Lines(CodeMapModel map, IReadOnlyList<string>? hidden = null)
     {
         yield return $"Systemkarta för {map.Solution}";
         yield return "Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog.";
+        if (hidden is { Count: > 0 }) yield return $"Dolda delar: {string.Join(", ", hidden)}. Vägarna genom dem består.";
         yield return map.Projects.Count > 0 ? $"Projekt i den ordning anropen når dem: {string.Join(" → ", map.Projects)}" : "Hittade inga ingångar.";
         if (map.Integrations.Count > 0)
         {

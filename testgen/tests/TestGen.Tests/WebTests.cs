@@ -1080,9 +1080,16 @@ public class WebTests
             .And.Contain("int_ShopDatabase[(\"ShopDatabase<br/>databas, EF Core (ShopDbContext) och SQL\")]")
             .And.Contain("-->|\"skicka OrderPlaced\"| int_order_lagd")
             .And.Not.Contain("GET /orders"));
+
+        // Med delar som är dolda på sidan: kartan utan dem, och pilarna förbi dem.
+        var hidden = await http.PostAsJsonAsync("/api/map/mermaid", new { body.solution, body.spec, level = "methods", hide = new[] { "class:ShopApplication/OrderService" } });
+        var withoutService = await hidden.Content.ReadAsStringAsync();
+        Assert.That(hidden.StatusCode, Is.EqualTo(HttpStatusCode.OK), withoutService);
+        Assert.That(withoutService, Does.Contain("%% Dolda delar: OrderService.").And.Not.Contain("class_OrderService")
+            .And.Contain("method_OrdersController_Create --> method_CustomerRepository_GetAsync"));
         var wrong = await http.PostAsJsonAsync("/api/map/mermaid", new { body.solution, body.spec, level = "hela" });
         Assert.That(wrong.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-        Assert.That(await wrong.Content.ReadAsStringAsync(), Does.Contain("--level måste vara projects, classes eller all"));
+        Assert.That(await wrong.Content.ReadAsStringAsync(), Does.Contain("--level måste vara projects, classes, methods eller all"));
     }
 
     [Test]

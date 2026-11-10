@@ -39,7 +39,7 @@ public static class Program
 
     internal static readonly HelpPage Help = new()
     {
-        Usage = ["dotnet systemmap [--solution <fil>] [--spec <fil|url>] [--html karta.html] [--mermaid karta.mmd] [--json karta.json]"],
+        Usage = ["dotnet systemmap [--solution <fil>] [--spec <fil|url>] [--html karta.html] [--mermaid karta.mmd] [--json karta.json] [--hide <namn>]"],
         Description = """
             Följer anropen från varje ingång (controller-action, minimal API, Razor Page eller Blazor-sida) genom projekten ut till integrationerna (databas, HTTP, köer, lagring, e-post).
             Kartan visar vägar som är möjliga enligt koden, inte vilken väg ett visst anrop tog. Den skrivs som text på stdout.
@@ -51,16 +51,17 @@ public static class Program
             new("--spec <fil|url>", "OpenAPI-spec. Kopplar anropen till specens operationer och visar skillnader."),
             new("--html <fil>", "Skriv kartan som webbsida. Sidan hämtar inget utifrån."),
             new("--mermaid <fil>", "Skriv kartan som Mermaid-flödesschema."),
-            new("--level <nivå>", "Med --mermaid: projects, classes (standard) eller all."),
+            new("--level <nivå>", "Med --mermaid: projects, classes (standard), methods eller all."),
             new("--direction <LR|TB>", "Med --mermaid: LR (standard) eller TB."),
             new("--entry \"<anrop>\"", "Med --mermaid: bara vägen för ett anrop, t.ex. \"POST /orders\"."),
             new("--json <fil>", "Skriv kartan som JSON."),
+            new("--hide <namn>", "Dölj ett projekt, en klass eller en integration (går att upprepa). Vägarna genom dolda projekt och klasser består. Gäller text, --mermaid och --json; i --html är delarna avbockade i sidan."),
             new("--no-browser", "Öppna inte webbläsaren (görs aldrig när CI är satt)."),
             new("--no-restore", "Kör inte dotnet restore."),
             new("--verbose", "Visa tekniska detaljer när något går fel."),
         ],
         Environment = [new("CI", "Satt: webbläsaren öppnas inte."), new("NO_COLOR", "Satt: ingen färg.")],
-        Examples = ["dotnet systemmap", "dotnet systemmap --html docs/systemkarta.html", "dotnet systemmap --mermaid docs/order.mmd --direction TB --entry \"POST /orders\""],
+        Examples = ["dotnet systemmap", "dotnet systemmap --html docs/systemkarta.html", "dotnet systemmap --mermaid docs/order.mmd --direction TB --entry \"POST /orders\"", "dotnet systemmap --mermaid docs/karta.mmd --level methods --hide OrderRepository"],
         ExitCodes = [new("0", "Klart"), new("2", "Fel i användning (solutionen eller specen saknas eller går inte att läsa)"), new("70", "Internt fel"), new("130", "Avbrutet med Ctrl+C")],
     };
 }

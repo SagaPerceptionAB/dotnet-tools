@@ -25,10 +25,24 @@ public sealed record Overview(IReadOnlyList<OverviewNode> Nodes, IReadOnlyList<O
 /// Räknar fram översikten ur ingångarnas anropsträd: varje klass, metod och integration en gång, med kanter mellan dem.
 /// En databas blir en del med en rad per läsning och skrivning; en kö en del med en rad per meddelande.
 /// </summary>
-public static class CodeMapOverview
+public static partial class CodeMapOverview
 {
     /// <summary>Nyckeln för ett anrop, t.ex. <c>POST /orders</c>.</summary>
     public static string EntryKey(EntryPoint entry) => $"{entry.Method} {entry.Path}";
+
+    /// <summary>Id:t för ett projekt i översikten.</summary>
+    public static string ProjectId(string project) => "proj:" + project;
+    /// <summary>Id:t för en klass i ett projekt.</summary>
+    public static string ClassId(string project, string type) => $"class:{project}/{type}";
+    /// <summary>Id:t för en integration i översikten (<paramref name="integration"/> är integrationens eget id, t.ex. <c>db:ShopDatabase</c>).</summary>
+    public static string IntegrationNodeId(string integration) => "int:" + integration;
+
+    /// <summary><c>OrderService.PlaceAsync</c> delas vid sista punkten: klassen och metoden.</summary>
+    private static (string Type, string Method) SplitMember(string member)
+    {
+        var dot = member.LastIndexOf('.');
+        return dot < 0 ? (member, member) : (member[..dot], member[(dot + 1)..]);
+    }
 
     public static Overview Build(CodeMapModel map)
     {
@@ -103,15 +117,14 @@ public static class CodeMapOverview
             }
         }
 
-        private Node Project(string name) => GetOrAdd("proj:" + name, () => new Node("proj:" + name, OverviewKind.Project, name, null), _projects);
+        private Node Project(string name) => GetOrAdd(ProjectId(name), () => new Node(ProjectId(name), OverviewKind.Project, name, null), _projects);
 
         /// <summary>Metoden, i sin klass i sitt projekt. <c>OrderService.PlaceAsync</c> delas vid sista punkten.</summary>
         private Node Member(string project, string member, string file, int line, DataShape? input, DataShape? output, string key)
         {
             var projectNode = Project(project);
-            var dot = member.LastIndexOf('.');
-            var (typeName, methodName) = dot < 0 ? (member, member) : (member[..dot], member[(dot + 1)..]);
-            var type = GetOrAdd($"class:{project}/{typeName}", () => new Node($"class:{project}/{typeName}", OverviewKind.Class, typeName, projectNode.Id),
+            var (typeName, methodName) = SplitMember(member);
+            var type = GetOrAdd(ClassId(project, typeName), () => new Node(ClassId(project, typeName), OverviewKind.Class, typeName, projectNode.Id),
                 projectNode.Children);
             var method = GetOrAdd($"method:{project}/{member}", () =>
                 new Node($"method:{project}/{member}", OverviewKind.Method, methodName, type.Id) { File = file, Line = line, In = input, Out = output }, type.Children);
@@ -125,7 +138,7 @@ public static class CodeMapOverview
         private Node Operation(IntegrationUse use, Step step, string key)
         {
             var integration = _integrations.GetValueOrDefault(use.Id) ?? new Integration(use.Id, IntegrationKind.Http, use.Id, []);
-            var parent = GetOrAdd("int:" + use.Id, () => new Node("int:" + use.Id, OverviewKind.Integration, integration.Name, null) { Ref = use.Id }, _external);
+            var parent = GetOrAdd(IntegrationNodeId(use.Id), () => new Node(IntegrationNodeId(use.Id), OverviewKind.Integration, integration.Name, null) { Ref = use.Id }, _external);
             var label = integration.Kind == IntegrationKind.Queue && step.In is { } message ? $"{use.Operation} {message.Type}" : use.Operation;
             var operation = GetOrAdd($"op:{use.Id}|{label}", () =>
                 new Node($"op:{use.Id}|{label}", OverviewKind.Operation, label, parent.Id) { In = step.In, Out = step.Out }, parent.Children);

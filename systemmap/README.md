@@ -41,15 +41,26 @@ dotnet systemmap --spec https://example.com/openapi.json
 | `--spec` | `<fil\|url>` | OpenAPI-spec. Kopplar anropen till specens operationer och listar anrop som bara finns i koden eller bara i specen. |
 | `--html` | `<fil>` | Skriv kartan som webbsida. Sidan hämtar inget utifrån. |
 | `--mermaid` | `<fil>` | Skriv kartan som Mermaid-flödesschema. |
-| `--level` | `projects`, `classes` (standard), `all` | Detaljnivå. Gäller med `--mermaid`. |
+| `--level` | `projects`, `classes` (standard), `methods`, `all` | Detaljnivå: projekten, klasserna, metoderna i klasserna eller allt. På `methods` ligger läsningar, skrivningar och meddelanden på pilarna till integrationerna; på `all` är de egna rader. Gäller med `--mermaid`. Webbsidan har samma nivåer (Projekt, Klasser, Funktioner, Allt). |
 | `--direction` | `LR` (standard), `TB` | Vänster till höger eller uppifrån och ned. Gäller med `--mermaid`. |
 | `--entry` | `"<anrop>"` | Bara vägen för ett anrop, t.ex. `"POST /orders"`. Gäller med `--mermaid`. |
 | `--json` | `<fil>` | Skriv kartan som JSON. |
+| `--hide` | `<namn>` | Dölj ett projekt, en klass eller en integration; går att upprepa. Se nedan. |
 | `--no-browser` | | Öppna inte webbläsaren. Görs aldrig när miljövariabeln `CI` är satt. |
 | `--no-restore` | | Kör inte `dotnet restore`. Annars körs den om paketen inte redan är hämtade. |
 | `--verbose` | | Visa tekniska detaljer när något går fel. |
 
 Utan `--html`, `--mermaid` och `--json` skrivs kartan som en webbsida i en tillfällig mapp och öppnas i webbläsaren.
+
+### Dölja delar
+
+`--hide <namn>` tar bort ett projekt, en klass eller en integration från kartan, t.ex. `--hide OrderRepository --hide ShopDatabase`. Namnet skrivs som i kartan, utan hänsyn till stora och små bokstäver; en klass går också att skriva med namnrymd (`Orders.OrderService`). Passar ett namn på flera delar (t.ex. ett projekt och en integration som heter likadant) får man veta vilka, och skriver `projekt:Namn`, `klass:Namn`, `integration:Namn` eller `Projekt/Klass`. Ett namn som inte finns ger fel (exitkod `2`) med de närmaste namnen, innan något skrivs.
+
+- Ett dolt projekt eller en dold klass tas bort med sina metoder, men vägarna genom dem består: anropar A en dold klass som anropar B ritas A → B, med de anrop som går hela vägen.
+- En dold integration tas bort med sina läsningar, skrivningar och meddelanden och pilarna dit.
+- Anrop (ingångarna) går inte att dölja.
+- Texten på stdout, `--mermaid` och `--json` blir utan de dolda delarna, och säger vilka som är dolda (en rad `Dolda delar:` i texten och Mermaid-filen, och listan `hidden` med id:n i JSON). JSON-filen har samma form som annars (`schemaVersion`, sorterade listor): `entryPoints`, `integrations`, `apps` och `overview` är filtrerade, men ett anrops egen `handler` står kvar, och `file` för en integration anges där den anropas.
+- `--html` får hela kartan, med delarna avbockade i **Visa** i sidan, så att den som läser kan bocka i dem igen. Det en läsare bockar av i sidan sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
 
 Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev karta.html (webbsida)`) skrivs på stderr.
 

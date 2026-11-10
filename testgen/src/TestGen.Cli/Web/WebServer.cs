@@ -487,6 +487,8 @@ public sealed class WebServer : IAsyncDisposable
         public string? Direction { get; set; }
         /// <summary>För Mermaid: bara vägen för anropet, t.ex. <c>POST /orders</c>.</summary>
         public string? Entry { get; set; }
+        /// <summary>För Mermaid: id:n på delar som är dolda på sidan (<c>class:Api/OrderService</c>, <c>int:db:Shop</c>).</summary>
+        public string[]? Hide { get; set; }
     }
 
     private sealed record CachedMap(string Key, string Stamp, CodeMapModel Model, object Dto);
@@ -499,7 +501,7 @@ public sealed class WebServer : IAsyncDisposable
 
     /// <summary>Kartan som Mermaid (samma som <c>testgen map --mermaid</c>), med nivån, riktningen och anropet som sidan visar.</summary>
     private Task<IResult> MermaidAsync(HttpContext ctx) => WithMapAsync(ctx, (map, req) =>
-        Results.Text(CodeMapMermaid.Write(map.Model, MermaidOptions.Parse(req.Level, req.Direction, req.Entry)), "text/plain; charset=utf-8"));
+        Results.Text(CodeMapMermaid.Write(map.Model, MermaidOptions.Parse(req.Level, req.Direction, req.Entry, req.Hide)), "text/plain; charset=utf-8"));
 
     /// <summary>Kartan för förfrågan: den sparade om koden inte ändrats sedan den lästes, annars läses koden igen.</summary>
     private async Task<IResult> WithMapAsync(HttpContext ctx, Func<CachedMap, MapRequest, IResult> respond)

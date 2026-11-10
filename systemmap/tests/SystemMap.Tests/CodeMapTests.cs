@@ -412,7 +412,7 @@ public partial class CodeMapTests
         Assert.That(e.Message, Is.EqualTo("Anropet 'GET /finns-inte' finns inte i kartan."));
     }
 
-    [TestCase("hela", null, "--level måste vara projects, classes eller all")]
+    [TestCase("hela", null, "--level måste vara projects, classes, methods eller all")]
     [TestCase(null, "RL", "--direction måste vara LR")]
     public void Mermaid_with_unknown_level_or_direction_gives_an_error(string? level, string? direction, string expected) =>
         Assert.That(Assert.Throws<UsageException>(() => MermaidOptions.Parse(level, direction, null))!.Message, Does.StartWith(expected));
@@ -433,7 +433,7 @@ public partial class CodeMapTests
         Assert.That(html, Does.Contain("Content-Security-Policy\" content=\"default-src 'none';"), "sidan hämtar inget utifrån");
         Assert.That(html, Does.Contain("window.SystemMap = { create: create, summary: summary, groups: callGroups").And.Contain("cytoscape").And.Contain(".map-view {"));
         Assert.That(html, Does.Not.Contain("__" + "MAP__").And.Not.Contain("__" + "SCRIPTS__"), "alla delar är insatta");
-        Assert.That(html.Split("</script>").Length - 1, Is.EqualTo(CodeMapAssets.Scripts.Count + 3), "varningen avslutar ingen skripttagg");
+        Assert.That(html.Split("</script>").Length - 1, Is.EqualTo(CodeMapAssets.Scripts.Count + 4), "varningen avslutar ingen skripttagg");
         Assert.That(html, Does.Not.Contain(Root), "bara filnamnet: sidan kan delas");
 
         // Mermaid för varje nivå och anrop, samma text som --mermaid. Uppifrån och ned byter sidan själv första raden.

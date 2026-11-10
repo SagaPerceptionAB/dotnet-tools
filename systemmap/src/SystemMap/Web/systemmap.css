@@ -32,7 +32,7 @@
 #map-export { margin-left: auto; }
 .systemmap #map-mermaid { width: 44px; height: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .map-extra summary { cursor: pointer; color: var(--blue, #1d4ed8); font-weight: 600; padding: 10px 0; }
-.map-extra ul { position: absolute; top: 100%; right: 0; z-index: 6; width: 360px; max-width: 100%; max-height: calc(var(--map-height, 100vh) - 90px); overflow: auto;
+.map-extra > ul { position: absolute; top: 100%; right: 0; z-index: 6; width: 360px; max-width: 100%; max-height: calc(var(--map-height, 100vh) - 90px); overflow: auto;
   margin: 4px 0 0; padding: 10px 12px 10px 32px; background: #fff; border: 1px solid var(--line, #d9e0e8); border-radius: 12px; box-shadow: 0 8px 28px rgba(15, 23, 42, .16); font-size: 14px; }
 .map-extra li { margin: 3px 0; word-break: break-word; }
 
@@ -48,3 +48,18 @@
 .map-steps li { margin: 4px 0; word-break: break-word; }
 .map-steps .external { color: #1f5c1f; }
 .map-steps .data { color: var(--muted, #536071); font-size: 14px; }
+
+/* Visa: välj vad som syns. Panelen fälls ut över kartan som skillnader och varningar; "N dolda" står kvar i raden när något är dolt. */
+.map-show .map-panel { position: absolute; top: 100%; left: 0; z-index: 6; width: 360px; max-width: 100%; max-height: calc(var(--map-height, 100vh) - 90px); overflow: auto;
+  margin: 4px 0 0; padding: 10px 14px 12px; background: #fff; border: 1px solid var(--line, #d9e0e8); border-radius: 12px; box-shadow: 0 8px 28px rgba(15, 23, 42, .16); font-size: 14px; }
+.map-panel h3 { margin: 0 0 4px; font-size: 15px; }
+.map-panel-help { margin: 0 0 8px; color: var(--muted, #536071); }
+.map-panel fieldset { margin: 10px 0 0; padding: 0; border: 0; min-width: 0; }
+.map-panel legend { padding: 0; font-size: 13px; font-weight: 600; color: var(--muted, #536071); }
+.map-tree { list-style: none; margin: 0; padding: 0; }
+.map-tree .map-tree { padding-left: 26px; }
+.map-tree label { display: flex; align-items: center; gap: 10px; min-height: 36px; cursor: pointer; word-break: break-word; }
+.map-tree input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--blue, #1d4ed8); cursor: pointer; }
+.map-tree input:disabled { cursor: default; }
+.map-tree input:disabled + span { color: var(--muted, #536071); }
+.map-hint { font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--grey-bg, #eef1f5); border: 1px solid var(--line, #d9e0e8); color: var(--text, #1b2430); }

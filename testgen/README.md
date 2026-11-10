@@ -50,7 +50,7 @@ dotnet test
 
 Från installationen till klara tester tog det 2 minuter (122 s) på exemplet Shop utan testprojekt, med tom NuGet-cache och Chromium redan installerat; Chromium tar ungefär 40 s till första gången. `testgen init` ensam tog 39 s och `dotnet test` (bygge och 70 tester) 80 s. Exemplet har två avsiktliga fel, så två tester fallerar.
 
-`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Testprojektet använder NUnit, men du skriver ingen NUnit-kod. Det kan ligga bredvid xUnit- och MSTest-projekt. Det som redan finns lämnas orört, och en andra körning ändrar inget.
+`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Går Chromium inte att hämta (till exempel bakom en brandvägg) varnar `init` en gång med orsaken och avslutar ändå med 0; kör `testgen init` igen när nedladdningen fungerar, så installeras bara Chromium. Playwrights hela utskrift sparas i `testgen-chromium-install.log` i den temporära katalogen. Testprojektet använder NUnit, men du skriver ingen NUnit-kod. Det kan ligga bredvid xUnit- och MSTest-projekt. Det som redan finns lämnas orört, och en andra körning ändrar inget.
 
 | Flagga | Betydelse |
 |---|---|

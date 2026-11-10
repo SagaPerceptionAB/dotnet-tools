@@ -37,7 +37,7 @@ internal static class SinkCatalog
             offset = 1;
         }
         var call = new Call(invocation, method, name, receiver, receiver is null ? null : ctx.Model.GetTypeInfo(receiver).Type, ctx) { ArgumentOffset = offset };
-        return Wcf(call) ?? Refit(call) ?? Http(call) ?? EntityFramework(call) ?? Dapper(call) ?? AdoNet(call)
+        return Wcf(call) ?? Refit(call) ?? Oidc(call) ?? Http(call) ?? EntityFramework(call) ?? Dapper(call) ?? AdoNet(call)
                ?? ServiceBus(call) ?? MassTransit(call) ?? RabbitMq(call) ?? Kafka(call) ?? StorageQueue(call)
                ?? Blob(call) ?? FileSystem(call) ?? Email(call);
     }
@@ -168,6 +168,37 @@ internal static class SinkCatalog
             .Where(i => Symbols.InvokedName(i) is "ReadFromJsonAsync" or "ReadFromJsonAsAsyncEnumerable" or "ReadAsAsync" or "DeserializeAsync" or "Deserialize" or "DeserializeObject")
             .Select(i => Symbols.Invoked(i, ctx.Model)?.TypeArguments.Select(DataShapes.Of).FirstOrDefault(s => s is not null))
             .FirstOrDefault(s => s is not null);
+
+    /// <summary>
+    /// OIDC-discovery: <c>ConfigurationManager&lt;OpenIdConnectConfiguration&gt;.GetConfigurationAsync</c> hämtar discovery-dokumentet och sedan nycklarna (JWKS) över HTTP,
+    /// likaså <c>OpenIdConnectConfigurationRetriever.GetAsync(adress)</c>. Integrationen heter som värden i adressen (eller som konfigurationsnyckeln),
+    /// och adressen är dokumentets (se <see cref="DiscoveryAddress"/>). <c>HttpDocumentRetriever.GetDocumentAsync</c> hämtar ett dokument på samma sätt.
+    /// </summary>
+    private static SinkHit? Oidc(Call c)
+    {
+        var technique = "HTTP (OIDC-konfiguration och nycklar)";
+        var discovery = c.Ctx.Resolver.Discovery;
+        MetadataAddress address;
+        if (c.Name is "GetConfigurationAsync" or "RequestRefresh" && c.On(DiscoveryAddress.ManagerType, DiscoveryAddress.ManagerInterface))
+            address = discovery.OfManager(c.Receiver, c.Model, c.Ctx.Bindings, c.Ctx.Project);
+        else if (c.Name is "GetAsync" or "GetConfigurationAsync" && c.On("Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever") &&
+                 c.Arguments.FirstOrDefault() is { } retrieved)
+            address = discovery.OfAddress(retrieved.Expression, c.Model, c.Ctx.Bindings, c.Ctx.Project);
+        else if (c.Name is "GetDocumentAsync" && c.On("Microsoft.IdentityModel.Protocols.HttpDocumentRetriever") && c.Arguments.FirstOrDefault() is { } document)
+        {
+            technique = "HTTP";
+            address = discovery.OfAddress(document.Expression, c.Model, c.Ctx.Bindings, c.Ctx.Project);
+        }
+        else return null;
+
+        var host = address.Text is not null && Uri.TryCreate(address.Text, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.Host : null;
+        var name = address.ConfigKey is { } key ? Origins.NameFromConfigKey(key) : host;
+        var readable = name is not null;
+        name ??= c.Ctx.Caller.ContainingType.Name;
+        var integration = new Integration("http:" + name, IntegrationKind.Http, name, [technique], readable ? address.ConfigKey : null);
+        var operation = readable ? $"GET {address.Text ?? "{" + address.ConfigKey + "}"}" : "GET";
+        return new SinkHit(integration, operation, c.Name, null, null, !readable);
+    }
 
     private static SinkHit? Refit(Call c)
     {

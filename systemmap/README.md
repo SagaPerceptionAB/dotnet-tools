@@ -121,6 +121,14 @@ utgående HTTP-klienter med projektet i solutionen de pekar på (namnet ur nycke
 Integrationer: databas (EF Core, Dapper, SQL), andra API:er (HTTP, Refit), WCF/SOAP, köer (Service Bus, MassTransit, RabbitMQ, Kafka,
 Azure Storage Queue), lagring (Blob, filer) och e-post (SMTP).
 
+OIDC-discovery är HTTP ut ur systemet: `ConfigurationManager<OpenIdConnectConfiguration>.GetConfigurationAsync` och `RequestRefresh` (också genom
+`IConfigurationManager<T>`) hämtar discovery-dokumentet och sedan nycklarna (JWKS), och `OpenIdConnectConfigurationRetriever.GetAsync` hämtar
+dokumentet. Integrationen heter som värden i adressen (`appleid.apple.com`) och tekniken är "HTTP (OIDC-konfiguration och nycklar)"; operationen är
+`GET` med dokumentets adress. Kommer adressen ur konfigurationen heter integrationen som nyckeln, som för andra HTTP-anrop. Adressen läses i
+`new ConfigurationManager<T>(adress, ...)`, och kartan följer hanteraren dit: lokala variabler, fält och egenskaper, parametrar (till argumenten hos
+anroparen), konstruktorparametrar (till `new` av klassen) och metoder i solutionen som returnerar hanteraren. Går den inte att följa, eller ger två
+vägar olika adresser, är adressen okänd och anropet får `address: "runtime"` som andra HTTP-anrop. `HttpDocumentRetriever.GetDocumentAsync` är en vanlig HTTP-hämtning.
+
 ## Säkerhet
 
 Projektfilerna läses med MSBuild och `dotnet restore` kan köras. Kör bara på kod du litar på.

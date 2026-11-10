@@ -145,7 +145,7 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
 
     /// <summary>
     /// Nyckeln för minnet: metoden, och det som parametrarna är bundna till när det påverkar resultatet (HttpClient, strängar och Uri som löser till
-    /// en konstant, en konfigurationsnyckel eller en typad klient). Andra metoder minns som metoden själv.
+    /// en konstant, en konfigurationsnyckel eller en typad klient, och OIDC-hanterare med sin adress). Andra metoder minns som metoden själv.
     /// </summary>
     private string MemoKey(IMethodSymbol method, Bindings bindings)
     {
@@ -157,6 +157,12 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
             if (Symbols.Is(parameter.Type, "System.Net.Http.HttpClient"))
             {
                 if (binding.Owner is { } owner) parts.Add($"{parameter.Ordinal}c:{Symbols.TypeKey(owner)}");
+            }
+            else if (Symbols.Is(parameter.Type, DiscoveryAddress.ManagerType, DiscoveryAddress.ManagerInterface))
+            {
+                // Två OIDC-hanterare (Apple och Google) som skickas till samma metod hämtar från olika adresser.
+                var address = resolver.Discovery.OfManager(binding.Expression, binding.Model, binding.Outer, models.ProjectOf(binding.Expression.SyntaxTree) ?? "");
+                if (address.IsKnown) parts.Add($"{parameter.Ordinal}m:{address.Text}|{address.ConfigKey}");
             }
             else if (parameter.Type.SpecialType == SpecialType.System_String || Symbols.Is(parameter.Type, "System.Uri"))
             {

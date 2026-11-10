@@ -139,6 +139,31 @@ public partial class CodeMapTests
             public sealed class GetAttribute(string path) : Attribute { public string Path { get; } = path; }
             public sealed class PostAttribute(string path) : Attribute { public string Path { get; } = path; }
         }
+        namespace Microsoft.IdentityModel.Protocols
+        {
+            public interface IDocumentRetriever { Task<string> GetDocumentAsync(string address, CancellationToken cancel); }
+            public class HttpDocumentRetriever : IDocumentRetriever { public Task<string> GetDocumentAsync(string address, CancellationToken cancel) => null!; }
+            public interface IConfigurationRetriever<T> where T : class { Task<T> GetConfigurationAsync(string address, IDocumentRetriever retriever, CancellationToken cancel); }
+            public interface IConfigurationManager<T> where T : class { Task<T> GetConfigurationAsync(CancellationToken cancel); void RequestRefresh(); }
+            public class ConfigurationManager<T> : IConfigurationManager<T> where T : class
+            {
+                public ConfigurationManager(string metadataAddress, IConfigurationRetriever<T> configRetriever) { }
+                public ConfigurationManager(string metadataAddress, IConfigurationRetriever<T> configRetriever, IDocumentRetriever documentRetriever) { }
+                public Task<T> GetConfigurationAsync(CancellationToken cancel) => null!;
+                public void RequestRefresh() { }
+            }
+        }
+        namespace Microsoft.IdentityModel.Protocols.OpenIdConnect
+        {
+            public class OpenIdConnectConfiguration { }
+            public class OpenIdConnectConfigurationRetriever : Microsoft.IdentityModel.Protocols.IConfigurationRetriever<OpenIdConnectConfiguration>
+            {
+                public static Task<OpenIdConnectConfiguration> GetAsync(string address, CancellationToken cancel) => null!;
+                public static Task<OpenIdConnectConfiguration> GetAsync(string address, Microsoft.IdentityModel.Protocols.IDocumentRetriever retriever, CancellationToken cancel) => null!;
+                Task<OpenIdConnectConfiguration> Microsoft.IdentityModel.Protocols.IConfigurationRetriever<OpenIdConnectConfiguration>.GetConfigurationAsync(
+                    string address, Microsoft.IdentityModel.Protocols.IDocumentRetriever retriever, CancellationToken cancel) => null!;
+            }
+        }
         namespace System.ServiceModel
         {
             [AttributeUsage(AttributeTargets.Interface)] public sealed class ServiceContractAttribute : Attribute { }

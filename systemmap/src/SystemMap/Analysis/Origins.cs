@@ -151,7 +151,7 @@ internal sealed class Origins(Func<SyntaxTree, SemanticModel?> models)
     }
 
     /// <summary>Uttrycken som tilldelas symbolen: initieraren, och tilldelningar i metoden (lokal variabel) eller i typen (fält, egenskap).</summary>
-    private IEnumerable<(ExpressionSyntax Expression, SemanticModel Model)> Assigned(ISymbol symbol, SyntaxNode usage)
+    internal IEnumerable<(ExpressionSyntax Expression, SemanticModel Model)> Assigned(ISymbol symbol, SyntaxNode usage)
     {
         foreach (var reference in symbol.DeclaringSyntaxReferences)
         {

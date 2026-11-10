@@ -6,7 +6,7 @@
     <!-- Gäller både SagaPerception.SystemMap.Cli och SagaPerception.SystemMap.AspNetCore. -->
     <SagaPerceptionSystemMapVersion>0.1.0-preview.2</SagaPerceptionSystemMapVersion>
     <!-- Gäller båda testgen-paketen: SagaPerception.TestGen.Cli och SagaPerception.TestGen.NUnit (som har Core, Excel, Mock, Browser och CommandLine inbakade). -->
-    <SagaPerceptionTestGenVersion>0.1.0-preview.1</SagaPerceptionTestGenVersion>
+    <SagaPerceptionTestGenVersion>0.1.0-preview.2</SagaPerceptionTestGenVersion>
   </PropertyGroup>
 
 </Project>

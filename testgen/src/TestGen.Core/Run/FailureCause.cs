@@ -23,8 +23,10 @@ public enum FailureCause
     TestUserRejected,
     /// <summary>"För många anrop": HOPPAD för att systemet svarade 429 (för många anrop) även efter att Retry-After följts.</summary>
     RateLimited,
-    /// <summary>"Fel i testgen": verktyget kunde inte bygga eller skicka testet (internt fel, eller en bodytyp det inte stöder ännu). Säger inget om systemet.</summary>
+    /// <summary>"Fel i testgen": verktyget kunde inte bygga eller skicka testet (ett internt fel). Säger inget om systemet och ska rapporteras till den som underhåller testgen.</summary>
     Tool,
+    /// <summary>"Stöds inte ännu": HOPPAD för att operationens bodytyp (t.ex. application/octet-stream eller multipart/form-data) är en känd begränsning i testgen, så testet skickades inte. Inget fel i verktyget och inget att rapportera; säger inget om systemet.</summary>
+    Unsupported,
     /// <summary>"Följdfel": HOPPAD, eller FEL för att ett tidigare steg/förberedande anrop föll av annan orsak.</summary>
     Cascade,
     /// <summary>"Skrivskyddad miljö": HOPPAD för att miljön bara tillåter läsande anrop (GET, HEAD, OPTIONS). Räknas inte som fel och påverkar inte exitkoden.</summary>

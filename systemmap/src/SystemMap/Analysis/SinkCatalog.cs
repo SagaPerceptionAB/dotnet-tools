@@ -10,7 +10,7 @@ internal sealed record SinkContext(
 /// <param name="Member">Anropet som lämnar systemet, t.ex. <c>PostAsJsonAsync</c>.</param>
 /// <param name="Sent">Det som skickas (en typ i solutionen), om det går att se.</param>
 /// <param name="Received">Det som kommer tillbaka, om det går att se.</param>
-internal sealed record SinkHit(Integration Integration, string Operation, string Member, DataShape? Sent, DataShape? Received);
+internal sealed record SinkHit(Integration Integration, string Operation, string Member, DataShape? Sent, DataShape? Received, bool AddressAtRuntime = false);
 
 /// <summary>
 /// Känner igen anrop som lämnar systemet ("dörrar ut"): HTTP, databas, WCF, köer, lagring och e-post. Reglerna jämför
@@ -37,7 +37,7 @@ internal static class SinkCatalog
             offset = 1;
         }
         var call = new Call(invocation, method, name, receiver, receiver is null ? null : ctx.Model.GetTypeInfo(receiver).Type, ctx) { ArgumentOffset = offset };
-        return Wcf(call) ?? Refit(call) ?? Http(call) ?? EntityFramework(call) ?? Dapper(call) ?? AdoNet(call)
+        return Wcf(call) ?? Refit(call) ?? Oidc(call) ?? Http(call) ?? EntityFramework(call) ?? Dapper(call) ?? AdoNet(call)
                ?? ServiceBus(call) ?? MassTransit(call) ?? RabbitMq(call) ?? Kafka(call) ?? StorageQueue(call)
                ?? Blob(call) ?? FileSystem(call) ?? Email(call);
     }
@@ -94,7 +94,10 @@ internal static class SinkCatalog
                    ?? new HttpClientInfo(owner.Name, null);
         var integration = new Integration("http:" + info.Name, IntegrationKind.Http, info.Name, ["HTTP"], info.ConfigKey ?? target.ConfigKey);
         var received = c.Name.Contains("FromJson") ? c.Method?.TypeArguments.Select(DataShapes.Of).FirstOrDefault(s => s is not null) : ReadInBody(c.Ctx);
-        return new SinkHit(integration, target.Text is null ? verb : $"{verb} {target.Text}", c.Name, c.Name.Contains("FromJson") ? null : c.Sent, received);
+        // En adress som varken är en sökväg i koden eller en nyckel i konfigurationen kommer först vid körning (t.ex. ur OIDC-discovery).
+        var addressAtRuntime = target.Text is null && target.ConfigKey is null && integration.ConfigKey is null;
+        var operation = target.Text is not null ? $"{verb} {target.Text}" : verb;
+        return new SinkHit(integration, operation, c.Name, c.Name.Contains("FromJson") ? null : c.Sent, received, addressAtRuntime);
     }
 
     /// <summary>Klientens ägare: klassen med den typade klienten. En <c>HttpClient</c> som är parameter hör till den som skickade den.</summary>
@@ -165,6 +168,37 @@ internal static class SinkCatalog
             .Where(i => Symbols.InvokedName(i) is "ReadFromJsonAsync" or "ReadFromJsonAsAsyncEnumerable" or "ReadAsAsync" or "DeserializeAsync" or "Deserialize" or "DeserializeObject")
             .Select(i => Symbols.Invoked(i, ctx.Model)?.TypeArguments.Select(DataShapes.Of).FirstOrDefault(s => s is not null))
             .FirstOrDefault(s => s is not null);
+
+    /// <summary>
+    /// OIDC-discovery: <c>ConfigurationManager&lt;OpenIdConnectConfiguration&gt;.GetConfigurationAsync</c> hämtar discovery-dokumentet och sedan nycklarna (JWKS) över HTTP,
+    /// likaså <c>OpenIdConnectConfigurationRetriever.GetAsync(adress)</c>. Integrationen heter som värden i adressen (eller som konfigurationsnyckeln),
+    /// och adressen är dokumentets (se <see cref="DiscoveryAddress"/>). <c>HttpDocumentRetriever.GetDocumentAsync</c> hämtar ett dokument på samma sätt.
+    /// </summary>
+    private static SinkHit? Oidc(Call c)
+    {
+        var technique = "HTTP (OIDC-konfiguration och nycklar)";
+        var discovery = c.Ctx.Resolver.Discovery;
+        MetadataAddress address;
+        if (c.Name is "GetConfigurationAsync" or "RequestRefresh" && c.On(DiscoveryAddress.ManagerType, DiscoveryAddress.ManagerInterface))
+            address = discovery.OfManager(c.Receiver, c.Model, c.Ctx.Bindings, c.Ctx.Project);
+        else if (c.Name is "GetAsync" or "GetConfigurationAsync" && c.On("Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever") &&
+                 c.Arguments.FirstOrDefault() is { } retrieved)
+            address = discovery.OfAddress(retrieved.Expression, c.Model, c.Ctx.Bindings, c.Ctx.Project);
+        else if (c.Name is "GetDocumentAsync" && c.On("Microsoft.IdentityModel.Protocols.HttpDocumentRetriever") && c.Arguments.FirstOrDefault() is { } document)
+        {
+            technique = "HTTP";
+            address = discovery.OfAddress(document.Expression, c.Model, c.Ctx.Bindings, c.Ctx.Project);
+        }
+        else return null;
+
+        var host = address.Text is not null && Uri.TryCreate(address.Text, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.Host : null;
+        var name = address.ConfigKey is { } key ? Origins.NameFromConfigKey(key) : host;
+        var readable = name is not null;
+        name ??= c.Ctx.Caller.ContainingType.Name;
+        var integration = new Integration("http:" + name, IntegrationKind.Http, name, [technique], readable ? address.ConfigKey : null);
+        var operation = readable ? $"GET {address.Text ?? "{" + address.ConfigKey + "}"}" : "GET";
+        return new SinkHit(integration, operation, c.Name, null, null, !readable);
+    }
 
     private static SinkHit? Refit(Call c)
     {
@@ -339,38 +373,109 @@ internal static class SinkCatalog
 
     // --- Lagring och e-post ----------------------------------------------------------------
 
+    /// <summary>
+    /// Vad ett anrop gör med lagringen, efter metodens namn. Ett namn som slutar på <c>*</c> matchar alla som börjar så, annars måste namnet vara exakt;
+    /// den första träffen gäller. En ny operation är en rad här.
+    /// </summary>
+    private static string? OperationOf(string name, (string Name, string Operation)[] table) =>
+        table.FirstOrDefault(t => t.Name.EndsWith('*') ? name.StartsWith(t.Name[..^1], StringComparison.Ordinal) : name == t.Name).Operation;
+
+    /// <summary>Azure Blob Storage: <c>BlobClient</c>/<c>BlobBaseClient</c> (och <c>BlockBlobClient</c> m.fl.), <c>BlobContainerClient</c> och <c>BlobServiceClient</c>, med och utan <c>Async</c>.</summary>
+    private static readonly (string Name, string Operation)[] BlobOperations =
+    [
+        ("Exists", "finns"),
+        ("Upload*", "ladda upp"),
+        ("Download*", "hämta"), ("OpenRead*", "hämta"), ("Query*", "hämta"),
+        ("OpenWrite*", "skriva"),
+        ("Delete*", "ta bort"),
+        ("Undelete*", "återställa"),
+        ("GetBlobs*", "lista"), ("GetBlobContainers*", "lista"), ("FindBlobsByTags*", "lista"),
+        ("GetProperties*", "läsa egenskaper"), ("GetTags*", "läsa egenskaper"), ("GetAccountInfo*", "läsa egenskaper"),
+        ("SetMetadata*", "ändra egenskaper"), ("SetHttpHeaders*", "ändra egenskaper"), ("SetTags*", "ändra egenskaper"), ("SetAccessTier*", "ändra egenskaper"),
+        ("Create*", "skapa"),
+        ("CopyFromUri*", "kopiera"), ("StartCopyFromUri*", "kopiera"), ("SyncCopyFromUri*", "kopiera"),
+    ];
+
     private static SinkHit? Blob(Call c)
     {
-        if (!c.On("Azure.Storage.Blobs.BlobContainerClient", "Azure.Storage.Blobs.Specialized.BlobBaseClient")) return null;
-        var operation = c.Name switch
-        {
-            _ when c.Name.StartsWith("Upload") => "ladda upp",
-            _ when c.Name.StartsWith("Download") || c.Name.StartsWith("OpenRead") => "hämta",
-            _ when c.Name.StartsWith("OpenWrite") => "skriva",
-            _ when c.Name.StartsWith("Delete") => "ta bort",
-            _ when c.Name.StartsWith("GetBlobs") => "lista",
-            _ => null,
-        };
-        if (operation is null) return null;
-        var container = c.OriginText("call", "GetBlobContainerClient") ?? c.OriginText("new", "BlobContainerClient") ?? "Blob";
+        if (!c.On("Azure.Storage.Blobs.BlobContainerClient", "Azure.Storage.Blobs.Specialized.BlobBaseClient", "Azure.Storage.Blobs.BlobServiceClient")) return null;
+        // "Exists" slutar på Async eller inte: båda är samma operation.
+        var name = c.Name.EndsWith("Async", StringComparison.Ordinal) ? c.Name[..^"Async".Length] : c.Name;
+        if (OperationOf(name, BlobOperations) is not { } operation) return null;
+        var container = (c.Name.Contains("BlobContainer") && c.On("Azure.Storage.Blobs.BlobServiceClient") ? c.FirstString : null)
+                        ?? c.OriginText("call", "GetBlobContainerClient") ?? c.OriginText("new", "BlobContainerClient") ?? "Blob";
         return new SinkHit(new Integration("storage:" + container, IntegrationKind.Storage, container, ["Blob"]), operation, c.Name, c.Sent, null);
     }
 
+    // Filsystemet. Namnen är metoderna i System.IO.File, Directory, FileInfo och DirectoryInfo; en egenskap som läser disken (Exists) är en egen tabell.
+    private static readonly (string Name, string Operation)[] FileOperations =
+    [
+        ("Exists", "finns"),
+        ("Read*", "läsa"), ("OpenRead*", "läsa"), ("OpenText", "läsa"),
+        ("Write*", "skriva"), ("Append*", "skriva"), ("Create*", "skriva"), ("OpenWrite*", "skriva"),
+        ("Delete*", "ta bort"),
+        ("Copy*", "flytta eller kopiera"), ("Move*", "flytta eller kopiera"), ("Replace", "flytta eller kopiera"),
+        ("Open", "öppna"),
+        ("Get*", "läsa egenskaper"), ("Set*", "ändra egenskaper"),
+    ];
+
+    private static readonly (string Name, string Operation)[] DirectoryOperations =
+    [
+        ("Exists", "finns"),
+        ("Create*", "skapa"),
+        ("Delete", "ta bort"),
+        ("Enumerate*", "lista"), ("GetFiles", "lista"), ("GetDirectories", "lista"), ("GetFileSystemEntries", "lista"), ("GetFileSystemInfos", "lista"),
+        ("Move*", "flytta eller kopiera"),
+        ("GetCreationTime*", "läsa egenskaper"), ("GetLastAccessTime*", "läsa egenskaper"), ("GetLastWriteTime*", "läsa egenskaper"),
+        ("SetCreationTime*", "ändra egenskaper"), ("SetLastAccessTime*", "ändra egenskaper"), ("SetLastWriteTime*", "ändra egenskaper"),
+    ];
+
+    /// <summary>FileInfo och DirectoryInfo: samma operationer som File och Directory, med namnen som metoderna på instansen har (<c>CopyTo</c>, <c>MoveTo</c>, <c>Delete</c>).</summary>
+    private static readonly (string Name, string Operation)[] FileInfoOperations =
+    [
+        ("Delete", "ta bort"), ("CopyTo", "flytta eller kopiera"), ("MoveTo", "flytta eller kopiera"), ("Replace", "flytta eller kopiera"),
+        ("OpenRead", "läsa"), ("OpenText", "läsa"), ("OpenWrite", "skriva"), ("AppendText", "skriva"), ("Create*", "skriva"), ("Open", "öppna"),
+    ];
+
+    private static readonly (string Name, string Operation)[] DirectoryInfoOperations =
+    [
+        ("Create*", "skapa"), ("Delete", "ta bort"), ("MoveTo", "flytta eller kopiera"),
+        ("Enumerate*", "lista"), ("GetFiles", "lista"), ("GetDirectories", "lista"), ("GetFileSystemInfos", "lista"),
+    ];
+
+    /// <summary>Egenskaper på <c>FileInfo</c> och <c>DirectoryInfo</c> som frågar disken: <c>Exists</c> och filens <c>Length</c>.</summary>
+    private static readonly (string Name, string Operation)[] FileInfoProperties = [("Exists", "finns"), ("Length", "läsa egenskaper")];
+
     private static SinkHit? FileSystem(Call c)
     {
-        if (c.Method?.ContainingType is not { } type || Symbols.FullName(type) != "System.IO.File") return null;
-        var operation = c.Name switch
+        if (c.Method?.ContainingType is not { } type) return null;
+        var (table, noun, instance) = Symbols.FullName(type) switch
         {
-            _ when c.Name.StartsWith("Read") || c.Name.StartsWith("OpenRead") || c.Name == "OpenText" => "läsa",
-            _ when c.Name.StartsWith("Write") || c.Name.StartsWith("Append") || c.Name.StartsWith("Create") || c.Name.StartsWith("OpenWrite") => "skriva",
-            _ when c.Name.StartsWith("Delete") => "ta bort",
-            _ when c.Name is "Copy" or "Move" or "Replace" => "flytta eller kopiera",
-            _ when c.Name == "Open" => "öppna",
-            _ => null,
+            "System.IO.File" => (FileOperations, "fil", false),
+            "System.IO.Directory" => (DirectoryOperations, "mapp", false),
+            "System.IO.FileInfo" or "System.IO.FileSystemInfo" => (FileInfoOperations, "fil", true),
+            "System.IO.DirectoryInfo" => (DirectoryInfoOperations, "mapp", true),
+            _ => (null, "", false),
         };
-        if (operation is null) return null;
-        var path = c.Arguments.FirstOrDefault() is { } first ? PathArgument(first.Expression, c.Model) : null;
-        return new SinkHit(FileIntegration, path is null ? $"{operation} en fil" : $"{operation} {path}", c.Name, null, null);
+        if (table is null || OperationOf(c.Name, table) is not { } operation) return null;
+        // Statiskt: sökvägen är första argumentet. På en instans (new FileInfo("ut.txt").Delete()): den som instansen skapades med.
+        var path = instance ? c.OriginText("new", type.Name == "DirectoryInfo" ? "DirectoryInfo" : "FileInfo")
+                            : c.Arguments.FirstOrDefault() is { } first ? PathArgument(first.Expression, c.Model) : null;
+        return new SinkHit(FileIntegration, path is null ? $"{operation} en {noun}" : $"{operation} {path}", c.Name, null, null);
+    }
+
+    /// <summary><c>new FileInfo("ut.txt").Exists</c> och <c>info.Length</c>: en fråga till disken utan anrop.</summary>
+    public static SinkHit? MatchProperty(MemberAccessExpressionSyntax access, SinkContext ctx)
+    {
+        if (OperationOf(access.Name.Identifier.ValueText, FileInfoProperties) is null) return null;   // samma namn som tabellen, innan symbolen slås upp för varje medlemsåtkomst
+        if (ctx.Model.GetSymbolInfo(access).Symbol is not IPropertySymbol { IsStatic: false } property || property.ContainingType is not { } type) return null;
+        var fullName = Symbols.FullName(type);
+        if (fullName is not ("System.IO.FileInfo" or "System.IO.DirectoryInfo" or "System.IO.FileSystemInfo") ||
+            OperationOf(property.Name, FileInfoProperties) is not { } operation) return null;
+        var directory = fullName == "System.IO.DirectoryInfo" || Symbols.Is(ctx.Model.GetTypeInfo(access.Expression).Type, "System.IO.DirectoryInfo");
+        var origins = ctx.Origins.Of(access.Expression, ctx.Model);
+        var path = origins.FirstOrDefault(f => f.Kind == "new" && f.Name is "FileInfo" or "DirectoryInfo" && f.Text is not null)?.Text;
+        return new SinkHit(FileIntegration, path is null ? $"{operation} en {(directory ? "mapp" : "fil")}" : $"{operation} {path}", property.Name, null, null);
     }
 
     private static SinkHit? Email(Call c)

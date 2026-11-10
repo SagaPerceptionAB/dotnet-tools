@@ -1,16 +1,18 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace SystemMap;
 
 /// <summary>
-/// Alla anrop i solutionen per metodnamn (utan att tolka dem först), och vilket prefix en <c>MapGroup</c>-kedja ger ett
-/// anrop. Används för minimal API:er och hälsovägar, där prefixet kan komma från den som anropar en extension-metod.
+/// Alla anrop i solutionen per metodnamn (utan att tolka dem först), alla <c>+=</c>, och vilket prefix en <c>MapGroup</c>-kedja ger ett
+/// anrop. Används för minimal API:er, hälsovägar och meddelandehanterare, där prefixet kan komma från den som anropar en extension-metod.
 /// </summary>
 internal sealed class CallSites
 {
     private const int MaxDepth = 8;
     private readonly Dictionary<string, List<(InvocationExpressionSyntax Invocation, SemanticModel Model)>> _byName = new(StringComparer.Ordinal);
+    private readonly List<(AssignmentExpressionSyntax Assignment, SemanticModel Model, string Project)> _additions = [];
 
     public CallSites(IEnumerable<Project> projects, ModelCache models)
     {
@@ -18,14 +20,19 @@ internal sealed class CallSites
             foreach (var tree in models.Trees(project))
             {
                 if (models.For(tree) is not { } model) continue;
-                foreach (var invocation in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())
+                foreach (var node in tree.GetRoot().DescendantNodes())
                 {
-                    if (Symbols.InvokedName(invocation) is not { } name) continue;
+                    if (node is AssignmentExpressionSyntax assignment && assignment.IsKind(SyntaxKind.AddAssignmentExpression))
+                        _additions.Add((assignment, model, project.Name));
+                    if (node is not InvocationExpressionSyntax invocation || Symbols.InvokedName(invocation) is not { } name) continue;
                     if (!_byName.TryGetValue(name, out var list)) _byName[name] = list = [];
                     list.Add((invocation, model));
                 }
             }
     }
+
+    /// <summary>Alla <c>a += b</c> (för händelser som <c>processor.ProcessMessageAsync += Hantera</c>), med projektet de står i.</summary>
+    public IReadOnlyList<(AssignmentExpressionSyntax Assignment, SemanticModel Model, string Project)> Additions => _additions;
 
     public IReadOnlyList<(InvocationExpressionSyntax Invocation, SemanticModel Model)> Named(string name) =>
         _byName.TryGetValue(name, out var list) ? list : [];

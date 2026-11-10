@@ -129,10 +129,10 @@ public static class JUnitResult
                     else
                     {
                         w.WriteStartElement("skipped");
-                        if (cause == FailureCause.Tool)
+                        if (cause is FailureCause.Tool or FailureCause.Unsupported)
                         {
                             w.WriteAttributeString("message", S($"{causeName}: {plain.Explanation}"));
-                            w.WriteString(S(string.Join("\n", new[] { plain.Title, PlainLanguage.CauseExplanation(FailureCause.Tool) })));
+                            w.WriteString(S(string.Join("\n", new[] { plain.Title, PlainLanguage.CauseExplanation(cause!.Value) })));
                         }
                         else
                             w.WriteAttributeString("message", S(e.Result.RootCauseTestId is { } r ? $"Följd av {r}" : "Följd av ett tidigare fel"));

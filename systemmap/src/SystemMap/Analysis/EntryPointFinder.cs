@@ -5,11 +5,13 @@ namespace SystemMap;
 
 /// <summary>
 /// En ingång och vägen som tar dit (en per HTTP-metod och route). <paramref name="Roots"/> är metoderna vars anrop följs:
-/// en action, en lambda i ett minimal API eller en sidas hanterare.
+/// en action, en lambda i ett minimal API, en sidas hanterare, en bakgrundstjänsts ExecuteAsync eller en meddelandehanterares Consume.
+/// <paramref name="Name"/> är namnet på en ingång som inte är HTTP (<c>Bakgrund: OrderCleanupWorker</c>); <paramref name="Method"/> och
+/// <paramref name="CodePath"/> är då tomma. <paramref name="Hosted"/> är klassen för en bakgrundstjänst (se <see cref="HostRegistrations"/>).
 /// </summary>
 internal sealed record EntryCandidate(
     EntryKind Kind, IReadOnlyList<IMethodSymbol> Roots, string Method, string CodePath, string Project, string Handler, string File, int Line,
-    DataShape? Input, DataShape? Output)
+    DataShape? Input, DataShape? Output, string? Name = null, INamedTypeSymbol? Hosted = null)
 {
     /// <summary>Nyckel för anropen som följs (lika för ingångar som delar hanterare).</summary>
     public string RootsKey => string.Join("|", Roots.Select(Symbols.Key));
@@ -18,7 +20,9 @@ internal sealed record EntryCandidate(
 /// <summary>
 /// Hittar ingångarna: actions i controllers med attributrouting (<c>[Route]</c>, <c>[HttpPost]</c> ...), både ASP.NET Core
 /// och ASP.NET Web API 2 (<c>ApiController</c>, <c>[RoutePrefix]</c>), minimal API:er (<see cref="MinimalApiFinder"/>) samt
-/// Razor Pages och Blazor-sidor (<see cref="PageFinder"/>). Konventionell routing känns inte igen än.
+/// Razor Pages och Blazor-sidor (<see cref="PageFinder"/>), samt det som inte är HTTP: bakgrundstjänster och konsolprogram
+/// (<see cref="HostedFinder"/>), meddelandehanterare och jobb (<see cref="MessagingFinder"/>) och gRPC-tjänster och SignalR-hubbar
+/// (<see cref="RpcFinder"/>). Konventionell routing känns inte igen än.
 /// </summary>
 internal static class EntryPointFinder
 {
@@ -26,24 +30,35 @@ internal static class EntryPointFinder
     private static readonly string[] ResultMethods =
         ["Ok", "Created", "CreatedAtAction", "CreatedAtRoute", "Accepted", "AcceptedAtAction", "AcceptedAtRoute", "StatusCode", "Json", "Content"];
 
-    public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, CallSites sites, string root, List<string> warnings)
+    public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, CallSites sites, ServiceResolver services, string root, List<string> warnings)
     {
         var projectList = projects.ToList();
+        var types = Types(projectList, models);
         var entries = new List<EntryCandidate>();
+        foreach (var (type, project) in types)
+            if (IsController(type)) entries.AddRange(Actions(type, project, models, services, root, warnings));
+        entries.AddRange(MinimalApiFinder.Find(models, sites, services, root, warnings));
+        entries.AddRange(PageFinder.Find(projectList, models, root));
+        entries.AddRange(HostedFinder.Background(types, root));
+        entries.AddRange(MessagingFinder.Find(types, models, sites, services, root));
+        entries.AddRange(RpcFinder.Find(types, sites, root));
+        entries.AddRange(HostedFinder.Console(projectList, models, entries, root));
+        return entries;
+    }
+
+    /// <summary>Klasserna i projekten (en gång per klass, även om den är delad i flera filer), med projektet de hör till.</summary>
+    internal static List<(INamedTypeSymbol Type, string Project)> Types(IEnumerable<Project> projects, ModelCache models)
+    {
+        var types = new List<(INamedTypeSymbol, string)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var project in projectList)
+        foreach (var project in projects)
             foreach (var tree in models.Trees(project))
             {
                 if (models.For(tree) is not { } model) continue;
                 foreach (var declaration in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
-                {
-                    if (model.GetDeclaredSymbol(declaration) is not INamedTypeSymbol type || !IsController(type) || !seen.Add(Symbols.TypeKey(type))) continue;
-                    entries.AddRange(Actions(type, project.Name, models, root, warnings));
-                }
+                    if (model.GetDeclaredSymbol(declaration) is INamedTypeSymbol type && seen.Add(Symbols.TypeKey(type))) types.Add((type, project.Name));
             }
-        entries.AddRange(MinimalApiFinder.Find(models, sites, root, warnings));
-        entries.AddRange(PageFinder.Find(projectList, models, root));
-        return entries;
+        return types;
     }
 
     private static bool IsController(INamedTypeSymbol type) =>
@@ -52,7 +67,7 @@ internal static class EntryPointFinder
         (Symbols.Is(type, "Microsoft.AspNetCore.Mvc.ControllerBase", "System.Web.Http.ApiController", "System.Web.Mvc.Controller") ||
          Bases(type).Any(t => Symbols.HasAttribute(t, "ApiController")));
 
-    private static IEnumerable<EntryCandidate> Actions(INamedTypeSymbol type, string project, ModelCache models, string root, List<string> warnings)
+    private static IEnumerable<EntryCandidate> Actions(INamedTypeSymbol type, string project, ModelCache models, ServiceResolver services, string root, List<string> warnings)
     {
         var controller = type.Name.EndsWith("Controller") ? type.Name[..^"Controller".Length] : type.Name;
         var prefixes = ClassRoutes(type);
@@ -71,8 +86,8 @@ internal static class EntryPointFinder
             }
 
             var action = AttributeString(method, "ActionName") ?? (method.Name.EndsWith("Async") ? method.Name[..^5] : method.Name);
-            var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
-            var input = Input(method);
+            var (file, line) = Symbols.Where(method, root);
+            var input = Input(method, services);
             var output = Output(method, models);
             var kind = ReturnsView(method, models) ? EntryKind.MvcView : EntryKind.Controller;
             var paths = new HashSet<string>(StringComparer.Ordinal);
@@ -150,12 +165,12 @@ internal static class EntryPointFinder
         return false;
     }
 
-    /// <summary>Indata: parametern med [FromBody] (eller en egen [ModelBinder]), annars första parametern av en typ i solutionen.</summary>
-    private static DataShape? Input(IMethodSymbol method)
+    /// <summary>Indata: parametern med [FromBody] (eller en egen [ModelBinder]), annars första parametern av en typ i solutionen som kan vara kroppen (se <see cref="ParameterSources"/>).</summary>
+    private static DataShape? Input(IMethodSymbol method, ServiceResolver services)
     {
         var body = method.Parameters.FirstOrDefault(p => Symbols.HasAttribute(p, "FromBody", "ModelBinder"));
         return DataShapes.Of(body?.Type) ??
-               method.Parameters.Where(p => !Symbols.HasAttribute(p, "FromServices", "FromKeyedServices")).Select(p => DataShapes.Of(p.Type)).FirstOrDefault(s => s is not null);
+               method.Parameters.Where(p => ParameterSources.CanBeBody(p, services)).Select(p => DataShapes.Of(p.Type)).FirstOrDefault(s => s is not null);
     }
 
     /// <summary>Utdata: returtypen (<c>ActionResult&lt;T&gt;</c>), <c>[ProducesResponseType(typeof(T), ...)]</c> eller värdet i <c>Ok(x)</c>.</summary>

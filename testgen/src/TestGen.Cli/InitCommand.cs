@@ -10,15 +10,19 @@ namespace TestGen.Cli;
 
 /// <param name="Restore">Kör <c>dotnet restore</c> när vyerna läses.</param>
 /// <param name="InstallChromium">Installerar Chromium om en webbapp finns och den saknas.</param>
+/// <param name="ChromiumInstaller">Själva installationen, utbytbar i tester (så att ett misslyckande går att prova utan nätverk). Standard: Playwrights installation.</param>
 /// <param name="LibraryProject">
 /// Intern möjlighet (miljövariabeln <c>TESTGEN_LIBRARY_PROJECT</c>): sökväg till SagaPerception.TestGen.NUnit.csproj. Testprojektet får då en
 /// ProjectReference dit i stället för paketet. Används av repots egna tester: ett paket från en lokal feed hamnar kvar i NuGet-cachen
 /// och skulle ge gammal kod nästa gång.
 /// </param>
-internal sealed record InitOptions(bool Restore = true, bool InstallChromium = true, string? LibraryProject = null)
+internal sealed record InitOptions(bool Restore = true, bool InstallChromium = true, string? LibraryProject = null, Func<ChromiumInstallResult>? ChromiumInstaller = null)
 {
     public const string LibraryProjectVariable = "TESTGEN_LIBRARY_PROJECT";
 }
+
+/// <summary>Resultatet av en Chromium-installation: lyckades den, och allt Playwright skrev (stdout, stderr och undantag).</summary>
+internal sealed record ChromiumInstallResult(bool Succeeded, string Output);
 
 /// <summary>
 /// testgen init: skapar testprojektet (en rad per API och webbapp), lägger det i solutionen, skriver views.json och installerar Chromium.
@@ -115,7 +119,7 @@ internal static partial class InitCommand
             if (options.InstallChromium && !ChromiumLocator.IsInstalled())
             {
                 terminal.Err.WriteLine("Installerar Chromium ...");
-                if (InstallChromium(terminal)) changes.Add("chromium");
+                if (InstallChromium(terminal, options.ChromiumInstaller ?? RunPlaywrightInstall)) changes.Add("chromium");
             }
         }
 
@@ -291,22 +295,104 @@ internal static partial class InitCommand
         terminal.Confirm(solution, $"projektet {Path.GetFileNameWithoutExtension(project)} lades till");
     }
 
-    private static bool InstallChromium(Terminal terminal)
+    /// <summary>
+    /// Playwrights installation, körd som dess medföljande node-drivrutin med utskrifterna (förlopp, omförsök, stackspår) uppsamlade.
+    /// Playwright.Program.Main ärver i stället våra egna ström-handtag, så utskriften går inte att fånga därifrån.
+    /// </summary>
+    private static ChromiumInstallResult RunPlaywrightInstall()
     {
-        var output = Console.Out;
+        var driver = Path.Combine(AppContext.BaseDirectory, ".playwright");
+        var node = Environment.GetEnvironmentVariable("PLAYWRIGHT_NODEJS_PATH") is { Length: > 0 } custom ? custom
+            : Path.Combine(driver, "node", NodePlatform(), OperatingSystem.IsWindows() ? "node.exe" : "node");
+        var cli = Path.Combine(driver, "package", "cli.js");
+        if (!File.Exists(node) || !File.Exists(cli)) return new ChromiumInstallResult(false, "Error: Playwrights medföljande drivrutin för den här plattformen hittades inte: " + node);
         try
         {
-            Console.SetOut(terminal.Err);   // Playwright skriver förloppet på stdout; hos oss är det stderr
-            if (Microsoft.Playwright.Program.Main(["install", "chromium"]) == 0) return true;
+            var start = new ProcessStartInfo(node) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            start.ArgumentList.Add(cli);
+            start.ArgumentList.Add("install");
+            start.ArgumentList.Add("chromium");
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Drivrutinen startade inte.");
+            var text = new StringBuilder();
+            var gate = new object();
+            void Collect(object _, DataReceivedEventArgs e) { if (e.Data is not null) lock (gate) text.AppendLine(Ansi().Replace(e.Data, "")); }
+            process.OutputDataReceived += Collect;
+            process.ErrorDataReceived += Collect;
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            process.WaitForExit();
+            lock (gate) return new ChromiumInstallResult(process.ExitCode == 0, text.ToString());
         }
-        catch (Exception e) when (e is not OutOfMemoryException)
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
-            terminal.Err.WriteLine(e.Message);
+            return new ChromiumInstallResult(false, "Error: " + e.Message);
         }
-        finally { Console.SetOut(output); }
-        terminal.Warning("Chromium gick inte att installera. UI-testerna blir osäkra tills det finns. Efter dotnet build: pwsh <testprojekt>/bin/Debug/<ramverk>/playwright.ps1 install chromium");
+    }
+
+    /// <summary>Mappen under .playwright/node för den här datorn, med Playwrights namn. Paketet kan ha flera plattformars node.</summary>
+    private static string NodePlatform()
+    {
+        var (os, separator) = OperatingSystem.IsWindows() ? ("win32", '_') : OperatingSystem.IsMacOS() ? ("darwin", '-') : ("linux", '-');
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64";
+        return os + separator + architecture;
+    }
+
+    [GeneratedRegex("\\u001b\\[[0-9;]*m")]
+    private static partial Regex Ansi();
+
+    /// <summary>
+    /// Kör <paramref name="install"/> och ger sant om Chromium nu finns. Misslyckas den skrivs hela Playwright-utskriften till en loggfil, och
+    /// terminalen får en varning med de sista raderna och vad man kan göra.
+    /// </summary>
+    internal static bool InstallChromium(Terminal terminal, Func<ChromiumInstallResult> install)
+    {
+        var result = install();
+        if (result.Succeeded) return true;
+        string? log = null;
+        try
+        {
+            // Hela Playwright-utskriften, så att den går att läsa utan att fylla terminalen. Ett nytt namn varje gång och CreateNew:
+            // temp-mappen kan vara delad, och en fil eller länk som någon annan lagt dit ska aldrig skrivas över.
+            var path = Path.Combine(Path.GetTempPath(), $"testgen-chromium-install-{Guid.NewGuid():N}.log");
+            using (var writer = new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write))) writer.Write(result.Output);
+            log = path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* loggen är en extra; varningen räcker */ }
+        terminal.Warning(ChromiumFailure(result.Output, log, Path.Combine(AppContext.BaseDirectory, "playwright.ps1")));
         return false;
     }
+
+    /// <summary>
+    /// Varningen när Chromium inte gick att installera: orsaken så långt den går att läsa ur Playwrights utskrift (en gång, inte varje omförsök)
+    /// och hur det rättas utan pwsh: testgen init igen, som bara installerar det som saknas.
+    /// </summary>
+    internal static string ChromiumFailure(string playwrightOutput, string? logPath, string playwrightScript)
+    {
+        var errorLine = playwrightOutput.Split('\n').Select(l => l.Trim())
+            .FirstOrDefault(l => l.StartsWith("Error:", StringComparison.Ordinal))?["Error:".Length..].Trim();
+        var host = errorLine is null ? null : DownloadHost().Match(errorLine) is { Success: true } m ? m.Groups[1].Value : null;
+        var reason = errorLine switch
+        {
+            null => "Playwright gav ingen närmare förklaring.",
+            _ when NetworkFailure().IsMatch(errorLine) =>
+                $"Nedladdningen från {host ?? "Playwrights server"} misslyckades, troligen för att datorn inte når den (brandvägg eller proxy).",
+            _ when DiskFailure().IsMatch(errorLine) => "Det saknas diskutrymme eller skrivrätt i Playwrights katalog för webbläsare.",
+            _ => "Playwright svarade: " + (errorLine.Length > 160 ? errorLine[..160] + " ..." : errorLine),
+        };
+        var sb = new StringBuilder("Chromium gick inte att installera. ").Append(reason).Append(" UI-testerna blir osäkra tills det finns.");
+        sb.Append(" Kör testgen init igen när det är rättat; den installerar då bara Chromium. Utan testgen kan pwsh göra det: pwsh ").Append(playwrightScript).Append(" install chromium.");
+        if (logPath is not null) sb.Append(" Hela utskriften: ").Append(logPath).Append('.');
+        return sb.ToString();
+    }
+
+    [GeneratedRegex(@"Download failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|getaddrinfo|socket hang up|proxy|returned code (403|407|5\d\d)", RegexOptions.IgnoreCase)]
+    private static partial Regex NetworkFailure();
+
+    [GeneratedRegex(@"ENOSPC|EACCES|EPERM|EROFS|no space left|permission denied", RegexOptions.IgnoreCase)]
+    private static partial Regex DiskFailure();
+
+    [GeneratedRegex(@"https?://([^/\s'""]+)")]
+    private static partial Regex DownloadHost();
 
     /// <summary>Ett GitHub Actions-utdrag som kör dotnet test, med Chromium cachad om det behövs.</summary>
     internal static string CiStep(string testProject, string framework, bool chromium, bool platform = false)
@@ -316,6 +402,7 @@ internal static partial class InitCommand
         sb.AppendLine();
         if (chromium)
         {
+            sb.AppendLine("      # Förutsätter en Ubuntu-runner: cachesökvägen och --with-deps gäller Linux (pwsh finns där).");
             sb.AppendLine("      - uses: actions/cache@v4");
             sb.AppendLine("        with:");
             sb.AppendLine("          path: ~/.cache/ms-playwright");

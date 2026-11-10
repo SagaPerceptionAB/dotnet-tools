@@ -25,9 +25,11 @@ public static class CodeMapper
         var walker = new CallWalker(resolver, models, origins, root, warnings);
         var sites = new CallSites(projects, models);
 
-        var entries = EntryPointFinder.Find(projects, models, sites, root, warnings);
+        var entries = EntryPointFinder.Find(projects, models, sites, resolver, root, warnings);
         if (entries.Count == 0)
-            warnings.Add("Hittade inga ingångar. Kartan känner igen controllers ([ApiController], [HttpGet] ...), minimal API (MapGet ...), Razor Pages och Blazor-sidor (@page).");
+            warnings.Add("Hittade inga ingångar. Kartan känner igen controllers ([ApiController], [HttpGet] ...), minimal API (MapGet ...), Razor Pages och Blazor-sidor (@page), " +
+                         "bakgrundstjänster (BackgroundService, IHostedService), konsolprogram (Main), meddelandehanterare (MassTransit, NServiceBus, Service Bus), " +
+                         "jobb (Hangfire, Quartz), gRPC-tjänster och SignalR-hubbar.");
 
         var stepsByRoots = new Dictionary<string, IReadOnlyList<Step>>(StringComparer.Ordinal);
         foreach (var entry in entries)
@@ -36,15 +38,23 @@ public static class CodeMapper
         var (matches, differences) = SpecMatcher.Match(entries, operations);
         var entryPoints = entries
             .Select(e => matches.TryGetValue(e, out var op)
-                ? new EntryPoint(e.Kind, e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey])
-                : new EntryPoint(e.Kind, e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey]))
-            .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Path, StringComparer.Ordinal)
+                ? new EntryPoint(e.Kind, e.Method == "ANY" ? op.Method : e.Method, op.Path, e.CodePath, op.OperationId, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey], e.Name)
+                : new EntryPoint(e.Kind, e.Method, e.CodePath, e.CodePath, null, e.Project, e.Handler, e.File, e.Line, e.Input, e.Output, stepsByRoots[e.RootsKey], e.Name))
+            // HTTP först (sökväg, metod), sedan det andra efter sort och namn.
+            .OrderBy(e => e.Kind.IsHttp() ? 0 : 1 + (int)e.Kind)
+            .ThenBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Path, StringComparer.Ordinal)
             .ThenBy(e => Array.IndexOf(MethodOrder, e.Method) is var i and >= 0 ? i : MethodOrder.Length).ThenBy(e => e.Method, StringComparer.Ordinal)
-            .ThenBy(e => e.Handler, StringComparer.Ordinal)
+            .ThenBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Handler, StringComparer.Ordinal)
             .ToList();
+        entryPoints = Qualify(entryPoints);
 
         // En app utan någon sort (inga ingångar) är bara ett bibliotek som råkar använda WebApplication.
-        var apps = AppFinder.Find(projects, solution, models, resolver, sites, entries, walker.Integrations).Where(a => a.Kinds.Count > 0).ToList();
+        var hosts = new HostRegistrations(models);
+        var apps = AppFinder.Find(projects, solution, models, resolver, sites, entries, walker.Integrations, hosts).Where(a => a.Kinds.Count > 0).ToList();
+        // En bakgrundstjänst som ingen app registrerar visas ändå som ingång (koden finns), men ger ingen app bakgrundsarbete.
+        var appProjects = projects.Where(p => AppFinder.IsApp(p, models) || models.IsProgram(p)).ToList();
+        foreach (var service in hosts.Unregistered(appProjects, entries.Where(e => e.Kind == EntryKind.Background).Select(e => e.Hosted).OfType<INamedTypeSymbol>()))
+            warnings.Add($"{service.Name} är en bakgrundstjänst men registreras inte med AddHostedService i någon app.");
         // Appens HTTP-klient pekar på ett projekt i solutionen: integrationen får veta vilket.
         var targets = apps.SelectMany(a => a.HttpClients).Where(c => c.TargetProject is not null)
             .GroupBy(c => c.IntegrationId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().TargetProject, StringComparer.Ordinal);
@@ -53,14 +63,32 @@ public static class CodeMapper
             .OrderBy(i => i.Kind).ThenBy(i => i.Name, StringComparer.Ordinal).ThenBy(i => i.Id, StringComparer.Ordinal).ToList();
 
         warnings.AddRange(resolver.Warnings);
+        var order = ProjectOrder(entryPoints);
+        var code = await CodeInventoryFinder.FindAsync(projects, models, walker, order.ToHashSet(StringComparer.Ordinal), root, ct);
         return new CodeMapModel(
             solutionPath,
-            ProjectOrder(entryPoints),
+            order,
             integrations,
             entryPoints,
             apps,
             differences,
-            warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList());
+            warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList(),
+            code);
+    }
+
+    /// <summary>
+    /// Ger ingångar som annars skulle heta lika (två <c>Worker</c> i olika projekt, samma <c>GET /health</c> i två webbappar) var sitt namn: projektet
+    /// efter namnet. Heter de lika också inom ett projekt kommer platsen i koden med. Ingångar med ett unikt namn rörs inte.
+    /// Stora och små bokstäver räknas lika, som när <c>--entry</c> letar upp ett namn.
+    /// </summary>
+    private static List<EntryPoint> Qualify(List<EntryPoint> entries)
+    {
+        var result = entries.ToList();
+        foreach (var same in Enumerable.Range(0, entries.Count).GroupBy(i => entries[i].BaseKey, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+            foreach (var inProject in same.GroupBy(i => entries[i].Project, StringComparer.Ordinal))
+                foreach (var i in inProject)
+                    result[i] = entries[i] with { Qualifier = inProject.Count() > 1 ? $"{entries[i].Project}, {entries[i].File}:{entries[i].Line}" : entries[i].Project };
+        return result;
     }
 
     /// <summary>

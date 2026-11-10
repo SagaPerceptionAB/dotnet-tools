@@ -165,7 +165,7 @@ public class FailureCauseTests
     {
         Assert.That(Enum.GetValues<FailureCause>().Select(PlainLanguage.CauseName), Is.EqualTo(new[]
         {
-            "Fel i systemet", "Förväntan i testet stämmer inte", "Inloggning", "Miljön svarar inte", "Testdata fanns redan", "Testdata saknas", "Testanvändaren godtogs inte", "För många anrop", "Fel i testgen", "Följdfel", "Skrivskyddad miljö",
+            "Fel i systemet", "Förväntan i testet stämmer inte", "Inloggning", "Miljön svarar inte", "Testdata fanns redan", "Testdata saknas", "Testanvändaren godtogs inte", "För många anrop", "Fel i testgen", "Stöds inte ännu", "Följdfel", "Skrivskyddad miljö",
         }));
         foreach (var c in Enum.GetValues<FailureCause>()) Assert.That(PlainLanguage.CauseExplanation(c), Is.Not.Empty);
         Assert.That(PlainLanguage.CauseExplanation(FailureCause.Expectation), Does.Contain("antingen i systemet eller i Excel-raden"));

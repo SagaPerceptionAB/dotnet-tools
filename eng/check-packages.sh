@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kontrollerar paketen som dotnet pack gav: rätt antal, inga beroenden på egna paket och, om NUnit-paketet finns, modulerna inbakade i det.
+# Kontrollerar paketen som dotnet pack gav: rätt antal, inga beroenden på egna paket, om NUnit-paketet finns modulerna inbakade i det, och node för Windows och Linux i testgen-verktyget.
 # Användning: eng/check-packages.sh <katalog med .nupkg> [antal paket, standard 4]
 set -euo pipefail
 
@@ -37,5 +37,16 @@ if [ "${#nunit[@]}" -eq 1 ]; then
   done
 fi
 
-[ "$failed" -eq 0 ] && echo "Paketen stämmer: $expected paket, inga egna beroenden, modulerna inbakade i NUnit-paketet om det finns."
+# Verktyget installerar Chromium med Playwrights medföljande node; utan den för användarens plattform går det inte (se TestGen.Cli.csproj).
+for cli in "$feed"/SagaPerception.TestGen.Cli.*.nupkg; do
+  contents="$(unzip -Z1 "$cli")"
+  for node in node/linux-x64/node node/win32_x64/node.exe; do
+    if ! grep -q "/\.playwright/$node\$" <<<"$contents"; then
+      echo "${cli##*/} saknar Playwrights $node." >&2
+      failed=1
+    fi
+  done
+done
+
+[ "$failed" -eq 0 ] && echo "Paketen stämmer: $expected paket, inga egna beroenden, modulerna inbakade i NUnit-paketet om det finns och node för Windows och Linux i testgen-verktyget."
 exit "$failed"

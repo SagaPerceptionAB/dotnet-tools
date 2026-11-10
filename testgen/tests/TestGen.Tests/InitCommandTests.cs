@@ -297,6 +297,55 @@ public class InitCommandTests
     }
 
     [Test]
+    public void The_ci_step_says_it_assumes_an_ubuntu_runner()
+    {
+        Assert.That(InitCommand.CiStep("tests/My.Tests", "net10.0", chromium: true), Does.Contain("Ubuntu-runner"));
+    }
+
+    private const string DownloadError = "Error: Download failed: server returned code 403 body 'request blocked'. URL: https://cdn.playwright.dev/builds/cft/1/linux64/chrome.zip\n"
+        + "    at IncomingMessage.handleError (/x/coreBundle.js:33897:23)\n";
+
+    [Test]
+    public void A_failed_chromium_download_gives_one_warning_with_the_cause_and_a_remedy_that_needs_no_pwsh()
+    {
+        var (_, e, terminal) = NewTerminal();
+        // Playwright upprepar felet vid varje omförsök; det ska bli en varning, inte fem stackspår.
+        var output = string.Concat(Enumerable.Repeat(DownloadError, 5));
+
+        var ok = InitCommand.InstallChromium(terminal, () => new ChromiumInstallResult(false, output));
+
+        Assert.That(ok, Is.False);
+        var text = e.ToString();
+        Assert.That(text, Does.Contain("cdn.playwright.dev").And.Contain("brandvägg eller proxy").And.Contain("Kör testgen init igen"));
+        var log = Regex.Match(text, @"Hela utskriften: (.+?\.log)\.").Groups[1].Value;
+        Assert.That(log, Does.StartWith(Path.GetTempPath()).And.Contain("testgen-chromium-install-"), "varningen säger var loggen ligger");
+        Assert.That(text, Does.Not.Contain("coreBundle").And.Not.Contain("Download failed"), "stackspåret och Playwrights engelska ska inte visas");
+        Assert.That(Regex.Matches(text, "Chromium gick inte att installera").Count, Is.EqualTo(1));
+        Assert.That(File.ReadAllText(log), Does.Contain("coreBundle"), "hela utskriften finns kvar i loggen");
+        File.Delete(log);
+    }
+
+    [Test]
+    public void A_chromium_failure_with_another_cause_shows_playwrights_last_word_once_and_a_missing_explanation_says_so()
+    {
+        var disk = InitCommand.ChromiumFailure("Error: ENOSPC: no space left on device\n", null, "/t/playwright.ps1");
+        Assert.That(disk, Does.Contain("diskutrymme").And.Contain("pwsh /t/playwright.ps1 install chromium").And.Not.Contain("Hela utskriften"));
+
+        var other = InitCommand.ChromiumFailure("Error: något oväntat\n", null, "/t/playwright.ps1");
+        Assert.That(other, Does.Contain("Playwright svarade: något oväntat"));
+
+        Assert.That(InitCommand.ChromiumFailure("", null, "/t/playwright.ps1"), Does.Contain("Playwright gav ingen närmare förklaring"));
+    }
+
+    [Test]
+    public void A_successful_chromium_install_prints_nothing()
+    {
+        var (_, e, terminal) = NewTerminal();
+        Assert.That(InitCommand.InstallChromium(terminal, () => new ChromiumInstallResult(true, "ruttna förlopp")), Is.True);
+        Assert.That(e.ToString(), Is.Empty);
+    }
+
+    [Test]
     public void The_command_line_requires_no_flags_and_the_help_describes_it()
     {
         Assert.That(HelpText.For("init"), Does.StartWith("Användning:").And.Contain("--solution").And.Contain("Exitkoder:"));

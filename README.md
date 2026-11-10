@@ -100,7 +100,7 @@ dotnet pack systemmap/src/SystemMap.Cli -c Release -o nupkg
 dotnet pack systemmap/src/SystemMap.AspNetCore -c Release -o nupkg
 ```
 
-UI-testerna kör Chromium. Installera den en gång med `playwright.ps1 install chromium` i ett testprojekts `bin`-mapp.
+UI-testerna kör Chromium. `testgen init` installerar den; saknas den, kör `testgen init` igen (eller `pwsh <testprojekt>/bin/Debug/net10.0/playwright.ps1 install chromium`).
 
 Paketens versioner kommer från [eng/Versions.props](eng/Versions.props); `-p:Version` behövs inte.
 

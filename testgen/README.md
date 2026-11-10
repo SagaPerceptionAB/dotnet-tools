@@ -50,7 +50,7 @@ dotnet test
 
 Från installationen till klara tester tog det 2 minuter (122 s) på exemplet Shop utan testprojekt, med tom NuGet-cache och Chromium redan installerat; Chromium tar ungefär 40 s till första gången. `testgen init` ensam tog 39 s och `dotnet test` (bygge och 70 tester) 80 s. Exemplet har två avsiktliga fel, så två tester fallerar.
 
-`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Testprojektet använder NUnit, men du skriver ingen NUnit-kod. Det kan ligga bredvid xUnit- och MSTest-projekt. Det som redan finns lämnas orört, och en andra körning ändrar inget.
+`testgen init` skapar `tests/<Solution>.Tests` (en rad per API och webbapp), lägger projektet i solutionen, skriver `views.json`, installerar Chromium om det saknas och visar ett utdrag för CI. Går Chromium inte att hämta (till exempel bakom en brandvägg) varnar `init` en gång med orsaken och avslutar ändå med 0; kör `testgen init` igen när nedladdningen fungerar, så installeras bara Chromium. Playwrights hela utskrift sparas i `testgen-chromium-install.log` i den temporära katalogen. Testprojektet använder NUnit, men du skriver ingen NUnit-kod. Det kan ligga bredvid xUnit- och MSTest-projekt. Det som redan finns lämnas orört, och en andra körning ändrar inget.
 
 | Flagga | Betydelse |
 |---|---|
@@ -189,6 +189,7 @@ Datan är fiktiv. Personnummer tas ur Skatteverkets testpersonnummer, telefon ur
 - `--token` skickas som `Authorization: Bearer ...`, eller i den header specens `apiKey`-schema anger.
 - `--header` lägger till egna headers på alla anrop.
 - Miljöerna står i testgen.yaml (inte i Excel). I en miljö med `readOnly: true` hoppas tester som skickar POST, PUT, PATCH eller DELETE över (orsak `read-only`, räknas inte som fel).
+- Operationer med en bodytyp testgen inte kan skicka ännu (till exempel `application/octet-stream` eller `multipart/form-data`) hoppas över med orsaken `unsupported` ("Stöds inte ännu"): en känd begränsning, inget fel i testgen och inget att rapportera. Orsaken `tool` ("Fel i testgen") är reserverad för interna fel. Båda ger exitkod 4 om inget annat föll, och blir hoppade (`Ignore` respektive `Inconclusive`) i NUnit.
 - Hemligheter (`token`, headers som ser hemliga ut) måste skrivas `${env:NAMN}` i filen; klartext är ett konfigurationsfel (exitkod 2).
 - Låt hemligheter ligga i miljövariabler: `${env:NAMN}` i ett värde ersätts med miljövariabeln `NAMN`. Använd enkla citattecken i skalet: `--token '${env:API_TOKEN}'`. Känsliga värden visas som `***` i utskrifter.
 
@@ -216,7 +217,7 @@ testgen run --spec https://test.example.se/openapi.json --api https://test.examp
 
 - Färdiga exempel: [GitHub Actions](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/testgen/docs/ci/github-actions.yml) och [Azure Pipelines](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/testgen/docs/ci/azure-pipelines.yml).
 - `--seed ci` tar fröet från bygget, så en omkörning ger ny testdata.
-- `--fail-on <orsaker>` väljer vilka orsaker som ger exitkod 1. Koder: `system`, `expectation`, `auth`, `environment`, `test-data`, `missing-data`, `test-user-rejected`, `rate-limited`, `tool`, `dependency`, `read-only`. Standard är `system,expectation`; övriga FEL och HOPPAD ger exitkod 4. Exempel: `--fail-on system,expectation,auth`.
+- `--fail-on <orsaker>` väljer vilka orsaker som ger exitkod 1. Koder: `system`, `expectation`, `auth`, `environment`, `test-data`, `missing-data`, `test-user-rejected`, `rate-limited`, `tool`, `unsupported`, `dependency`, `read-only`. Standard är `system,expectation`; övriga FEL och HOPPAD ger exitkod 4. Exempel: `--fail-on system,expectation,auth`.
 - `--baseline forra.json --fail-on-new` ger exitkod 1 bara för nya FEL.
 - `--allow-empty` tillåter en körning utan tester (annars exitkod 2).
 - JSON-rapportens schema: [docs/ci/testgen-result.schema.json](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/testgen/docs/ci/testgen-result.schema.json). Orsakskoder, regler och resultat (`passed`, `failed`, `skipped`) är engelska ord; null utelämnas.

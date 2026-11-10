@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -77,16 +78,95 @@ public partial class CodeMapTests
         }
         namespace Azure.Messaging.ServiceBus
         {
-            public class ServiceBusClient { public ServiceBusSender CreateSender(string queue) => null!; }
+            public class ServiceBusClient { public ServiceBusSender CreateSender(string queue) => null!; public ServiceBusProcessor CreateProcessor(string queue) => null!; }
+            public class ProcessMessageEventArgs { }
+            public class ServiceBusProcessor { public event Func<ProcessMessageEventArgs, Task>? ProcessMessageAsync; }
             public class ServiceBusSender { public Task SendMessageAsync(ServiceBusMessage m, CancellationToken ct = default) => null!; }
             public class ServiceBusMessage { public ServiceBusMessage(string body) { } }
         }
         namespace Azure.Storage.Blobs
         {
-            public class BlobServiceClient { public BlobContainerClient GetBlobContainerClient(string name) => null!; }
-            public class BlobContainerClient { public Task UploadBlobAsync(string name, object data) => null!; }
+            public class BlobServiceClient
+            {
+                public BlobContainerClient GetBlobContainerClient(string name) => null!;
+                public IAsyncEnumerable<string> GetBlobContainersAsync() => null!;
+                public Task CreateBlobContainerAsync(string name) => null!;
+                public Task DeleteBlobContainerAsync(string name) => null!;
+            }
+            public class BlobContainerClient
+            {
+                public Task UploadBlobAsync(string name, object data) => null!;
+                public BlobClient GetBlobClient(string name) => null!;
+                public Task<bool> ExistsAsync(CancellationToken ct = default) => null!;
+                public Task CreateIfNotExistsAsync() => null!;
+                public Task DeleteIfExistsAsync() => null!;
+                public Task DeleteBlobIfExistsAsync(string name) => null!;
+                public IAsyncEnumerable<string> GetBlobsAsync() => null!;
+                public Task AcquireLeaseAsync() => null!;
+            }
+            public class BlobClient : Azure.Storage.Blobs.Specialized.BlobBaseClient { public Task UploadAsync(object content) => null!; }
         }
-        namespace MassTransit { public interface IPublishEndpoint { Task Publish<T>(T message, CancellationToken ct = default) where T : class; } }
+        namespace Azure.Storage.Blobs.Specialized
+        {
+            public class BlobBaseClient
+            {
+                public Task<bool> ExistsAsync(CancellationToken ct = default) => null!;
+                public bool Exists() => false;
+                public Task DeleteIfExistsAsync() => null!;
+                public Task GetPropertiesAsync() => null!;
+                public Task SetMetadataAsync(IDictionary<string, string> metadata) => null!;
+                public Task OpenReadAsync() => null!;
+                public Task OpenWriteAsync(bool overwrite) => null!;
+                public Task DownloadContentAsync() => null!;
+                public Task DownloadStreamingAsync() => null!;
+                public Task DownloadToAsync(System.IO.Stream destination) => null!;
+                public Task StartCopyFromUriAsync(Uri source) => null!;
+                public Task SyncCopyFromUriAsync(Uri source) => null!;
+                public Uri GenerateSasUri() => null!;
+            }
+        }
+        namespace MassTransit
+        {
+            public interface IPublishEndpoint { Task Publish<T>(T message, CancellationToken ct = default) where T : class; }
+            public interface ConsumeContext<T> where T : class { T Message { get; } }
+            public interface IConsumer<in TMessage> where TMessage : class { Task Consume(ConsumeContext<TMessage> context); }
+        }
+        namespace NServiceBus
+        {
+            public interface IMessageHandlerContext { }
+            public interface IHandleMessages<T> { Task Handle(T message, IMessageHandlerContext context); }
+        }
+        namespace MediatR
+        {
+            public interface IRequestHandler<TRequest, TResponse> { Task<TResponse> Handle(TRequest request, CancellationToken ct); }
+            public interface INotificationHandler<T> { Task Handle(T notification, CancellationToken ct); }
+        }
+        namespace Quartz
+        {
+            public interface IJobExecutionContext { }
+            public interface IJob { Task Execute(IJobExecutionContext context); }
+        }
+        namespace Hangfire
+        {
+            public static class RecurringJob
+            {
+                public static void AddOrUpdate(string id, System.Linq.Expressions.Expression<Func<Task>> job, string cron) { }
+                public static void AddOrUpdate<T>(string id, System.Linq.Expressions.Expression<Func<T, Task>> job, string cron) { }
+            }
+            public static class BackgroundJob
+            {
+                public static string Enqueue(System.Linq.Expressions.Expression<Func<Task>> job) => "";
+            }
+        }
+        namespace Grpc.Core
+        {
+            [AttributeUsage(AttributeTargets.Class)] public sealed class BindServiceMethodAttribute(Type service, string method) : Attribute { }
+            public class ServerCallContext { }
+        }
+        namespace Microsoft.AspNetCore.Builder
+        {
+            public static class GrpcStubs { public static void MapGrpcService<T>(this Microsoft.AspNetCore.Routing.IEndpointRouteBuilder app) where T : class { } }
+        }
         namespace Confluent.Kafka { public interface IProducer<TKey, TValue> { Task<object> ProduceAsync(string topic, object message); } }
         namespace RabbitMQ.Client { public interface IChannel { ValueTask BasicPublishAsync(string exchange, string routingKey, byte[] body); } }
         namespace MailKit { public interface IMailTransport { Task SendAsync(object message); } }
@@ -94,6 +174,31 @@ public partial class CodeMapTests
         {
             public sealed class GetAttribute(string path) : Attribute { public string Path { get; } = path; }
             public sealed class PostAttribute(string path) : Attribute { public string Path { get; } = path; }
+        }
+        namespace Microsoft.IdentityModel.Protocols
+        {
+            public interface IDocumentRetriever { Task<string> GetDocumentAsync(string address, CancellationToken cancel); }
+            public class HttpDocumentRetriever : IDocumentRetriever { public Task<string> GetDocumentAsync(string address, CancellationToken cancel) => null!; }
+            public interface IConfigurationRetriever<T> where T : class { Task<T> GetConfigurationAsync(string address, IDocumentRetriever retriever, CancellationToken cancel); }
+            public interface IConfigurationManager<T> where T : class { Task<T> GetConfigurationAsync(CancellationToken cancel); void RequestRefresh(); }
+            public class ConfigurationManager<T> : IConfigurationManager<T> where T : class
+            {
+                public ConfigurationManager(string metadataAddress, IConfigurationRetriever<T> configRetriever) { }
+                public ConfigurationManager(string metadataAddress, IConfigurationRetriever<T> configRetriever, IDocumentRetriever documentRetriever) { }
+                public Task<T> GetConfigurationAsync(CancellationToken cancel) => null!;
+                public void RequestRefresh() { }
+            }
+        }
+        namespace Microsoft.IdentityModel.Protocols.OpenIdConnect
+        {
+            public class OpenIdConnectConfiguration { }
+            public class OpenIdConnectConfigurationRetriever : Microsoft.IdentityModel.Protocols.IConfigurationRetriever<OpenIdConnectConfiguration>
+            {
+                public static Task<OpenIdConnectConfiguration> GetAsync(string address, CancellationToken cancel) => null!;
+                public static Task<OpenIdConnectConfiguration> GetAsync(string address, Microsoft.IdentityModel.Protocols.IDocumentRetriever retriever, CancellationToken cancel) => null!;
+                Task<OpenIdConnectConfiguration> Microsoft.IdentityModel.Protocols.IConfigurationRetriever<OpenIdConnectConfiguration>.GetConfigurationAsync(
+                    string address, Microsoft.IdentityModel.Protocols.IDocumentRetriever retriever, CancellationToken cancel) => null!;
+            }
         }
         namespace System.ServiceModel
         {
@@ -111,7 +216,13 @@ public partial class CodeMapTests
 
     // --- Hjälpare --------------------------------------------------------------------------
 
-    private sealed record Proj(string Name, string Code, params string[] References);
+    /// <param name="Exe">Ett program som körs (konsol eller worker) i stället för ett bibliotek.</param>
+    /// <param name="Generated">Kod i en genererad fil (.g.cs), som inte räknas som systemets egen.</param>
+    private sealed record Proj(string Name, string Code, params string[] References)
+    {
+        public bool Exe { get; init; }
+        public string? Generated { get; init; }
+    }
 
     private static Solution Build(bool stubs, params Proj[] projects)
     {
@@ -126,14 +237,18 @@ public partial class CodeMapTests
             var id = ids[p.Name] = ProjectId.CreateNewId(p.Name);
             solution = solution.AddProject(ProjectInfo.Create(id, VersionStamp.Create(), p.Name, p.Name, LanguageNames.CSharp,
                 filePath: Path.Combine(Root, p.Name, p.Name + ".csproj"),
-                compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable),
+                compilationOptions: new CSharpCompilationOptions(p.Exe ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable),
                 parseOptions: new CSharpParseOptions(LanguageVersion.Latest),
                 metadataReferences: references,
                 projectReferences: p.References.Select(r => new Microsoft.CodeAnalysis.ProjectReference(ids[r]))));
             var files = new List<string> { Usings, p.Code };
-            if (stubs && p.References.Length == 0) files.Add(Stubs);   // stubbarna i projektet längst ner, så att alla ser dem
             for (var i = 0; i < files.Count; i++)
                 solution = solution.AddDocument(DocumentId.CreateNewId(id), $"Fil{i}.cs", SourceText.From(files[i]), filePath: Path.Combine(Root, p.Name, $"Fil{i}.cs"));
+            if (p.Generated is not null)
+                solution = solution.AddDocument(DocumentId.CreateNewId(id), "Genererad.g.cs", SourceText.From(p.Generated), filePath: Path.Combine(Root, p.Name, "Genererad.g.cs"));
+            // Stubbarna i projektet längst ner, så att alla ser dem. De heter .g.cs, som genererad kod: de är paket i verkligheten och räknas inte som systemets kod.
+            if (stubs && p.References.Length == 0)
+                solution = solution.AddDocument(DocumentId.CreateNewId(id), "Stubs.g.cs", SourceText.From(Stubs), filePath: Path.Combine(Root, p.Name, "Stubs.g.cs"));
         }
         return solution;
     }
@@ -173,6 +288,8 @@ public partial class CodeMapTests
         "await _c.QueryAsync<Kund>(\"SELECT * FROM dbo.[Kunder] k JOIN Ordrar o ON o.KundId = k.Id\");", "db:SQL | läsa Kunder, Ordrar")]
     [TestCase("System.Net.Http.IHttpClientFactory _f = null!;",
         "var http = _f.CreateClient(\"lager\"); var id = 1; await http.GetAsync($\"artiklar/{id}\");", "http:lager | GET artiklar/{id}")]
+    [TestCase("System.Net.Http.IHttpClientFactory _f = null!; static string Hamta() => \"x\";",
+        "var http = _f.CreateClient(\"oidc\"); await http.PostAsync(Hamta(), null);", "http:oidc | POST")]
     [TestCase("Azure.Messaging.ServiceBus.ServiceBusSender _s = new Azure.Messaging.ServiceBus.ServiceBusClient().CreateSender(\"order-lagd\");",
         "await _s.SendMessageAsync(new Azure.Messaging.ServiceBus.ServiceBusMessage(\"x\"));", "queue:order-lagd | skicka")]
     [TestCase("Azure.Storage.Blobs.BlobContainerClient _b = new Azure.Storage.Blobs.BlobServiceClient().GetBlobContainerClient(\"kvitton\");",
@@ -196,6 +313,52 @@ public partial class CodeMapTests
     {
         var map = await MapAsync(Controller(members, body));
         Assert.That(Uses(map.EntryPoints.Single()), Is.EqualTo(new[] { expected }));
+    }
+
+    private const string DecidedAtRunTime = "(adressen bestäms vid körning)";
+
+    [Test]
+    public async Task An_HTTP_call_whose_address_is_decided_at_run_time_is_data_and_text_and_Mermaid_say_it_in_Swedish()
+    {
+        var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
+        var use = All(map.EntryPoints.Single().Steps).Single(s => s.Integration is not null).Integration!;
+        Assert.That((use.Operation, use.AddressAtRuntime), Is.EqualTo(("POST", true)), "verbet är data, och att adressen bestäms vid körning är ett eget fält");
+        var node = CodeMapOverview.Build(map).Nodes.Single(n => n.Kind == OverviewKind.Operation);
+        Assert.That((node.Name, node.AddressAtRuntime), Is.EqualTo(("POST", true)));
+        Assert.That(string.Join("\n", CodeMapText.Lines(map)), Does.Contain($"(HTTP): POST {DecidedAtRunTime}").And.Contain($"    POST {DecidedAtRunTime}"));
+        foreach (var level in new[] { "classes", "all" })
+            Assert.That(CodeMapMermaid.Write(map, MermaidOptions.Parse(level, null, null)), Does.Contain($"POST {DecidedAtRunTime}"), level);
+
+        var known = await MapAsync(Controller("System.Net.Http.HttpClient _http = new();", "await _http.PostAsync(\"orders\", null);"));
+        Assert.That(All(known.EntryPoints.Single().Steps).Single(s => s.Integration is not null).Integration!.AddressAtRuntime, Is.False, "en adress som går att läsa är som den är");
+        Assert.That(string.Join("\n", CodeMapText.Lines(known)) + CodeMapMermaid.Write(known, new MermaidOptions()), Does.Not.Contain("vid körning"));
+    }
+
+    [Test]
+    public async Task Json_says_address_runtime_for_a_call_whose_address_is_decided_at_run_time_and_keeps_the_verb_as_the_operation()
+    {
+        var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
+        using var doc = JsonDocument.Parse(CodeMapJson.Serialize(map));
+        var step = Walk(doc.RootElement.GetProperty("entryPoints")).Single(e => e.ValueKind == JsonValueKind.Object && e.TryGetProperty("integration", out _)).GetProperty("integration");
+        Assert.That((step.GetProperty("operation").GetString(), step.GetProperty("address").GetString()), Is.EqualTo(("POST", "runtime")));
+        var row = doc.RootElement.GetProperty("overview").GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("kind").GetString() == "operation");
+        Assert.That((row.GetProperty("name").GetString(), row.GetProperty("address").GetString()), Is.EqualTo(("POST", "runtime")));
+        Assert.That(doc.RootElement.GetRawText(), Does.Not.Contain("vid körning"), "texten hör inte hemma i data");
+
+        var known = await MapAsync(Controller("System.Net.Http.HttpClient _http = new();", "await _http.PostAsync(\"orders\", null);"));
+        Assert.That(CodeMapJson.Serialize(known), Does.Not.Contain("\"address\""), "fältet finns bara när adressen bestäms vid körning");
+    }
+
+    [Test]
+    public async Task Page_says_so_when_the_address_of_an_HTTP_call_is_decided_at_run_time()
+    {
+        var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
+        await WithPageAsync(map, async (page, ready) =>
+        {
+            await page.ClickAsync("[data-level='all']");
+            await ready();
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-operation').map(n => n.data('label'))"), Is.EqualTo(new[] { $"POST {DecidedAtRunTime}" }));
+        });
     }
 
     [Test]
@@ -399,7 +562,7 @@ public partial class CodeMapTests
         Assert.That(e.Message, Is.EqualTo("Anropet 'GET /finns-inte' finns inte i kartan."));
     }
 
-    [TestCase("hela", null, "--level måste vara projects, classes eller all")]
+    [TestCase("hela", null, "--level måste vara projects, classes, methods eller all")]
     [TestCase(null, "RL", "--direction måste vara LR")]
     public void Mermaid_with_unknown_level_or_direction_gives_an_error(string? level, string? direction, string expected) =>
         Assert.That(Assert.Throws<UsageException>(() => MermaidOptions.Parse(level, direction, null))!.Message, Does.StartWith(expected));
@@ -415,12 +578,12 @@ public partial class CodeMapTests
         Assert.That(map.Warnings, Has.Member($"MSBuild: {Path.Combine("Api", "Api.csproj")} saknar ett paket."),
             "sökvägen relativt solutionens katalog, som filerna i kartan: kartan kan delas");
 
-        var html = CodeMapHtml.Write(map);
+        var html = CodeMapHtml.Write(map, new HashSet<string>(), showUnreached: true);
         Assert.That(html, Does.StartWith("<!DOCTYPE html>").And.Contain("<title>Systemkarta – Test.sln</title>"));
         Assert.That(html, Does.Contain("Content-Security-Policy\" content=\"default-src 'none';"), "sidan hämtar inget utifrån");
         Assert.That(html, Does.Contain("window.SystemMap = { create: create, summary: summary, groups: callGroups").And.Contain("cytoscape").And.Contain(".map-view {"));
         Assert.That(html, Does.Not.Contain("__" + "MAP__").And.Not.Contain("__" + "SCRIPTS__"), "alla delar är insatta");
-        Assert.That(html.Split("</script>").Length - 1, Is.EqualTo(CodeMapAssets.Scripts.Count + 3), "varningen avslutar ingen skripttagg");
+        Assert.That(html.Split("</script>").Length - 1, Is.EqualTo(CodeMapAssets.Scripts.Count + 4), "varningen avslutar ingen skripttagg");
         Assert.That(html, Does.Not.Contain(Root), "bara filnamnet: sidan kan delas");
 
         // Mermaid för varje nivå och anrop, samma text som --mermaid. Uppifrån och ned byter sidan själv första raden.
@@ -430,7 +593,7 @@ public partial class CodeMapTests
         Assert.That(variants, Has.Count.EqualTo(MermaidOptions.Levels.Length * (1 + map.EntryPoints.Count)));
         Assert.That(variants["classes|POST /kunder"], Is.EqualTo(CodeMapMermaid.Write(map with { Solution = "Test.sln" }, MermaidOptions.Parse("classes", "LR", "POST /kunder"))));
         Assert.That(variants["projects|"], Does.StartWith("flowchart LR\n"));
-        Assert.That(CodeMapHtml.Write(map), Is.EqualTo(html), "samma karta ger samma sida");
+        Assert.That(CodeMapHtml.Write(map, new HashSet<string>(), showUnreached: true), Is.EqualTo(html), "samma karta ger samma sida");
     }
 
     [Test]
@@ -579,7 +742,7 @@ public partial class CodeMapTests
         var first = CodeMapJson.Serialize(await MapAsync(solution));
         var second = CodeMapJson.Serialize(await MapAsync(solution));
         Assert.That(second, Is.EqualTo(first));
-        Assert.That(first, Does.Contain("\"entryPoints\"").And.Contain("\"integrations\"").And.Contain("\"overview\"").And.Contain("\"schemaVersion\": 2"));
+        Assert.That(first, Does.Contain("\"entryPoints\"").And.Contain("\"integrations\"").And.Contain("\"overview\"").And.Contain("\"schemaVersion\": 3"));
     }
 
     [Test]

@@ -197,7 +197,7 @@ public class OutputStandardTests
     [Test]
     public void Cause_codes_are_english_lowercase_with_hyphens()
     {
-        Assert.That(CauseCodes.All.Select(CauseCodes.Code), Is.EqualTo(new[] { "system", "expectation", "auth", "environment", "test-data", "missing-data", "test-user-rejected", "rate-limited", "tool", "dependency", "read-only" }));
+        Assert.That(CauseCodes.All.Select(CauseCodes.Code), Is.EqualTo(new[] { "system", "expectation", "auth", "environment", "test-data", "missing-data", "test-user-rejected", "rate-limited", "tool", "unsupported", "dependency", "read-only" }));
         foreach (var code in CauseCodes.All.Select(CauseCodes.Code))
             Assert.That(CauseCodes.ParseFailOn(code), Has.Count.EqualTo(1));
     }

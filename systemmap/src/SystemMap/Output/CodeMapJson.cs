@@ -7,15 +7,24 @@ namespace SystemMap;
 /// <summary>
 /// Kartan som JSON (samma form i <c>--json karta.json</c> och i webbsidan). schemaVersion först, camelCase, null utelämnas och
 /// listorna sorterade på stabilt id (ordinalt). <c>projects</c> och <c>steps</c> behåller sin ordning, eftersom den är anropens.
+/// En ingång som inte är HTTP har <c>name</c> (t.ex. <c>Bakgrund: OrderCleanupWorker</c>) men ingen <c>method</c>, <c>path</c> eller <c>codePath</c>.
+/// En ingång vars namn en annan ingång också skulle ha har <c>qualifier</c> (projektet, se <see cref="EntryPoint.Qualifier"/>); namnet i översikten är då
+/// <c>Bakgrund: Worker (Jobs)</c>. En del i översikten som ingen ingång når har <c>reached: false</c>; saknas fältet nås den. Ett HTTP-anrop vars adress inte går att läsa ur koden
+/// (den bestäms vid körning) har <c>address: "runtime"</c> i steget och i översiktens rad; <c>operation</c> och <c>name</c> är då bara verbet.
 /// </summary>
 public static class CodeMapJson
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    public static string Serialize(CodeMapModel map) => JsonSerializer.Serialize(ToDto(map), Options) + "\n";
+    /// <param name="overview">Översikten om den redan är byggd (och i så fall redan utan de dolda delarna), annars byggs den här.</param>
+    /// <param name="hidden">Id:n på delarna som är dolda i kartan (se <see cref="CodeMapOverview.Hide(CodeMapModel, IReadOnlySet{string})"/>), så att den som läser
+    /// vet att kartan är ofullständig. Utelämnas när inget är dolt.</param>
+    public static string Serialize(CodeMapModel map, Overview? overview = null, IReadOnlySet<string>? hidden = null) =>
+        JsonSerializer.Serialize(ToDto(map, overview, hidden), Options) + "\n";
 
     /// <param name="overview">Översikten om den redan är byggd, annars byggs den här.</param>
-    public static object ToDto(CodeMapModel map, Overview? overview = null) => new
+    /// <param name="hidden">Se <see cref="Serialize"/>.</param>
+    public static object ToDto(CodeMapModel map, Overview? overview = null, IReadOnlySet<string>? hidden = null) => new
     {
         schemaVersion = CodeMapModel.SchemaVersion,
         solution = Path.GetFileName(map.Solution.Replace('\\', '/')),   // bara filnamnet: kartan innehåller inga sökvägar från den här datorn
@@ -24,26 +33,29 @@ public static class CodeMapJson
         apps = map.Apps.OrderBy(a => a.Project, StringComparer.Ordinal).Select(a => new
         {
             project = a.Project,
-            kinds = a.Kinds.Select(k => k == AppKind.Api ? "api" : "web").ToList(),
+            kinds = a.Kinds.Select(KindCode).ToList(),
             healthPaths = a.HealthPaths,
             databases = a.Databases.Select(d => new { provider = d.Provider, context = d.Context, configKey = d.ConfigKey }).ToList(),
             httpClients = a.HttpClients.Select(c => new { client = c.Client, configKey = c.ConfigKey, integrationId = c.IntegrationId, targetProject = c.TargetProject }).ToList(),
         }).ToList(),
-        entryPoints = map.EntryPoints.OrderBy(e => e.Path, StringComparer.Ordinal).ThenBy(e => e.Method, StringComparer.Ordinal).Select(e => new
-        {
-            kind = KindCode(e.Kind),
-            method = e.Method,
-            path = e.Path,
-            codePath = e.CodePath,
-            operationId = e.OperationId,
-            project = e.Project,
-            handler = e.Handler,
-            file = e.File,
-            line = e.Line,
-            input = Shape(e.Input),
-            output = Shape(e.Output),
-            steps = e.Steps.Select(Step).ToList(),
-        }).ToList(),
+        entryPoints = map.EntryPoints.OrderBy(e => e.Kind.IsHttp() ? 0 : 1).ThenBy(e => e.Path, StringComparer.Ordinal).ThenBy(e => e.Method, StringComparer.Ordinal)
+            .ThenBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Handler, StringComparer.Ordinal).Select(e => new
+            {
+                kind = KindCode(e.Kind),
+                name = e.Kind.IsHttp() ? null : e.Name,
+                method = e.Kind.IsHttp() ? e.Method : null,
+                path = e.Kind.IsHttp() ? e.Path : null,
+                codePath = e.Kind.IsHttp() ? e.CodePath : null,
+                qualifier = e.Qualifier,
+                operationId = e.OperationId,
+                project = e.Project,
+                handler = e.Handler,
+                file = e.File,
+                line = e.Line,
+                input = Shape(e.Input),
+                output = Shape(e.Output),
+                steps = e.Steps.Select(Step).ToList(),
+            }).ToList(),
         differences = map.Differences.OrderBy(d => d.Path, StringComparer.Ordinal).ThenBy(d => d.Method, StringComparer.Ordinal).ThenBy(d => d.Kind).Select(d => new
         {
             kind = d.Kind == DifferenceKind.OnlyInCode ? "only-in-code" : "only-in-spec",
@@ -53,6 +65,7 @@ public static class CodeMapJson
             handler = d.Handler,
         }).ToList(),
         warnings = map.Warnings.Order(StringComparer.Ordinal).ToList(),
+        hidden = hidden is { Count: > 0 } ? hidden.Order(StringComparer.Ordinal).ToList() : null,
         overview = Overview(overview ?? CodeMapOverview.Build(map)),
     };
 
@@ -63,6 +76,7 @@ public static class CodeMapJson
             id = n.Id,
             kind = KindCode(n.Kind),
             name = n.Name,
+            address = n.AddressAtRuntime ? "runtime" : null,
             parent = n.Parent,
             @ref = n.Ref,
             file = n.File,
@@ -70,6 +84,7 @@ public static class CodeMapJson
             @in = Shape(n.In),
             @out = Shape(n.Out),
             entries = n.Entries,
+            reached = n.Reached ? (bool?)null : false,
         }).ToList(),
         links = overview.Links.OrderBy(l => l.From, StringComparer.Ordinal).ThenBy(l => l.To, StringComparer.Ordinal).Select(l => new { from = l.From, to = l.To, file = l.File, line = l.Line, entries = l.Entries }).ToList(),
     };
@@ -90,7 +105,21 @@ public static class CodeMapJson
         EntryKind.MinimalApi => "minimal-api",
         EntryKind.RazorPage => "razor-page",
         EntryKind.BlazorPage => "blazor-page",
-        _ => "mvc-view",
+        EntryKind.MvcView => "mvc-view",
+        EntryKind.Background => "background",
+        EntryKind.Console => "console",
+        EntryKind.Consumer => "consumer",
+        EntryKind.Job => "job",
+        EntryKind.Grpc => "grpc",
+        _ => "signalr",
+    };
+
+    public static string KindCode(AppKind kind) => kind switch
+    {
+        AppKind.Api => "api",
+        AppKind.Web => "web",
+        AppKind.Worker => "worker",
+        _ => "console",
     };
 
     public static string KindCode(IntegrationKind kind) => kind switch
@@ -111,7 +140,7 @@ public static class CodeMapJson
         line = s.Line,
         @in = Shape(s.In),
         @out = Shape(s.Out),
-        integration = s.Integration is { } i ? new { id = i.Id, operation = i.Operation } : null,
+        integration = s.Integration is { } i ? new { id = i.Id, operation = i.Operation, address = i.AddressAtRuntime ? "runtime" : null } : null,
         steps = s.Steps.Select(Step).ToList(),
     };
 

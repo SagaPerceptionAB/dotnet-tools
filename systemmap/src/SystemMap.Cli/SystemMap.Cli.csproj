@@ -29,7 +29,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>SagaPerception.SystemMap.Cli</PackageId>
     <Version>$(SagaPerceptionSystemMapVersion)</Version>
-    <Description>Systemkarta för en .NET-solution: följer anropen från varje controller genom projekten ut till databaser, andra system, köer, lagring och e-post. Ritar ett nätverk i webbläsaren och skriver Mermaid, JSON och text.</Description>
+    <Description>Systemkarta för en .NET-solution: följer anropen från varje controller, minimal API, Razor Page och Blazor-sida genom projekten ut till databaser, andra system, köer, lagring och e-post. Ritar ett nätverk i webbläsaren och skriver Mermaid, JSON och text.</Description>
     <PackageTags>systemkarta;architecture;diagram;mermaid;roslyn;dotnet-tool</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

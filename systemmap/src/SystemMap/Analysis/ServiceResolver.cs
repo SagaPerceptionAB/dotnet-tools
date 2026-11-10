@@ -38,6 +38,8 @@ internal sealed partial class ServiceResolver
     };
 
     private readonly Dictionary<string, List<INamedTypeSymbol>> _registered = new(StringComparer.Ordinal);
+    // Alla typer som nämns i en registrering, även de utan gränssnitt (AddScoped<CurrentSession>()).
+    private readonly HashSet<string> _services = new(StringComparer.Ordinal);
     // Klasserna i solutionen per gränssnitt de implementerar, och överskuggningarna per virtuell metod. Byggs en gång,
     // vilket går mycket fortare än SymbolFinder (som indexerar alla paket första gången).
     private readonly Dictionary<string, List<INamedTypeSymbol>> _implementations = new(StringComparer.Ordinal);
@@ -56,13 +58,26 @@ internal sealed partial class ServiceResolver
     public List<HttpClientRegistration> HttpClients { get; } = new();
 
     private readonly Origins _origins;
+    private IReadOnlyList<Project> _allProjects = [];
+    private ModelCache _models = null!;
+    private Dictionary<string, List<(BaseObjectCreationExpressionSyntax Creation, SemanticModel Model)>>? _creations;
     private string _project = "";
 
-    private ServiceResolver(Origins origins) => _origins = origins;
+    private ServiceResolver(Origins origins)
+    {
+        _origins = origins;
+        Discovery = new DiscoveryAddress(this, origins);
+    }
+
+    /// <summary>Läser adressen till OIDC-discovery ur koden som skapar en <c>ConfigurationManager</c>.</summary>
+    public DiscoveryAddress Discovery { get; }
+
+    /// <summary>Den semantiska modellen för en fil i solutionen.</summary>
+    public SemanticModel? ModelFor(SyntaxTree tree) => _models.For(tree);
 
     public static ServiceResolver Build(IEnumerable<Project> projects, ModelCache models, Origins origins)
     {
-        var resolver = new ServiceResolver(origins);
+        var resolver = new ServiceResolver(origins) { _allProjects = projects.ToList(), _models = models };
         foreach (var compilation in models.Compilations)
             foreach (var type in SourceTypes(compilation.Assembly.GlobalNamespace))
                 resolver.Index(type);
@@ -93,6 +108,34 @@ internal sealed partial class ServiceResolver
     /// </summary>
     public string? DatabaseOf(ITypeSymbol context) =>
         Symbols.SelfAndBases(context).Select(t => _databases.GetValueOrDefault(Symbols.TypeKey(t))).FirstOrDefault(n => n is not null);
+
+    /// <summary>
+    /// Alla <c>new T(...)</c> av en klass i solutionen, överallt. Indexet byggs första gången någon frågar (bara regler som följer ett värde
+    /// till där det skapades behöver det), så en karta utan sådana regler går inte igenom alla uttryck en extra gång.
+    /// </summary>
+    public IReadOnlyList<(BaseObjectCreationExpressionSyntax Creation, SemanticModel Model)> CreationsOf(ITypeSymbol type)
+    {
+        if (_creations is null)
+        {
+            _creations = new Dictionary<string, List<(BaseObjectCreationExpressionSyntax, SemanticModel)>>(StringComparer.Ordinal);
+            foreach (var project in _allProjects)
+                foreach (var tree in _models.Trees(project))
+                {
+                    if (_models.For(tree) is not { } model) continue;
+                    foreach (var creation in tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
+                    {
+                        if (model.GetTypeInfo(creation).Type is not { } created || !Symbols.InSource(created)) continue;
+                        var key = Symbols.TypeKey(created);
+                        if (!_creations.TryGetValue(key, out var list)) _creations[key] = list = [];
+                        list.Add((creation, model));
+                    }
+                }
+        }
+        return _creations.GetValueOrDefault(Symbols.TypeKey(type), []);
+    }
+
+    /// <summary>Är typen registrerad i DI (som tjänst eller som implementation)? ASP.NET binder en sådan parameter från tjänsterna, inte från kroppen.</summary>
+    public bool IsService(ITypeSymbol type) => _services.Contains(Symbols.TypeKey(type));
 
     /// <summary>HTTP-klienten för en typad klient (klassen som får en HttpClient) eller ett Refit-gränssnitt.</summary>
     public HttpClientInfo? HttpClientFor(ITypeSymbol type) =>
@@ -216,6 +259,9 @@ internal sealed partial class ServiceResolver
     {
         var method = Symbols.Invoked(invocation, model);
         var typeArguments = method?.TypeArguments.OfType<INamedTypeSymbol>().ToList() ?? SyntacticTypeArguments(invocation, model);
+        foreach (var t in typeArguments.Where(t => t.TypeKind != TypeKind.Error)) _services.Add(Symbols.TypeKey(t));
+        foreach (var t in invocation.ArgumentList.Arguments.Select(a => a.Expression).OfType<TypeOfExpressionSyntax>().Select(t => model.GetTypeInfo(t.Type).Type).OfType<INamedTypeSymbol>())
+            if (t.TypeKind != TypeKind.Error) _services.Add(Symbols.TypeKey(t));
 
         if (name is "AddHttpClient" or "AddRefitClient")
         {

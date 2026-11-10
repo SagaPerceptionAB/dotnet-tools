@@ -20,7 +20,7 @@ internal static class MinimalApiFinder
         ["MapMethods"] = "",
     };
 
-    public static IEnumerable<EntryCandidate> Find(ModelCache models, CallSites sites, string root, List<string> warnings)
+    public static IEnumerable<EntryCandidate> Find(ModelCache models, CallSites sites, ServiceResolver services, string root, List<string> warnings)
     {
         foreach (var name in Methods.Keys)
             foreach (var (call, model) in sites.Named(name))
@@ -44,9 +44,9 @@ internal static class MinimalApiFinder
                 }
                 var handler = Handler(arguments[^1].Expression, model);
                 var (file, line) = handler.Symbol is { } m && m.MethodKind == MethodKind.Ordinary
-                    ? Symbols.Where(m.Locations.First(l => l.IsInSource), root)
+                    ? Symbols.Where(m, root)
                     : Symbols.Where(call.GetLocation(), root);
-                var input = handler.Symbol is { } h ? Body(h) : null;
+                var input = handler.Symbol is { } h ? Body(h, services) : null;
                 var output = handler.Symbol is { } o ? EntryPointFinder.Output(o, models) : null;
                 IReadOnlyList<IMethodSymbol> roots = handler.Symbol is { } r && Symbols.InSource(r) ? [r] : [];
 
@@ -61,7 +61,7 @@ internal static class MinimalApiFinder
     }
 
     /// <summary>Hanteraren: en lambda (namnet är metoden där den står), eller en metod eller lokal funktion.</summary>
-    private static (IMethodSymbol? Symbol, string? Name) Handler(ExpressionSyntax expression, SemanticModel model)
+    internal static (IMethodSymbol? Symbol, string? Name) Handler(ExpressionSyntax expression, SemanticModel model)
     {
         while (expression is ParenthesizedExpressionSyntax or CastExpressionSyntax)
             expression = expression is ParenthesizedExpressionSyntax p ? p.Expression : ((CastExpressionSyntax)expression).Expression;
@@ -73,20 +73,18 @@ internal static class MinimalApiFinder
     }
 
     /// <summary>Metoden där anropet står, t.ex. <c>HelloEndpoints.MapHello</c>. Satser på översta nivån hör till <c>Program</c>.</summary>
-    private static string Enclosing(InvocationExpressionSyntax call, SemanticModel model)
+    internal static string Enclosing(SyntaxNode call, SemanticModel model)
     {
         var member = call.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
         return member is not null && model.GetDeclaredSymbol(member) is { } symbol ? $"{symbol.ContainingType.Name}.{symbol.Name}" : "Program.Main";
     }
 
-    /// <summary>Indata: parametern med [FromBody], annars (för POST, PUT och PATCH) en klass i solutionen som inte är en tjänst.</summary>
-    private static DataShape? Body(IMethodSymbol handler)
+    /// <summary>Indata: parametern med [FromBody], annars (för POST, PUT och PATCH) en klass i solutionen som ASP.NET skulle binda från kroppen (se <see cref="ParameterSources"/>).</summary>
+    private static DataShape? Body(IMethodSymbol handler, ServiceResolver services)
     {
         if (handler.Parameters.FirstOrDefault(p => Symbols.HasAttribute(p, "FromBody")) is { } body) return DataShapes.Of(body.Type);
         return handler.Parameters
-            .Where(p => p.Type is { TypeKind: TypeKind.Class or TypeKind.Struct, IsAbstract: false } &&
-                        !Symbols.HasAttribute(p, "FromServices", "FromKeyedServices", "FromQuery", "FromRoute", "FromHeader") &&
-                        !Symbols.Is(p.Type, "Microsoft.EntityFrameworkCore.DbContext"))
+            .Where(p => p.Type is { TypeKind: TypeKind.Class or TypeKind.Struct, IsAbstract: false } && ParameterSources.CanBeBody(p, services))
             .Select(p => DataShapes.Of(p.Type)).FirstOrDefault(s => s is not null);
     }
 

@@ -1198,10 +1198,10 @@
   var mapBody = null, mapLoading = false, mapStarted = false;
   var systemMap = SystemMap.create($('map'), {
     onError: function (e) { showMapError({ message: e.message, tip: e.tip }); },
-    // Kartan som Mermaid: samma källkod som kartan lästes från, med kartans riktning, nivå och valda anrop.
-    mermaid: async function (level, direction, entry) {
+    // Kartan som Mermaid: samma källkod som kartan lästes från, med kartans riktning, nivå, valda anrop och dolda delar.
+    mermaid: async function (level, direction, entry, hidden) {
       hideMapError();
-      var body = Object.assign({}, mapBody, { level: level, direction: direction, entry: entry });
+      var body = Object.assign({}, mapBody, { level: level, direction: direction, entry: entry, hide: hidden });
       var res;
       try { res = await api('/api/map/mermaid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
       catch (e) { throw { message: 'Kontakten med testgen bröts.', tip: 'Kontrollera att testgen web fortfarande körs och försök igen.' }; }
@@ -1298,7 +1298,7 @@
         p.appendChild(toMap);
         return;
       }
-      var e = systemMap.entryFor(k.operationId, k.method, k.path);
+      var e = systemMap.entryFor(k.operationId, k.method, k.path, (currentProject() || {}).name);   // delar två appar rutten är det systemet som testas som gäller
       if (!e) { p.appendChild(el('p', 'muted', 'Anropet finns inte på systemkartan.')); return; }
       var fold = el('details', 'chainfold'), fsum = el('summary', null, 'Vägen genom koden enligt systemkartan');
       fold.appendChild(fsum);

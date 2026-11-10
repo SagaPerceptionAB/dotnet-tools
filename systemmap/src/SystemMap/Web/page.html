@@ -19,17 +19,26 @@ __STYLE__
 <p class="empty" id="empty" hidden>Kartan hittade inga anrop i koden.</p>
 <script type="application/json" id="map-data">__MAP__</script>
 <script type="application/json" id="mermaid-data">__MERMAID__</script>
+<script type="application/json" id="hidden-data">__HIDDEN__</script>
 __SCRIPTS__
 <script>
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var json = JSON.parse($('map-data').textContent), mermaid = JSON.parse($('mermaid-data').textContent);
+  var json = JSON.parse($('map-data').textContent), mermaid = JSON.parse($('mermaid-data').textContent), hidden = JSON.parse($('hidden-data').textContent);
   $('empty').hidden = json.entryPoints.length > 0;
   var map = SystemMap.create($('map'), {
     // Mermaid-texten skrevs när sidan skapades, en för varje nivå och anrop, vänster till höger. Uppifrån och ned skiljer
     // sig bara på första raden.
-    mermaid: function (level, direction, entry) {
+    // Delar som är dolda i sidan (id:n) finns inte i de skrivna filerna, så då får man veta hur man får en fil utan dem.
+    hidden: hidden,
+    // Delar som ingen ingång når visas från början om inte sidan skapades med --no-unreached; det man själv väljer sparas och gäller före.
+    unreached: __UNREACHED__,
+    mermaid: function (level, direction, entry, hiddenNow, unreachedShown) {
+      if (hiddenNow && hiddenNow.length) return Promise.reject({ message: 'Mermaid-filen kan inte följa det som är dolt i sidan.',
+        tip: 'Välj Visa allt, eller skapa filen med dotnet systemmap --mermaid karta.mmd --hide <namn>.' });
+      if (unreachedShown === false) return Promise.reject({ message: 'Mermaid-filen kan inte följa det som är dolt i sidan.',
+        tip: 'Bocka i Visa delar som inte nås, eller skapa filen med dotnet systemmap --mermaid karta.mmd --no-unreached.' });
       var text = mermaid[level + '|' + (entry || '')];
       if (!text) return Promise.reject({ message: 'Mermaid-filen för det här valet finns inte i sidan.', tip: 'Skapa sidan på nytt.' });
       return Promise.resolve(direction === 'TB' ? text.replace(/^flowchart LR/, 'flowchart TB') : text);

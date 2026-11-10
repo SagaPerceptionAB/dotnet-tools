@@ -7,7 +7,6 @@ namespace SystemMap;
 /// <summary>Hjälpare för Roslyn-symboler: namn, arv och uppackning av typer.</summary>
 internal static class Symbols
 {
-    /// <summary>Metadatanamnet med namnrymd men utan assembly, t.ex. <c>Microsoft.EntityFrameworkCore.DbSet`1</c>.</summary>
     /// <summary>Filen relativt <paramref name="root"/> (med snedstreck) och raden, räknad från 1.</summary>
     public static (string File, int Line) Where(Location location, string root)
     {
@@ -16,6 +15,10 @@ internal static class Symbols
         return (file, span.StartLinePosition.Line + 1);
     }
 
+    /// <summary>Platsen där symbolen deklareras i koden: som <see cref="Where(Location, string)"/>. Symbolen måste finnas i källkoden (<see cref="InSource"/>).</summary>
+    public static (string File, int Line) Where(ISymbol symbol, string root) => Where(symbol.Locations.First(l => l.IsInSource), root);
+
+    /// <summary>Metadatanamnet med namnrymd men utan assembly, t.ex. <c>Microsoft.EntityFrameworkCore.DbSet`1</c>.</summary>
     public static string FullName(ITypeSymbol type) => FullNames.GetValue(type.OriginalDefinition, static t =>
     {
         var name = t.MetadataName;

@@ -263,4 +263,57 @@ public class SolutionFinderTests
         var e = Assert.Throws<UsageException>(() => SolutionFinder.Find(empty, "dotnet systemmap"))!;
         Assert.That(e.Message, Does.StartWith("Hittade ingen solution"));
     }
+
+    private void Touch(params string[] parts)
+    {
+        var file = Path.Combine([_dir, .. parts]);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "");
+    }
+
+    [Test]
+    public void A_solution_in_a_subfolder_is_never_picked_but_named_in_the_hint()
+    {
+        Touch("backend", "Butik.Backend.slnx");
+        Directory.CreateDirectory(Path.Combine(_dir, ".git"));
+        Assert.That(SolutionFinder.TryFind(_dir, "systemmap"), Is.Null, "nedåt väljs ingenting automatiskt");
+        var e = Assert.Throws<UsageException>(() => SolutionFinder.Find(_dir, "systemmap"))!;
+        Assert.That(e.Message, Does.StartWith("Hittade ingen solution"));
+        Assert.That(e.Tip, Is.EqualTo("systemmap --solution backend/Butik.Backend.slnx"));
+        var shown = string.Join("\n", FriendlyError.From(e, "systemmap").Lines(verbose: false));
+        Assert.That(shown, Does.Contain("\nGör så här: systemmap --solution backend/Butik.Backend.slnx"));
+        Assert.That(System.Text.RegularExpressions.Regex.Matches(shown, "Gör så här:").Count, Is.EqualTo(1), "\"Gör så här:\" en gång: " + shown);
+    }
+
+    [Test]
+    public void The_search_below_is_shallow_first_bounded_and_skips_build_output_and_hidden_folders()
+    {
+        Touch("a", "Djup.sln");
+        Touch("a", "b", "c", "d", "Alltfördjup.sln");
+        Touch("bin", "Bin.sln");
+        Touch("obj", "Obj.sln");
+        Touch("node_modules", "Nod.sln");
+        Touch(".git", "Dold.sln");
+        Touch(".vs", "Dold.slnx");
+        Touch("z", "Sist.slnx");
+        Touch("a", "Anmärkning.txt");
+        Assert.That(SolutionFinder.FindBelow(_dir), Is.EqualTo(new[] { Path.Combine("a", "Djup.sln"), Path.Combine("z", "Sist.slnx") }));
+        Assert.That(SolutionFinder.FindBelow(_dir, 1), Is.EqualTo(new[] { Path.Combine("a", "Djup.sln"), Path.Combine("z", "Sist.slnx") }));
+        Assert.That(SolutionFinder.FindBelow(_dir, 4), Does.Contain(Path.Combine("a", "b", "c", "d", "Alltfördjup.sln")));
+        Assert.That(SolutionFinder.FindBelow(_dir, 0), Is.Empty);
+    }
+
+    [Test]
+    public void The_hint_names_the_first_solution_below_and_mentions_the_others_and_is_null_when_there_are_none()
+    {
+        Assert.That(SolutionFinder.HintBelow(_dir, "systemmap"), Is.Null);
+        Touch("backend", "A.slnx");
+        Touch("tools", "B.sln");
+        Assert.That(SolutionFinder.HintBelow(_dir, "systemmap"), Is.EqualTo("systemmap --solution backend/A.slnx (andra: tools/B.sln)"), "snedstreck framåt i alla sökvägar, även på Windows");
+        Directory.Delete(Path.Combine(_dir, "backend"), true);
+        Directory.Delete(Path.Combine(_dir, "tools"), true);
+        Directory.CreateDirectory(Path.Combine(_dir, ".git"));
+        var e = Assert.Throws<UsageException>(() => SolutionFinder.Find(_dir, "systemmap"))!;
+        Assert.That(e.Tip, Does.Contain("src/Butik.sln"), "utan någon solution nedåt gäller det vanliga tipset");
+    }
 }

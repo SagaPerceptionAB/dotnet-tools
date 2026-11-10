@@ -19,6 +19,7 @@ public static class CauseCodes
         FailureCause.TestUserRejected => "test-user-rejected",
         FailureCause.RateLimited => "rate-limited",
         FailureCause.Tool => "tool",
+        FailureCause.Unsupported => "unsupported",
         FailureCause.ReadOnly => "read-only",
         _ => "dependency",
     };

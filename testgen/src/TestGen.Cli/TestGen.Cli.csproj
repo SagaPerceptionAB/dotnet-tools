@@ -17,6 +17,13 @@
     <PackageReference Include="Microsoft.Playwright" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Playwright tar annars bara med node för datorn som bygger (Ubuntu i release.yml), och då kan verktyget inte installera
+         Chromium på Windows. Windows och Linux x64 täcker utvecklardatorerna och CI; macOS saknas medvetet (paketets storlek).
+         eng/check-packages.sh kontrollerar att båda finns. -->
+    <PlaywrightPlatform>win;linux-x64</PlaywrightPlatform>
+  </PropertyGroup>
+
   <ItemGroup>
     <Using Include="SagaPerception.CommandLine" />
   </ItemGroup>

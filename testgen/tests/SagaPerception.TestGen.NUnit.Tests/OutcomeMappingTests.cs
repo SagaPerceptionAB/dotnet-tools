@@ -18,6 +18,7 @@ public class OutcomeMappingTests
     [TestCase("HOPPAD", FailureCause.ReadOnly, "Ignore")]
     [TestCase("HOPPAD", FailureCause.Cascade, "Inconclusive")]
     [TestCase("HOPPAD", FailureCause.Tool, "Inconclusive")]
+    [TestCase("HOPPAD", FailureCause.Unsupported, "Ignore")]
     [TestCase("HOPPAD", null, "Ignore")]
     public void An_outcome_and_its_cause_decide_the_verdict(string outcome, FailureCause? cause, string expected) =>
         Assert.That(OutcomeMapping.Decide(outcome, cause), Is.EqualTo(Enum.Parse<Verdict>(expected)));

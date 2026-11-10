@@ -41,7 +41,7 @@ dotnet systemmap --spec https://example.com/openapi.json
 | `--spec` | `<fil\|url>` | OpenAPI-spec. Kopplar anropen till specens operationer och listar anrop som bara finns i koden eller bara i specen. |
 | `--html` | `<fil>` | Skriv kartan som webbsida. Sidan hämtar inget utifrån. |
 | `--mermaid` | `<fil>` | Skriv kartan som Mermaid-flödesschema. |
-| `--level` | `projects`, `classes` (standard), `methods`, `all` | Detaljnivå: projekten, klasserna, metoderna i klasserna eller allt. På `methods` ligger läsningar, skrivningar och meddelanden på pilarna till integrationerna; på `all` är de egna rader. Gäller med `--mermaid`. Webbsidan har samma nivåer (Projekt, Klasser, Funktioner, Allt). |
+| `--level` | `projects`, `classes` (standard), `methods`, `all` | Detaljnivå: projekten, klasserna, metoderna i klasserna eller allt. På `methods` ligger läsningar, skrivningar och meddelanden på pilarna till integrationerna; på `all` är de egna rader. Gäller med `--mermaid`. I webbsidan väljs nivån i listorna ovanför kartan, se Filter i webbsidan: Klass: Visas inte = `projects`, Funktion: Alla = `methods`, Integration: Alla, med läsningar och skrivningar = `all`, annars `classes`. |
 | `--direction` | `LR` (standard), `TB` | Vänster till höger eller uppifrån och ned. Gäller med `--mermaid`. |
 | `--entry` | `"<anrop>"` | Bara vägen för ett anrop, t.ex. `"POST /orders"`. Gäller med `--mermaid`. |
 | `--json` | `<fil>` | Skriv kartan som JSON. |
@@ -61,7 +61,7 @@ Utan `--html`, `--mermaid` och `--json` skrivs kartan som en webbsida i en tillf
 - En dold integration tas bort med sina läsningar, skrivningar och meddelanden och pilarna dit.
 - Anrop (ingångarna) går inte att dölja.
 - Texten på stdout, `--mermaid` och `--json` blir utan de dolda delarna, och säger vilka som är dolda (en rad `Dolda delar:` i texten och Mermaid-filen, och listan `hidden` med id:n i JSON). JSON-filen har samma form som annars (`schemaVersion`, sorterade listor): `entryPoints`, `integrations`, `apps` och `overview` är filtrerade, men ett anrops egen `handler` står kvar, och `file` för en integration anges där den anropas.
-- `--html` får hela kartan, med delarna avbockade i **Visa** i sidan, så att den som läser kan bocka i dem igen. Det en läsare bockar av i sidan sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
+- `--html` får hela kartan, med delarna dolda. Rutan nere till vänster i kartan säger hur många som är dolda ("2 dolda med --hide", med namnen i title) och har knappen **Visa dem**, så att den som läser kan se dem. Nya delar går inte att dölja i sidan; det man vill se mindre av väljer man bort med filtren. Att visa dem sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
 
 Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev karta.html (webbsida)`) skrivs på stderr.
 
@@ -69,6 +69,24 @@ Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns elle
 
 JSON-filen börjar med `schemaVersion` (nu 3). null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider. Sedan version 2 (fälten på engelska)
 har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), att ett anrop vars namn en annan skulle dela har `qualifier`, att delar i `overview` som ingen ingång når har `reached: false`, och att ett HTTP-anrop vars adress varken står i koden eller i konfigurationen (den bestäms vid körning) har `address: "runtime"` i steget och i översiktens rad, medan `operation` och `name` bara är verbet.
+
+## Filter i webbsidan
+
+Raden ovanför kartan har fem sökbara listor: **Anrop**, **Projekt**, **Klass**, **Funktion** och **Integration**, och sedan **Riktning** och exporten.
+Klicka eller tryck pil ned för att öppna en lista; skriv för att söka (träffen markeras) och kryssa ett eller flera värden med klick, Enter eller
+Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick utanför stänger den.
+
+- Projekt, Klass, Funktion och Integration är filter: kartan visar bara anropen som går genom de valda delarna (eller något under dem), med delarna de
+  passerar. Inom en lista gäller ELLER; mellan Projekt, Klass och Funktion gäller den mest precisa listan som har kryss, och Integration gäller
+  tillsammans med den (OCH). Projekten begränsar vad Klass och Funktion listar, klasserna vad Funktion listar. Statusrutan uppe till vänster säger hur
+  många anrop som går igenom ("2 av 13 anrop"). Ett fält med kryss har blå kant och ett **×** som tar bort kryssen i den listan; med flera kryss står
+  antalet ("2 klasser") och title listar namnen.
+- Anrop markerar vägarna för de kryssade anropen och dämpar resten (det är inget filter); listan visar bara anropen som går genom filtren.
+- Detaljnivån väljs överst i listorna med radioknappar: Klass: Alla eller Visas inte (bara projekten), Funktion: Visas inte eller Alla (metoderna i
+  klasserna), Integration: Alla eller Alla, med läsningar och skrivningar (allt utfällt). Klassen "Visas inte" stänger av Funktion.
+- **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
+- Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
+  filen med `--mermaid` och `--entry`.
 
 ## I en app
 
@@ -79,10 +97,10 @@ konfiguration står i [SagaPerception.SystemMap.AspNetCore](https://github.com/S
 ### Det som ingen ingång når
 
 Alla projekt (utom testprojekt) och alla klasser med metoder som har kod finns på kartan, också de som ingen ingång når. De ritas dämpade och streckade
-(`reached: false` i JSON), med förklaringen "Nås inte från någon ingång" i sidan, och i texten som en lista sist ("Nås inte från någon ingång:", per
-projekt). På nivåerna Funktioner och Allt syns också metoderna i en klass som nås men som ingen anropar. I sidan har **Visa** valet
-"Visa delar som inte nås" (från början ibockat, sparas i webbläsaren som det man bockar av); `--no-unreached` tar bort dem ur text, Mermaid och JSON och
-avbockar valet i `--html`. `--hide` fungerar på dem som på andra projekt och klasser.
+(`reached: false` i JSON), och i texten som en lista sist ("Nås inte från någon ingång:", per
+projekt). På nivåerna Funktioner och Allt syns också metoderna i en klass som nås men som ingen anropar. I sidan har rutan nere till vänster i kartan
+valet "Visa delar som inte nås", med den streckade rutan som förklaring (från början ibockat, sparas i webbläsaren som det man väljer); `--no-unreached`
+tar bort dem ur text, Mermaid och JSON och avbockar valet i `--html`. `--hide` fungerar på dem som på andra projekt och klasser.
 
 Vad som räknas som nått: det som en ingång anropar, direkt eller genom hjälpmetoder som kartan inte ritar, och det som körs utan att en ingång anropar det:
 konstruktorer, fält- och egenskapsvärden och egenskaper hos klasser som används, metoder som skickas vidare som värden (`list.Select(Load)`), och det som

@@ -355,7 +355,7 @@ public partial class CodeMapTests
         var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
         await WithPageAsync(map, async (page, ready) =>
         {
-            await page.ClickAsync("[data-level='all']");
+            await LevelAsync(page, "all");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-operation').map(n => n.data('label'))"), Is.EqualTo(new[] { $"POST {DecidedAtRunTime}" }));
         });

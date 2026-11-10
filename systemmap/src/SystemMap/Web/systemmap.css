@@ -13,14 +13,53 @@
 .map-wrap { position: relative; display: flex; flex-direction: column; height: var(--map-height, 100vh); }
 .systemmap .map-view { flex: 1; min-height: 240px; overflow: hidden; border: 1px solid var(--line, #d9e0e8); background: #fcfcfb; }
 
-/* Verktygsraden ovanför kartan: anrop, riktning och nivå, och längst till höger exporten. */
-.map-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding: 6px 8px;
+/* Verktygsraden ovanför kartan: anrop, projekt, klass, funktion och integration (sökbara listor), Rensa, och längst till höger riktning,
+   exporten, skillnader och varningar. Etiketten står ovanför varje fält. Raden bryts på smala skärmar. */
+.map-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 20px; padding: 6px 8px;
   background: #fcfcfb; border: 1px solid var(--line, #d9e0e8); border-bottom: 0; }
-.map-field { display: inline-flex; align-items: center; gap: 8px; }
+.map-filters { display: contents; }
+.map-field { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.map-field-direction { margin-left: auto; }
+.systemmap #map-clear { min-height: 44px; }
 
 .map-label { font-size: 13px; font-weight: 600; color: var(--muted, #536071); }
-.map-entry { display: block; width: 14em; max-width: 100%; min-height: 44px; font: inherit; padding: 6px 10px; border: 1px solid var(--ctl, #6b7a8f);
-  border-radius: 8px; background: #fff; color: var(--text, #1b2430); cursor: pointer; }
+
+/* Sökbar lista (combobox): fältet ser ut som en knapp. Med ett valt filter får det blå kant, fet text och ett × som tar bort valet. */
+.map-combo { position: relative; display: block; }
+.map-input { display: block; box-sizing: border-box; width: 136px; max-width: 100%; min-height: 44px; font: inherit; padding: 6px 28px 6px 12px;
+  border: 1px solid var(--ctl, #6b7a8f); border-radius: 8px; background: #fff; color: var(--text, #1b2430); cursor: pointer; text-overflow: ellipsis; }
+.map-field-entry .map-input { width: 190px; }
+.map-input:disabled { background: var(--grey-bg, #eef1f5); color: #5b6677; border-color: #b4bdc9; cursor: default; }
+.map-arrow { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--muted, #536071); pointer-events: none; }
+.map-combo.disabled .map-arrow { display: none; }
+.map-combo.has-value .map-arrow { display: none; }
+.map-combo.has-value .map-input { border: 2px solid var(--blue, #1d4ed8); font-weight: 600; padding: 5px 34px 5px 11px; }
+.systemmap .map-x { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; min-height: 0; padding: 0; border: 0;
+  border-radius: 6px; background: none; font-size: 20px; line-height: 1; color: var(--muted, #536071); }
+.map-list { position: absolute; top: 100%; left: 0; z-index: 8; min-width: 100%; width: max-content; max-width: min(360px, 90vw); max-height: min(420px, calc(var(--map-height, 100vh) - 120px));
+  overflow: auto; margin: 4px 0 0; padding: 6px 0; list-style: none; background: #fff; border: 1px solid var(--line, #d9e0e8); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .16); font-size: 16px; }
+.map-list ul { list-style: none; margin: 0; padding: 0; }
+.map-group-label { padding: 8px 16px 2px; font-size: 13px; font-weight: 600; color: var(--muted, #536071); }
+.map-option { display: flex; align-items: flex-start; gap: 10px; padding: 8px 16px 8px 24px; cursor: pointer; word-break: break-word; }
+.map-list > .map-option { padding-left: 16px; }
+.map-option.active { background: #e8f0fc; }
+.map-option[aria-selected=true] .map-text { font-weight: 600; }
+.map-option mark { background: none; color: var(--blue, #1d4ed8); font-weight: 700; }
+.map-levels { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line, #d9e0e8); }
+.map-levels .map-option { padding-left: 16px; }
+/* Kryssrutan och radioknappen före namnet är bara till för ögat: valet står i aria-selected. */
+.map-check, .map-radio { flex: none; position: relative; width: 18px; height: 18px; margin-top: 2px; border: 2px solid var(--ctl, #6b7a8f); background: #fff; }
+.map-check { border-radius: 4px; }
+.map-radio { border-radius: 50%; }
+.map-option[aria-selected=true] .map-check { background: var(--blue, #1d4ed8); border-color: var(--blue, #1d4ed8); }
+.map-option[aria-selected=true] .map-check::after { content: ""; position: absolute; left: 4px; top: 0; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.map-option[aria-selected=true] .map-radio { border-color: var(--blue, #1d4ed8); }
+.map-option[aria-selected=true] .map-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--blue, #1d4ed8); }
+.map-note { margin: 0 0 6px; padding: 6px 16px 10px; border-bottom: 1px solid var(--line, #d9e0e8); color: var(--muted, #536071); }
+.map-input::selection { background: transparent; color: inherit; }
+.map-none { padding: 8px 16px; color: var(--muted, #536071); }
+
 .segmented { display: inline-flex; }
 .systemmap .segmented button { min-height: 44px; }
 .segmented button { border-radius: 0; margin-left: -1px; }
@@ -29,7 +68,6 @@
 .segmented button[aria-pressed=true] { background: var(--blue, #1d4ed8); border-color: var(--blue, #1d4ed8); color: #fff; font-weight: 600; position: relative; z-index: 1; }
 .segmented button[aria-pressed=true]:hover:not(:disabled):not([aria-disabled=true]) { background: var(--blue-dark, #1e40af); }
 /* Högerkanten: Exportera, och skillnader och varningar. Listorna fälls ut över kartan, under raden. */
-#map-export { margin-left: auto; }
 .systemmap #map-mermaid { width: 44px; height: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .map-extra summary { cursor: pointer; color: var(--blue, #1d4ed8); font-weight: 600; padding: 10px 0; }
 .map-extra > ul { position: absolute; top: 100%; right: 0; z-index: 6; width: 360px; max-width: 100%; max-height: calc(var(--map-height, 100vh) - 90px); overflow: auto;
@@ -49,24 +87,16 @@
 .map-steps .external { color: #1f5c1f; }
 .map-steps .data { color: var(--muted, #536071); font-size: 14px; }
 
-/* Visa: välj vad som syns. Panelen fälls ut över kartan som skillnader och varningar; "N dolda" står kvar i raden när något är dolt. */
-.map-show .map-panel { position: absolute; top: 100%; left: 0; z-index: 6; width: 360px; max-width: 100%; max-height: calc(var(--map-height, 100vh) - 90px); overflow: auto;
-  margin: 4px 0 0; padding: 10px 14px 12px; background: #fff; border: 1px solid var(--line, #d9e0e8); border-radius: 12px; box-shadow: 0 8px 28px rgba(15, 23, 42, .16); font-size: 14px; }
-.map-panel h3 { margin: 0 0 4px; font-size: 15px; }
-.map-panel-help { margin: 0 0 8px; color: var(--muted, #536071); }
-.map-panel fieldset { margin: 10px 0 0; padding: 0; border: 0; min-width: 0; }
-.map-panel legend { padding: 0; font-size: 13px; font-weight: 600; color: var(--muted, #536071); }
-.map-tree { list-style: none; margin: 0; padding: 0; }
-.map-tree .map-tree { padding-left: 26px; }
-.map-tree label { display: flex; align-items: center; gap: 10px; min-height: 36px; cursor: pointer; word-break: break-word; }
-.map-tree input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--blue, #1d4ed8); cursor: pointer; }
-.map-tree input:disabled { cursor: default; }
-.map-tree input:disabled + span { color: var(--muted, #536071); }
+/* Statusrutan uppe till vänster i kartan: hur många anrop som går genom filtret. */
+.map-status { position: absolute; z-index: 4; left: 10px; top: 60px; padding: 4px 12px; font-size: 14px; color: var(--text, #1b2430);
+  background: rgba(252, 252, 251, .95); border: 1px solid var(--line, #d9e0e8); border-radius: 8px; pointer-events: none; }
 .map-hint { font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--grey-bg, #eef1f5); border: 1px solid var(--line, #d9e0e8); color: var(--text, #1b2430); }
 
-/* Delar som ingen ingång når: valet i Visa och förklaringen nere till vänster i kartan (streckad ruta, som delarna i kartan). */
-.map-unreached { display: flex; align-items: center; gap: 10px; min-height: 36px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line, #d9e0e8); cursor: pointer; }
+/* Rutan nere till vänster i kartan: valet om delar som ingen ingång når syns (streckad ruta, som delarna i kartan) och det som är dolt. */
+.map-legend { position: absolute; z-index: 4; left: 10px; bottom: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 12px; font-size: 14px;
+  color: var(--text, #1b2430); background: rgba(252, 252, 251, .95); border: 1px solid var(--line, #d9e0e8); border-radius: 8px; }
+.map-unreached { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; }
 .map-unreached input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--blue, #1d4ed8); cursor: pointer; }
-.map-legend { position: absolute; z-index: 4; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 8px; font-size: 13px;
-  color: var(--text, #1b2430); background: rgba(252, 252, 251, .92); border: 1px solid var(--line, #d9e0e8); border-radius: 8px; pointer-events: none; }
+.map-hidden-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.systemmap .map-hidden-row button { min-height: 32px; padding: 2px 12px; }
 .map-swatch { flex: none; width: 20px; height: 12px; border: 1.5px dashed #2a78d6; border-radius: 4px; background: #f4f5f7; opacity: .75; }

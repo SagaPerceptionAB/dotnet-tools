@@ -38,7 +38,7 @@ public partial class CodeMapTests
             }));
 
             // Listan med anrop har en grupp per område.
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-entry optgroup')].map(g => g.label + ' (' + g.children.length + ')')"),
+            Assert.That(await GroupsAsync(page, "entry"),
                 Is.EqualTo(new[] { "/v1/auth (2)", "/v1/family (3)" }));
 
             // Rutorna: etikett, anropen i dem och ordningen (sökväg, metod) uppifrån och ned.
@@ -51,7 +51,7 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-entry').filter(n => !n.parent().length).length"), Is.EqualTo(1), "det ensamma anropet står utan ruta");
 
             // Ett valt anrop dämpar rutan som inte har det.
-            await page.SelectOptionAsync("#map-entry", new SelectOptionValue { Label = "POST /v1/auth/in" });
+            await PickAsync(page, "entry", "POST /v1/auth/in");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-callgroup').map(g => g.data('label') + ':' + g.hasClass('dimmed'))"),
                 Is.EquivalentTo(new[] { "/v1/auth:false", "/v1/family:true" }));
@@ -145,7 +145,7 @@ public partial class CodeMapTests
             await ready();
 
             // Nivå Allt: sidan ritas, metoderna ligger i sin klass och klasserna står i steg.
-            await page.ClickAsync("[data-level='all']");
+            await LevelAsync(page, "all");
             await ready();
             await InOrder("x");
             Assert.That(await page.EvaluateAsync<bool>("() => { const m = SystemMap.cy().nodes('.t-method'); return m.length > 0 && m.every(n => n.parent().hasClass('t-class') && n.position('x') > n.parent().boundingBox().x1 && n.position('x') < n.parent().boundingBox().x2); }"), Is.True);
@@ -181,7 +181,7 @@ public partial class CodeMapTests
                 """), Is.Empty);
 
             // Ett valt anrop: dess egna pilar ritas och är markerade, och ingen ruta ritar en samlad pil.
-            await page.SelectOptionAsync("#map-entry", new SelectOptionValue { Label = "POST /v1/auth/in" });
+            await PickAsync(page, "entry", "POST /v1/auth/in");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().edges().filter(e => e.source().hasClass('t-callgroup')).length"), Is.Zero);
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges('.path').map(e => e.source().data('label') + '>' + e.target().data('label'))"),

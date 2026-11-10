@@ -15,7 +15,59 @@ public static class SolutionFinder
     public static string Find(string start, string see) =>
         TryFind(start, see)
         ?? throw new UsageException($"Hittade ingen solution (.sln, .slnx) eller .csproj i {start} eller mapparna ovanför.",
-            $"Gå till mappen där solutionen ligger, eller ange den: {see} --solution src/Butik.sln");
+            HintBelow(start, see) ?? $"Gå till mappen där solutionen ligger, eller ange den: {see} --solution src/Butik.sln");
+
+    /// <summary>Mappar som aldrig innehåller en solution att peka på. Dolda mappar (.git, .vs ...) hoppas också över.</summary>
+    private static readonly string[] SkippedFolders = ["bin", "obj", "node_modules"];
+
+    /// <summary>
+    /// Solutionerna (.sln, .slnx) i mapparna under <paramref name="start"/>, som sökvägar relativa till den, till och med
+    /// <paramref name="maxDepth"/> nivåer ner. Grundast först, därefter i bokstavsordning. Bara för tips: <see cref="TryFind"/> väljer aldrig
+    /// en solution nedåt, eftersom det vore att gissa vilket system som menas.
+    /// </summary>
+    public static IReadOnlyList<string> FindBelow(string start, int maxDepth = 3)
+    {
+        var found = new List<string>();
+        for (var level = new List<DirectoryInfo> { new(start) }; level.Count > 0 && maxDepth-- > 0;)
+        {
+            var next = new List<DirectoryInfo>();
+            foreach (var parent in level)
+                foreach (var dir in Folders(parent))
+                {
+                    next.Add(dir);
+                    found.AddRange(Files(dir).Where(f => SolutionExtensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase))
+                        .Select(f => Path.GetRelativePath(start, f.FullName)).Order(StringComparer.Ordinal));
+                }
+            level = next;
+        }
+        return found;
+    }
+
+    /// <summary>Tipset när ingenting hittades uppåt: <c>Gör så här: systemmap --solution backend/Butik.slnx</c>. Null när det inte finns någon solution i en undermapp.</summary>
+    public static string? HintBelow(string start, string see)
+    {
+        var below = FindBelow(start);
+        if (below.Count == 0) return null;
+        var more = below.Count > 1 ? $" (andra: {string.Join(", ", below.Skip(1).Take(3))}{(below.Count > 4 ? ", ..." : "")})" : "";
+        return $"Gör så här: {see} --solution {below[0].Replace('\\', '/')}{more}";
+    }
+
+    private static IEnumerable<DirectoryInfo> Folders(DirectoryInfo parent)
+    {
+        try
+        {
+            return parent.GetDirectories()
+                .Where(d => !d.Name.StartsWith('.') && !SkippedFolders.Contains(d.Name, StringComparer.OrdinalIgnoreCase) && d.LinkTarget is null)
+                .OrderBy(d => d.Name, StringComparer.Ordinal).ToList();
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException) { return []; }
+    }
+
+    private static IEnumerable<FileInfo> Files(DirectoryInfo dir)
+    {
+        try { return dir.GetFiles(); }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException) { return []; }
+    }
 
     /// <summary>Som <see cref="Find"/>, men null när det inte finns någon solution eller något projekt. Flera att välja på är fortfarande ett fel.</summary>
     public static string? TryFind(string start, string see)

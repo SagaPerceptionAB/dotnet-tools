@@ -75,6 +75,9 @@ internal static class SinkCatalog
 
     // --- HTTP ------------------------------------------------------------------------------
 
+    /// <summary>Visas efter metoden när ett HTTP-anrops adress inte går att läsa ur koden.</summary>
+    internal const string RuntimeAddress = "(adressen bestäms vid körning)";
+
     private static SinkHit? Http(Call c)
     {
         if (!c.On("System.Net.Http.HttpClient", "System.Net.Http.HttpMessageInvoker") || HttpVerb(c.Name) is not { } verb) return null;
@@ -94,7 +97,9 @@ internal static class SinkCatalog
                    ?? new HttpClientInfo(owner.Name, null);
         var integration = new Integration("http:" + info.Name, IntegrationKind.Http, info.Name, ["HTTP"], info.ConfigKey ?? target.ConfigKey);
         var received = c.Name.Contains("FromJson") ? c.Method?.TypeArguments.Select(DataShapes.Of).FirstOrDefault(s => s is not null) : ReadInBody(c.Ctx);
-        return new SinkHit(integration, target.Text is null ? verb : $"{verb} {target.Text}", c.Name, c.Name.Contains("FromJson") ? null : c.Sent, received);
+        // En adress som varken är en sökväg i koden eller en nyckel i konfigurationen kommer först vid körning (t.ex. ur OIDC-discovery).
+        var operation = target.Text is not null ? $"{verb} {target.Text}" : integration.ConfigKey is null && target.ConfigKey is null ? $"{verb} {RuntimeAddress}" : verb;
+        return new SinkHit(integration, operation, c.Name, c.Name.Contains("FromJson") ? null : c.Sent, received);
     }
 
     /// <summary>Klientens ägare: klassen med den typade klienten. En <c>HttpClient</c> som är parameter hör till den som skickade den.</summary>

@@ -173,6 +173,8 @@ public partial class CodeMapTests
         "await _c.QueryAsync<Kund>(\"SELECT * FROM dbo.[Kunder] k JOIN Ordrar o ON o.KundId = k.Id\");", "db:SQL | läsa Kunder, Ordrar")]
     [TestCase("System.Net.Http.IHttpClientFactory _f = null!;",
         "var http = _f.CreateClient(\"lager\"); var id = 1; await http.GetAsync($\"artiklar/{id}\");", "http:lager | GET artiklar/{id}")]
+    [TestCase("System.Net.Http.IHttpClientFactory _f = null!; static string Hamta() => \"x\";",
+        "var http = _f.CreateClient(\"oidc\"); await http.PostAsync(Hamta(), null);", "http:oidc | POST (adressen bestäms vid körning)")]
     [TestCase("Azure.Messaging.ServiceBus.ServiceBusSender _s = new Azure.Messaging.ServiceBus.ServiceBusClient().CreateSender(\"order-lagd\");",
         "await _s.SendMessageAsync(new Azure.Messaging.ServiceBus.ServiceBusMessage(\"x\"));", "queue:order-lagd | skicka")]
     [TestCase("Azure.Storage.Blobs.BlobContainerClient _b = new Azure.Storage.Blobs.BlobServiceClient().GetBlobContainerClient(\"kvitton\");",
@@ -196,6 +198,17 @@ public partial class CodeMapTests
     {
         var map = await MapAsync(Controller(members, body));
         Assert.That(Uses(map.EntryPoints.Single()), Is.EqualTo(new[] { expected }));
+    }
+
+    [Test]
+    public async Task An_HTTP_call_whose_address_is_decided_at_run_time_says_so_in_text_Mermaid_and_HTML()
+    {
+        var map = await MapAsync(Controller("System.Net.Http.HttpClient _http = new(); static string Hamta() => \"x\";", "await _http.PostAsync(Hamta(), null);"));
+        Assert.That(string.Join("\n", CodeMapText.Lines(map)), Does.Contain("(HTTP): POST (adressen bestäms vid körning)"));
+        Assert.That(CodeMapMermaid.Write(map, new MermaidOptions()), Does.Contain("POST (adressen bestäms vid körning)"));
+        Assert.That(CodeMapHtml.Write(map), Does.Contain("adressen bestäms vid körning"));
+        var known = await MapAsync(Controller("System.Net.Http.HttpClient _http = new();", "await _http.PostAsync(\"orders\", null);"));
+        Assert.That(string.Join("\n", CodeMapText.Lines(known)), Does.Not.Contain("vid körning"), "en adress som går att läsa visas som den är");
     }
 
     [Test]

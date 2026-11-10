@@ -7,11 +7,11 @@ namespace SystemMap;
 /// En ingång och vägen som tar dit (en per HTTP-metod och route). <paramref name="Roots"/> är metoderna vars anrop följs:
 /// en action, en lambda i ett minimal API, en sidas hanterare, en bakgrundstjänsts ExecuteAsync eller en meddelandehanterares Consume.
 /// <paramref name="Name"/> är namnet på en ingång som inte är HTTP (<c>Bakgrund: OrderCleanupWorker</c>); <paramref name="Method"/> och
-/// <paramref name="CodePath"/> är då tomma.
+/// <paramref name="CodePath"/> är då tomma. <paramref name="Hosted"/> är klassen för en bakgrundstjänst (se <see cref="HostRegistrations"/>).
 /// </summary>
 internal sealed record EntryCandidate(
     EntryKind Kind, IReadOnlyList<IMethodSymbol> Roots, string Method, string CodePath, string Project, string Handler, string File, int Line,
-    DataShape? Input, DataShape? Output, string? Name = null)
+    DataShape? Input, DataShape? Output, string? Name = null, INamedTypeSymbol? Hosted = null)
 {
     /// <summary>Nyckel för anropen som följs (lika för ingångar som delar hanterare).</summary>
     public string RootsKey => string.Join("|", Roots.Select(Symbols.Key));

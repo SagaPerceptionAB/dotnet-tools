@@ -49,7 +49,12 @@ public static class CodeMapper
         entryPoints = Qualify(entryPoints);
 
         // En app utan någon sort (inga ingångar) är bara ett bibliotek som råkar använda WebApplication.
-        var apps = AppFinder.Find(projects, solution, models, resolver, sites, entries, walker.Integrations).Where(a => a.Kinds.Count > 0).ToList();
+        var hosts = new HostRegistrations(models);
+        var apps = AppFinder.Find(projects, solution, models, resolver, sites, entries, walker.Integrations, hosts).Where(a => a.Kinds.Count > 0).ToList();
+        // En bakgrundstjänst som ingen app registrerar visas ändå som ingång (koden finns), men ger ingen app bakgrundsarbete.
+        var appProjects = projects.Where(p => AppFinder.IsApp(p, models) || models.IsProgram(p)).ToList();
+        foreach (var service in hosts.Unregistered(appProjects, entries.Where(e => e.Kind == EntryKind.Background).Select(e => e.Hosted).OfType<INamedTypeSymbol>()))
+            warnings.Add($"{service.Name} är en bakgrundstjänst men registreras inte med AddHostedService i någon app.");
         // Appens HTTP-klient pekar på ett projekt i solutionen: integrationen får veta vilket.
         var targets = apps.SelectMany(a => a.HttpClients).Where(c => c.TargetProject is not null)
             .GroupBy(c => c.IntegrationId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().TargetProject, StringComparer.Ordinal);

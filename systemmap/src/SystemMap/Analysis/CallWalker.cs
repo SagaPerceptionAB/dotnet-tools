@@ -203,7 +203,8 @@ internal sealed class CallWalker(ServiceResolver resolver, ModelCache models, Or
         return uses;
     }
 
-    private static IEnumerable<SyntaxNode> Bodies(IMethodSymbol method)
+    /// <summary>Koden som körs när metoden anropas: kroppen, och för en konstruktor också basanropet och fält- och egenskapsvärdena.</summary>
+    internal static IEnumerable<SyntaxNode> Bodies(IMethodSymbol method)
     {
         foreach (var reference in method.OriginalDefinition.DeclaringSyntaxReferences)
         {

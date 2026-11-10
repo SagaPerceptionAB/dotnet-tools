@@ -122,7 +122,15 @@ anropet i projektet som testas när flera har samma rutt (`SystemMap.entryFor(op
 
 Fakta per app (JSON `apps`): sort (`api`, `web`, `worker`, `console`), hälsovägar, databaser (leverantör, DbContext, nyckel för anslutningen) och
 utgående HTTP-klienter med projektet i solutionen de pekar på (namnet ur nyckeln, annars porten i `appsettings*.json`). Ett program som körs
-(exe) är en app när det har bakgrundsarbete eller är ett konsolprogram; en webbapp eller en värd får `worker` också av tjänster i projekten den använder.
+(exe) är en app när det har bakgrundsarbete eller är ett konsolprogram. En app får `worker` av en bakgrundstjänst bara om dess uppstart registrerar den, också när
+tjänsten ligger i ett bibliotek: `AddHostedService<T>()` (och `AddHostedService(sp => new T(...))`), `AddSingleton<IHostedService, T>()` (också med fabrik,
+`typeof` och `ServiceDescriptor.Singleton`), `builder.Services.AddHostedService<Worker>()` i en worker-mall, `ConfigureServices(...)` med lambda och
+`Startup.ConfigureServices` som `UseStartup<Startup>()` pekar ut. Registreringen kan stå i en metod som `Main` (eller satserna på översta nivån) anropar,
+t.ex. en extension-metod `services.AddJobs()` i ett bibliotek; en metod som ingen anropar därifrån räknas inte, och inte heller att appen bara refererar
+biblioteket. En registrering vars typ inte syns (`AddHostedService<T>()` i en generisk hjälpmetod) gör att vilken tjänst som helst kan vara registrerad. En
+bakgrundstjänst som ingen app registrerar visas ändå som ingång (koden finns) men ger ingen app `worker`, och varningen
+"Cleanup är en bakgrundstjänst men registreras inte med AddHostedService i någon app." säger det. Meddelandehanterare och jobb följer fortfarande med
+från värden som använder projektet.
 
 Integrationer: databas (EF Core, Dapper, SQL), andra API:er (HTTP, Refit), WCF/SOAP, köer (Service Bus, MassTransit, RabbitMQ, Kafka,
 Azure Storage Queue), lagring (Blob, filer) och e-post (SMTP).

@@ -12,7 +12,7 @@ internal static partial class AppFinder
 {
     public static List<AppFacts> Find(
         IReadOnlyList<Project> projects, Solution solution, ModelCache models, ServiceResolver resolver, CallSites sites, IReadOnlyList<EntryCandidate> entries,
-        IReadOnlyDictionary<string, Integration> integrations)
+        IReadOnlyDictionary<string, Integration> integrations, HostRegistrations hosts)
     {
         var ports = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
         var apps = projects.Where(p => IsApp(p, models) || IsProgram(p, models)).OrderBy(p => p.Name, StringComparer.Ordinal).ToList();
@@ -20,13 +20,16 @@ internal static partial class AppFinder
         foreach (var app in apps)
         {
             var names = Closure(app, solution, projects).Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-            // HTTP följer med från projekten appen använder. Bakgrundsarbete bara i en värd (en webbapp eller ett program som sätter upp en värd), som kan
-            // köra tjänster från ett bibliotek, och ett konsolprogram är bara sitt eget projekt.
+            // HTTP följer med från projekten appen använder. En bakgrundstjänst körs av appen som registrerar den (se HostRegistrations), också när tjänsten ligger i ett
+            // bibliotek. Meddelanden och jobb körs av en värd (en webbapp eller ett program som sätter upp en värd) och av programmet de ligger i, och ett konsolprogram
+            // är bara sitt eget projekt.
             var host = IsApp(app, models) || HostedFinder.IsHost(app, models);
+            var registered = hosts.From(app);
             var kinds = entries.Where(e => names.Contains(e.Project) && e.Kind switch
             {
                 EntryKind.Console => e.Project == app.Name,
-                EntryKind.Background or EntryKind.Consumer or EntryKind.Job => host || e.Project == app.Name,
+                EntryKind.Background => e.Hosted is { } service && registered.Includes(service),
+                EntryKind.Consumer or EntryKind.Job => host || e.Project == app.Name,
                 _ => true,
             }).Select(e => e.Kind switch
             {

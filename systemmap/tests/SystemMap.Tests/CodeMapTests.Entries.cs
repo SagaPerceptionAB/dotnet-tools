@@ -344,15 +344,21 @@ public partial class CodeMapTests
                 }
                 """),
             new Proj("Worker", """
+                using Microsoft.Extensions.DependencyInjection;
                 var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(args);
+                builder.Services.AddHostedService<Cleanup>();
                 builder.Build().Run();
                 """, "Lib") { Exe = true },
             new Proj("Tool", "new Writer().Write();", "Lib") { Exe = true },
-            Web("Api", AppStart + "[ApiController, Route(\"x\")] public class XController : ControllerBase { [HttpGet] public int Get() => 1; }\npublic class Hosted : Microsoft.Extensions.Hosting.BackgroundService { protected override Task ExecuteAsync(CancellationToken ct) => Task.CompletedTask; }")));
+            Web("Api", AppStart + """
+                [ApiController, Route("x")] public class XController : ControllerBase { [HttpGet] public int Get() => 1; }
+                public class Hosted : Microsoft.Extensions.Hosting.BackgroundService { protected override Task ExecuteAsync(CancellationToken ct) => Task.CompletedTask; }
+                public static class Registration { public static void Add(IServiceCollection services) => services.AddHostedService<Hosted>(); }
+                """)));
         Assert.That(map.Apps.Select(a => (a.Project, string.Join("+", a.Kinds))), Is.EquivalentTo(new[]
         {
             ("Worker", "Worker"), ("Tool", "Console"), ("Api", "Api+Worker"),
-        }), "Lib är ett bibliotek, Worker är en värd för tjänsten i Lib, ett konsolprogram kör inte tjänsterna i biblioteken det använder och en webbapp kan också ha bakgrundsarbete");
+        }), "Lib är ett bibliotek, Worker registrerar tjänsten i Lib, ett konsolprogram kör inte tjänsterna i biblioteken det använder och en webbapp kan också ha bakgrundsarbete");
         Assert.That(string.Join("\n", CodeMapText.Lines(map)), Does.Contain("  Worker: worker").And.Contain("  Tool: console").And.Contain("  Api: api och worker"));
     }
 

@@ -23,7 +23,7 @@ internal static class HostedFinder
             var roots = HostedMethods.Select(name => Declared(type, name)).OfType<IMethodSymbol>().DistinctBy(Symbols.Key).ToList();
             if (roots.Count == 0) continue;
             var (file, line) = Symbols.Where(roots[0], root);
-            yield return new EntryCandidate(EntryKind.Background, roots, "", "", project, $"{type.Name}.{roots[0].Name}", file, line, null, null, "Bakgrund: " + type.Name);
+            yield return new EntryCandidate(EntryKind.Background, roots, "", "", project, $"{type.Name}.{roots[0].Name}", file, line, null, null, "Bakgrund: " + type.Name, type);
         }
     }
 

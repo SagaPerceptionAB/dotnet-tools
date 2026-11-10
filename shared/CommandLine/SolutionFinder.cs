@@ -35,8 +35,7 @@ public static class SolutionFinder
                 foreach (var dir in Folders(parent))
                 {
                     next.Add(dir);
-                    found.AddRange(Files(dir).Where(f => SolutionExtensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase))
-                        .Select(f => Path.GetRelativePath(start, f.FullName)).Order(StringComparer.Ordinal));
+                    found.AddRange(Files(dir).Select(f => Path.GetRelativePath(start, f.FullName)).Order(StringComparer.Ordinal));
                 }
             level = next;
         }
@@ -55,20 +54,19 @@ public static class SolutionFinder
         return $"{see} --solution {below[0]}{more}";
     }
 
-    private static IEnumerable<DirectoryInfo> Folders(DirectoryInfo parent)
-    {
-        try
-        {
-            return parent.GetDirectories()
-                .Where(d => !d.Name.StartsWith('.') && !SkippedFolders.Contains(d.Name, StringComparer.OrdinalIgnoreCase) && d.LinkTarget is null)
-                .OrderBy(d => d.Name, StringComparer.Ordinal).ToList();
-        }
-        catch (Exception e) when (e is UnauthorizedAccessException or IOException) { return []; }
-    }
+    private static IEnumerable<DirectoryInfo> Folders(DirectoryInfo parent) =>
+        Readable(() => parent.EnumerateDirectories()
+            .Where(d => !d.Name.StartsWith('.') && !SkippedFolders.Contains(d.Name, StringComparer.OrdinalIgnoreCase) && d.LinkTarget is null)
+            .OrderBy(d => d.Name, StringComparer.Ordinal));
 
-    private static IEnumerable<FileInfo> Files(DirectoryInfo dir)
+    /// <summary>Solutionerna i mappen. Mönstret ger bara kandidaterna (<c>*.sln*</c> tar också med .sln.bak), så filändelsen jämförs själv.</summary>
+    private static IEnumerable<FileInfo> Files(DirectoryInfo dir) =>
+        Readable(() => dir.EnumerateFiles("*.sln*").Where(f => SolutionExtensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase)));
+
+    /// <summary>Det <paramref name="read"/> ger, läst färdigt; en mapp som inte går att läsa (saknar behörighet, försvann) ger inget.</summary>
+    private static List<T> Readable<T>(Func<IEnumerable<T>> read)
     {
-        try { return dir.GetFiles(); }
+        try { return read().ToList(); }
         catch (Exception e) when (e is UnauthorizedAccessException or IOException) { return []; }
     }
 

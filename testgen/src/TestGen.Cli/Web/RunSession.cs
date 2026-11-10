@@ -208,13 +208,13 @@ internal sealed class RunSession
         }
         Counts = (passed, failedCount, skipped);
         var total = passed + failedCount + skipped;
-        var (toolSkipped, unsupportedSkipped) = (PlainLanguage.ToolSkipped(outcomes), PlainLanguage.UnsupportedSkipped(outcomes));
+        var causeCounts = PlainLanguage.CauseCounts(outcomes);
         var warningCount = PlainLanguage.WarningCount(outcomes.Select(o => o.Result));
         var summary = cancelled
             ? (total == 0
                 ? "Du avbröt körningen innan något test hann bli klart."
-                : $"Körningen avbröts efter {total} tester. " + PlainLanguage.Summary(passed, failedCount, skipped, toolSkipped, unsupportedSkipped))
-            : PlainLanguage.Summary(passed, failedCount, skipped, toolSkipped, unsupportedSkipped);
+                : $"Körningen avbröts efter {total} tester. " + PlainLanguage.Summary(passed, failedCount, skipped, causeCounts))
+            : PlainLanguage.Summary(passed, failedCount, skipped, causeCounts);
         if (runner?.Notice is { } stopNotice) summary += " " + stopNotice;   // t.ex. avbruten efter flera tidsgränser i rad
         var results = outcomes.Select(o => o.Result).ToList();
         var authNote = PlainLanguage.AuthNote(results, web: true, names: outcomes.Select(o => o.Test.Names).FirstOrDefault(n => n is not null));

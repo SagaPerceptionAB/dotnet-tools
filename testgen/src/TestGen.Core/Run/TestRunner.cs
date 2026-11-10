@@ -613,7 +613,7 @@ public sealed partial class TestRunner
 
         PrintGroupTails();
         _out.WriteLine();
-        if (_opt.PlainText) _out.WriteLine(PlainLanguage.Summary(ok, fail, skipped, PlainLanguage.ToolSkipped(_outcomes), PlainLanguage.UnsupportedSkipped(_outcomes)));
+        if (_opt.PlainText) _out.WriteLine(PlainLanguage.Summary(ok, fail, skipped, PlainLanguage.CauseCounts(_outcomes)));
         var results = entries.Select(en => en.Result).ToList();
         _out.WriteLine($"Sammanfattning: {entries.Count} tester, {ok} OK, {fail} FEL, {skipped} HOPPAD, tid {ReportWriter.FormatDuration(Duration ?? TimeSpan.Zero)}" +
                        (excelRan > 0 ? $" ({excelRan} av testerna kom från Excel)" : ""));

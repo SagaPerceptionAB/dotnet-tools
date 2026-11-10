@@ -148,12 +148,14 @@ public static partial class PlainLanguage
     }
 
     /// <summary>
-    /// Sammanfattning överst i en rapport, t.ex. "1 av 34 tester visar ett problem." <paramref name="toolSkipped"/> är hur många av de
-    /// hoppade testerna som hoppades över av verktygsskäl (fel i testgen), inte för att ett tidigare steg föll.
-    /// <paramref name="unsupportedSkipped"/> är hur många som hoppades över för att bodytypen inte stöds ännu (en känd begränsning, inget fel).
+    /// Sammanfattning överst i en rapport, t.ex. "1 av 34 tester visar ett problem." <paramref name="causes"/> är antalet tester per orsak
+    /// (se <see cref="CauseCounts"/>): av de hoppade testerna hoppades <see cref="FailureCause.Tool"/> över av verktygsskäl (fel i testgen) och
+    /// <see cref="FailureCause.Unsupported"/> för att bodytypen inte stöds ännu (en känd begränsning, inget fel); resten för att ett tidigare steg föll.
     /// </summary>
-    public static string Summary(int ok, int fail, int skipped, int toolSkipped = 0, int unsupportedSkipped = 0)
+    public static string Summary(int ok, int fail, int skipped, IReadOnlyDictionary<FailureCause, int>? causes = null)
     {
+        var toolSkipped = causes?.GetValueOrDefault(FailureCause.Tool) ?? 0;
+        var unsupportedSkipped = causes?.GetValueOrDefault(FailureCause.Unsupported) ?? 0;
         var total = ok + fail + skipped;
         var sb = new StringBuilder();
         if (total == 0) return "Inga tester kördes.";
@@ -172,13 +174,9 @@ public static partial class PlainLanguage
         return sb.ToString();
     }
 
-    /// <summary>Antal hoppade tester med orsaken Stöds inte ännu.</summary>
-    public static int UnsupportedSkipped(IEnumerable<TestOutcome> outcomes) =>
-        outcomes.Count(o => (o.Cause ?? Cause(o.Test, o.Result)) == FailureCause.Unsupported);
-
-    /// <summary>Antal hoppade tester med orsaken Fel i testgen.</summary>
-    public static int ToolSkipped(IEnumerable<TestOutcome> outcomes) =>
-        outcomes.Count(o => (o.Cause ?? Cause(o.Test, o.Result)) == FailureCause.Tool);
+    /// <summary>Antal tester per orsak (se <see cref="Cause"/>), för <see cref="Summary"/>.</summary>
+    public static IReadOnlyDictionary<FailureCause, int> CauseCounts(IEnumerable<TestOutcome> outcomes) =>
+        outcomes.Select(o => o.Cause ?? Cause(o.Test, o.Result)).OfType<FailureCause>().GroupBy(c => c).ToDictionary(g => g.Key, g => g.Count());
 
     /// <summary>Antal varningar från svarskontrollen i alla tester.</summary>
     public static int WarningCount(IEnumerable<CaseResult> results) => results.Sum(r => r.Warnings.Count);

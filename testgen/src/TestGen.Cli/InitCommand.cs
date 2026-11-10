@@ -330,15 +330,20 @@ internal static partial class InitCommand
     }
 
     /// <summary>Mappen under .playwright/node för den här datorn, med Playwrights namn. Paketet kan ha flera plattformars node.</summary>
-    private static string NodePlatform() =>
-        (OperatingSystem.IsWindows() ? "win32" : OperatingSystem.IsMacOS() ? "darwin" : "linux")
-        + (OperatingSystem.IsWindows() ? "_" : "-")
-        + (System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64");
+    private static string NodePlatform()
+    {
+        var (os, separator) = OperatingSystem.IsWindows() ? ("win32", '_') : OperatingSystem.IsMacOS() ? ("darwin", '-') : ("linux", '-');
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64";
+        return os + separator + architecture;
+    }
 
     [GeneratedRegex("\\u001b\\[[0-9;]*m")]
     private static partial Regex Ansi();
 
-
+    /// <summary>
+    /// Kör <paramref name="install"/> och ger sant om Chromium nu finns. Misslyckas den skrivs hela Playwright-utskriften till en loggfil, och
+    /// terminalen får en varning med de sista raderna och vad man kan göra.
+    /// </summary>
     internal static bool InstallChromium(Terminal terminal, Func<ChromiumInstallResult> install)
     {
         var result = install();

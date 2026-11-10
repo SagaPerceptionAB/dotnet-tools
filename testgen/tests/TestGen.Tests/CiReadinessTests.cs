@@ -263,8 +263,8 @@ public class CiReadinessTests
         var verdict = PlainLanguage.Verdict(outcomes);
         Assert.That(verdict, Does.Contain("fel i testgen").And.Not.Contain("följdfel").And.Not.Contain("tidigare test"));
         Assert.That(PlainLanguage.CauseSummary(outcomes).Single().ListText, Does.StartWith("Fel i testgen: T-002"));
-        Assert.That(PlainLanguage.Summary(1, 0, 1, toolSkipped: 1), Does.Contain("1 test kunde inte byggas av testgen").And.Not.Contain("tidigare steg"));
-        Assert.That(PlainLanguage.Summary(1, 0, 2, toolSkipped: 1), Does.Contain("1 test hoppades över eftersom ett tidigare steg").And.Contain("1 test kunde inte byggas av testgen"));
+        Assert.That(PlainLanguage.Summary(1, 0, 1, new Dictionary<FailureCause, int> { [FailureCause.Tool] = 1 }), Does.Contain("1 test kunde inte byggas av testgen").And.Not.Contain("tidigare steg"));
+        Assert.That(PlainLanguage.Summary(1, 0, 2, new Dictionary<FailureCause, int> { [FailureCause.Tool] = 1 }), Does.Contain("1 test hoppades över eftersom ett tidigare steg").And.Contain("1 test kunde inte byggas av testgen"));
     }
 
     private static CaseResult UnsupportedSkip() =>
@@ -292,11 +292,11 @@ public class CiReadinessTests
             PlainLanguage.Verdict(outcomes),
             PlainLanguage.VerdictShort(outcomes),
             PlainLanguage.CauseSummary(outcomes).Single().ListText,
-            PlainLanguage.Summary(1, 0, 1, unsupportedSkipped: PlainLanguage.UnsupportedSkipped(outcomes)),
+            PlainLanguage.Summary(1, 0, 1, PlainLanguage.CauseCounts(outcomes)),
             PlainLanguage.CauseExplanation(FailureCause.Unsupported),
         };
-        Assert.That(PlainLanguage.UnsupportedSkipped(outcomes), Is.EqualTo(1));
-        Assert.That(PlainLanguage.ToolSkipped(outcomes), Is.EqualTo(0));
+        Assert.That(PlainLanguage.CauseCounts(outcomes).GetValueOrDefault(FailureCause.Unsupported), Is.EqualTo(1));
+        Assert.That(PlainLanguage.CauseCounts(outcomes).GetValueOrDefault(FailureCause.Tool), Is.EqualTo(0));
         Assert.That(texts[2], Does.StartWith("Stöds inte ännu: T-002").And.Contain("känd begränsning"));
         Assert.That(texts[3], Does.Contain("känd begränsning").And.Not.Contain("tidigare steg"));
         foreach (var text in texts)

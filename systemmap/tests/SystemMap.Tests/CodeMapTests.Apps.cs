@@ -73,6 +73,67 @@ public partial class CodeMapTests
     }
 
     [Test]
+    public async Task Minimal_API_input_is_the_body_and_never_a_service_or_a_type_ASP_NET_binds_from_elsewhere()
+    {
+        var map = await MapAsync(Build(true, Web("Api", """
+            public record Svar(string Text);
+            public record NyttHej(string Text);
+            public class Verifierare { }
+            public class Session { }
+            public class Typ { public static bool TryParse(string? s, out Typ? t) { t = null; return false; } }
+            public class Egen { public static ValueTask<Egen?> BindAsync(HttpContext c) => default; }
+            public class Filter { public string? Q { get; set; } }
+            public static class Start
+            {
+                public static void Run(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(args);
+                    builder.Services.AddScoped<Verifierare>();
+                    builder.Services.AddSingleton(typeof(Session));
+                    var app = builder.Build();
+                    app.MapPost("/a/{p}", (Verifierare v, NyttHej body) => 1);
+                    app.MapPost("/b", (Verifierare v) => 2);
+                    app.MapPut("/c", (Session s) => 3);
+                    app.MapPost("/e", (Typ t, Egen e) => 5);
+                    app.MapPost("/f", ([AsParameters] Filter f, [FromForm] NyttHej h) => 6);
+                    app.Run();
+                }
+            }
+            """)));
+
+        string? Input(string path) => map.EntryPoints.Single(e => e.Path == path).Input?.Type;
+        Assert.That(Input("/a/{p}"), Is.EqualTo("NyttHej"), "kroppen finns kvar när en tjänst står före");
+        Assert.That(new[] { "/b", "/c", "/e", "/f" }.Select(Input), Has.All.Null,
+            "en tjänst, BindAsync/TryParse, [AsParameters] och [FromForm] är inte kroppen");
+    }
+
+    [Test]
+    public async Task Controller_input_is_never_a_registered_service()
+    {
+        var map = await MapAsync(Build(true, Web("Api", """
+            public class Verifierare { }
+            public record NyOrder(string Text);
+            [ApiController, Route("x")]
+            public class XController : ControllerBase
+            {
+                [HttpPost("a")] public IActionResult A(Verifierare v, NyOrder o) => Ok();
+                [HttpPost("b")] public IActionResult B(Verifierare v) => Ok();
+            }
+            public static class Start
+            {
+                public static void Run(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(args);
+                    builder.Services.AddScoped<Verifierare>();
+                    builder.Build().Run();
+                }
+            }
+            """)));
+
+        Assert.That(map.EntryPoints.Select(e => (e.Path, e.Input?.Type)), Is.EqualTo(new (string, string?)[] { ("/x/a", "NyOrder"), ("/x/b", null) }));
+    }
+
+    [Test]
     public async Task Minimal_API_links_to_the_spec_and_an_unreadable_path_gives_a_warning()
     {
         var map = await MapAsync(Build(true, Web("Api", """

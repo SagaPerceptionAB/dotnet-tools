@@ -38,6 +38,8 @@ internal sealed partial class ServiceResolver
     };
 
     private readonly Dictionary<string, List<INamedTypeSymbol>> _registered = new(StringComparer.Ordinal);
+    // Alla typer som nämns i en registrering, även de utan gränssnitt (AddScoped<CurrentSession>()).
+    private readonly HashSet<string> _services = new(StringComparer.Ordinal);
     // Klasserna i solutionen per gränssnitt de implementerar, och överskuggningarna per virtuell metod. Byggs en gång,
     // vilket går mycket fortare än SymbolFinder (som indexerar alla paket första gången).
     private readonly Dictionary<string, List<INamedTypeSymbol>> _implementations = new(StringComparer.Ordinal);
@@ -93,6 +95,9 @@ internal sealed partial class ServiceResolver
     /// </summary>
     public string? DatabaseOf(ITypeSymbol context) =>
         Symbols.SelfAndBases(context).Select(t => _databases.GetValueOrDefault(Symbols.TypeKey(t))).FirstOrDefault(n => n is not null);
+
+    /// <summary>Är typen registrerad i DI (som tjänst eller som implementation)? ASP.NET binder en sådan parameter från tjänsterna, inte från kroppen.</summary>
+    public bool IsService(ITypeSymbol type) => _services.Contains(Symbols.TypeKey(type));
 
     /// <summary>HTTP-klienten för en typad klient (klassen som får en HttpClient) eller ett Refit-gränssnitt.</summary>
     public HttpClientInfo? HttpClientFor(ITypeSymbol type) =>
@@ -216,6 +221,9 @@ internal sealed partial class ServiceResolver
     {
         var method = Symbols.Invoked(invocation, model);
         var typeArguments = method?.TypeArguments.OfType<INamedTypeSymbol>().ToList() ?? SyntacticTypeArguments(invocation, model);
+        foreach (var t in typeArguments.Where(t => t.TypeKind != TypeKind.Error)) _services.Add(Symbols.TypeKey(t));
+        foreach (var t in invocation.ArgumentList.Arguments.Select(a => a.Expression).OfType<TypeOfExpressionSyntax>().Select(t => model.GetTypeInfo(t.Type).Type).OfType<INamedTypeSymbol>())
+            if (t.TypeKind != TypeKind.Error) _services.Add(Symbols.TypeKey(t));
 
         if (name is "AddHttpClient" or "AddRefitClient")
         {

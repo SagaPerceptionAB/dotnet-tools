@@ -26,7 +26,7 @@ internal static class EntryPointFinder
     private static readonly string[] ResultMethods =
         ["Ok", "Created", "CreatedAtAction", "CreatedAtRoute", "Accepted", "AcceptedAtAction", "AcceptedAtRoute", "StatusCode", "Json", "Content"];
 
-    public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, CallSites sites, string root, List<string> warnings)
+    public static List<EntryCandidate> Find(IEnumerable<Project> projects, ModelCache models, CallSites sites, ServiceResolver services, string root, List<string> warnings)
     {
         var projectList = projects.ToList();
         var entries = new List<EntryCandidate>();
@@ -38,10 +38,10 @@ internal static class EntryPointFinder
                 foreach (var declaration in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
                 {
                     if (model.GetDeclaredSymbol(declaration) is not INamedTypeSymbol type || !IsController(type) || !seen.Add(Symbols.TypeKey(type))) continue;
-                    entries.AddRange(Actions(type, project.Name, models, root, warnings));
+                    entries.AddRange(Actions(type, project.Name, models, services, root, warnings));
                 }
             }
-        entries.AddRange(MinimalApiFinder.Find(models, sites, root, warnings));
+        entries.AddRange(MinimalApiFinder.Find(models, sites, services, root, warnings));
         entries.AddRange(PageFinder.Find(projectList, models, root));
         return entries;
     }
@@ -52,7 +52,7 @@ internal static class EntryPointFinder
         (Symbols.Is(type, "Microsoft.AspNetCore.Mvc.ControllerBase", "System.Web.Http.ApiController", "System.Web.Mvc.Controller") ||
          Bases(type).Any(t => Symbols.HasAttribute(t, "ApiController")));
 
-    private static IEnumerable<EntryCandidate> Actions(INamedTypeSymbol type, string project, ModelCache models, string root, List<string> warnings)
+    private static IEnumerable<EntryCandidate> Actions(INamedTypeSymbol type, string project, ModelCache models, ServiceResolver services, string root, List<string> warnings)
     {
         var controller = type.Name.EndsWith("Controller") ? type.Name[..^"Controller".Length] : type.Name;
         var prefixes = ClassRoutes(type);
@@ -72,7 +72,7 @@ internal static class EntryPointFinder
 
             var action = AttributeString(method, "ActionName") ?? (method.Name.EndsWith("Async") ? method.Name[..^5] : method.Name);
             var (file, line) = Symbols.Where(method.Locations.First(l => l.IsInSource), root);
-            var input = Input(method);
+            var input = Input(method, services);
             var output = Output(method, models);
             var kind = ReturnsView(method, models) ? EntryKind.MvcView : EntryKind.Controller;
             var paths = new HashSet<string>(StringComparer.Ordinal);
@@ -150,12 +150,12 @@ internal static class EntryPointFinder
         return false;
     }
 
-    /// <summary>Indata: parametern med [FromBody] (eller en egen [ModelBinder]), annars första parametern av en typ i solutionen.</summary>
-    private static DataShape? Input(IMethodSymbol method)
+    /// <summary>Indata: parametern med [FromBody] (eller en egen [ModelBinder]), annars första parametern av en typ i solutionen som kan vara kroppen (se <see cref="ParameterSources"/>).</summary>
+    private static DataShape? Input(IMethodSymbol method, ServiceResolver services)
     {
         var body = method.Parameters.FirstOrDefault(p => Symbols.HasAttribute(p, "FromBody", "ModelBinder"));
         return DataShapes.Of(body?.Type) ??
-               method.Parameters.Where(p => !Symbols.HasAttribute(p, "FromServices", "FromKeyedServices")).Select(p => DataShapes.Of(p.Type)).FirstOrDefault(s => s is not null);
+               method.Parameters.Where(p => ParameterSources.CanBeBody(p, services)).Select(p => DataShapes.Of(p.Type)).FirstOrDefault(s => s is not null);
     }
 
     /// <summary>Utdata: returtypen (<c>ActionResult&lt;T&gt;</c>), <c>[ProducesResponseType(typeof(T), ...)]</c> eller värdet i <c>Ok(x)</c>.</summary>

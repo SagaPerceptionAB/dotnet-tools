@@ -25,7 +25,7 @@ public static class CodeMapper
         var walker = new CallWalker(resolver, models, origins, root, warnings);
         var sites = new CallSites(projects, models);
 
-        var entries = EntryPointFinder.Find(projects, models, sites, root, warnings);
+        var entries = EntryPointFinder.Find(projects, models, sites, resolver, root, warnings);
         if (entries.Count == 0)
             warnings.Add("Hittade inga ingångar. Kartan känner igen controllers ([ApiController], [HttpGet] ...), minimal API (MapGet ...), Razor Pages och Blazor-sidor (@page).");
 

@@ -19,7 +19,7 @@ Säkerhet i korthet (vad verktygen skyddar och vad man bör tänka på) står i 
 
 ## Installera
 
-Paketen finns ännu inte på nuget.org. Bygg dem från källkoden (.NET 10 SDK) och installera från katalogen `nupkg`. Versionerna är förhandsversioner (`0.1.0-preview.1`), därför behövs `--prerelease`.
+Paketen finns ännu inte på nuget.org. Bygg dem från källkoden (.NET 10 SDK) och installera från katalogen `nupkg`. Versionerna är förhandsversioner (se [eng/Versions.props](eng/Versions.props)), därför behövs `--prerelease`.
 
 ```
 dotnet pack testgen/src/SagaPerception.TestGen.NUnit -c Release -o nupkg   # testprojektet som testgen init skapar använder det här paketet

@@ -120,12 +120,12 @@ public partial class CodeMapTests
         var map = await MapAsync(Build(true, HealthIn("Api"), HealthIn("Web")));
         await WithPageAsync(map, async (page, ready) =>
         {
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-entry option')].map(o => o.textContent)"),
-                Is.EqualTo(new[] { "Hela systemet", "GET /health (Api)", "GET /health (Web)", "GET /only (Api)", "GET /only (Web)" }));
+            Assert.That(await OptionTextsAsync(page, "entry"),
+                Is.EqualTo(new[] { "GET /health (Api)", "GET /health (Web)", "GET /only (Api)", "GET /only (Web)" }));
             // Samma rutt i två projekt: utan projekt det första, med projekt det som testas.
             Assert.That(await page.EvaluateAsync<string[]>("() => [SystemMap.entryFor(null, 'GET', '/health'), SystemMap.entryFor(null, 'GET', '/health', 'Web'), SystemMap.entryFor(null, 'GET', '/health', 'Api'), SystemMap.entryFor(null, 'GET', '/health', 'Okänt')].map(e => e.project)"),
                 Is.EqualTo(new[] { "Api", "Web", "Api", "Api" }));
-            await page.SelectOptionAsync("#map-entry", new SelectOptionValue { Label = "GET /health (Web)" });
+            await PickAsync(page, "entry", "GET /health (Web)");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-entry').filter(n => !n.hasClass('dimmed')).map(n => n.data('label'))"),
                 Is.EqualTo(new[] { "GET /health (Web)" }), "valet av det ena anropet dämpar det andra");

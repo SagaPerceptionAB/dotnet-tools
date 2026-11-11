@@ -25,6 +25,10 @@ app.MapSystemMap(configure: o => o.AllowWithoutAuthorization = true);  // utan i
 - **Release-bygge:** kartan ritas när appen byggs och följer med i utdatamappen (`systemmap/`) och vid publish.
 - **Andra bygge (t.ex. Debug):** kartan ritas första gången sidan öppnas i Development, och ritas om när koden ändrats.
 
+## Tema
+
+Sidan har en temaknapp ("Tema") i raden ovanför kartan som byter mellan ljust och mörkt tema (VS Codes färger). Från början följer sidan datorns tema, och valet sparas i webbläsaren. Färgerna står i [systemmap-READMEn](https://github.com/SagaPerceptionAB/dotnet-tools/blob/main/systemmap/README.md).
+
 ## Adresser
 
 | Adress | Innehåll |

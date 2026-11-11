@@ -41,7 +41,7 @@ dotnet systemmap --spec https://example.com/openapi.json
 | `--spec` | `<fil\|url>` | OpenAPI-spec. Kopplar anropen till specens operationer och listar anrop som bara finns i koden eller bara i specen. |
 | `--html` | `<fil>` | Skriv kartan som webbsida. Sidan hämtar inget utifrån. |
 | `--mermaid` | `<fil>` | Skriv kartan som Mermaid-flödesschema. |
-| `--level` | `projects`, `classes` (standard), `methods`, `all` | Detaljnivå: projekten, klasserna, metoderna i klasserna eller allt. På `methods` ligger läsningar, skrivningar och meddelanden på pilarna till integrationerna; på `all` är de egna rader. Gäller med `--mermaid`. Webbsidan har samma nivåer (Projekt, Klasser, Funktioner, Allt). |
+| `--level` | `projects`, `classes` (standard), `methods`, `all` | Detaljnivå: projekten, klasserna, metoderna i klasserna eller allt. På `methods` ligger läsningar, skrivningar och meddelanden på pilarna till integrationerna; på `all` är de egna rader. Gäller med `--mermaid`. I webbsidan väljs nivån i listorna ovanför kartan, se Filter i webbsidan: Klass: Visas inte = `projects`, Funktion: Alla = `methods`, Integration: Alla, med läsningar och skrivningar = `all`, annars `classes`. |
 | `--direction` | `LR` (standard), `TB` | Vänster till höger eller uppifrån och ned. Gäller med `--mermaid`. |
 | `--entry` | `"<anrop>"` | Bara vägen för ett anrop, t.ex. `"POST /orders"`. Gäller med `--mermaid`. |
 | `--json` | `<fil>` | Skriv kartan som JSON. |
@@ -61,7 +61,7 @@ Utan `--html`, `--mermaid` och `--json` skrivs kartan som en webbsida i en tillf
 - En dold integration tas bort med sina läsningar, skrivningar och meddelanden och pilarna dit.
 - Anrop (ingångarna) går inte att dölja.
 - Texten på stdout, `--mermaid` och `--json` blir utan de dolda delarna, och säger vilka som är dolda (en rad `Dolda delar:` i texten och Mermaid-filen, och listan `hidden` med id:n i JSON). JSON-filen har samma form som annars (`schemaVersion`, sorterade listor): `entryPoints`, `integrations`, `apps` och `overview` är filtrerade, men ett anrops egen `handler` står kvar, och `file` för en integration anges där den anropas.
-- `--html` får hela kartan, med delarna avbockade i **Visa** i sidan, så att den som läser kan bocka i dem igen. Det en läsare bockar av i sidan sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
+- `--html` får hela kartan, med delarna dolda. Rutan nere till vänster i kartan säger hur många som är dolda ("2 dolda med --hide", med namnen i title) och har knappen **Visa dem**, så att den som läser kan se dem. Nya delar går inte att dölja i sidan; det man vill se mindre av väljer man bort med filtren. Att visa dem sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
 
 Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev karta.html (webbsida)`) skrivs på stderr.
 
@@ -69,6 +69,56 @@ Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns elle
 
 JSON-filen börjar med `schemaVersion` (nu 3). null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider. Sedan version 2 (fälten på engelska)
 har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), att ett anrop vars namn en annan skulle dela har `qualifier`, att delar i `overview` som ingen ingång når har `reached: false`, och att ett HTTP-anrop vars adress varken står i koden eller i konfigurationen (den bestäms vid körning) har `address: "runtime"` i steget och i översiktens rad, medan `operation` och `name` bara är verbet.
+
+## Filter i webbsidan
+
+Raden ovanför kartan har fem sökbara listor: **Anrop**, **Projekt**, **Klass**, **Funktion** och **Integration**, och sedan **Riktning**, **Tema** och exporten.
+Klicka eller tryck pil ned för att öppna en lista; skriv för att söka (träffen markeras) och kryssa ett eller flera värden med klick, Enter eller
+Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick utanför stänger den.
+
+- Projekt, Klass, Funktion och Integration är filter: kartan visar bara anropen som går genom de valda delarna (eller något under dem), med delarna de
+  passerar. Inom en lista gäller ELLER; mellan Projekt, Klass och Funktion gäller den mest precisa listan som har kryss, och Integration gäller
+  tillsammans med den (OCH). Projekten begränsar vad Klass och Funktion listar, klasserna vad Funktion listar. Statusrutan uppe till vänster säger hur
+  många anrop som går igenom ("2 av 13 anrop"). Ett fält med kryss har blå kant och ett **×** som tar bort kryssen i den listan; med flera kryss står
+  antalet ("2 klasser") och title listar namnen.
+- Anrop markerar vägarna för de kryssade anropen och dämpar resten (det är inget filter); listan visar bara anropen som går genom filtren.
+- Detaljnivån är en enda och väljs överst i listorna Klass, Funktion och Integration med radioknappar; listorna visar den: Klass: Visas inte är bara
+  projekten, Klass: Alla klasserna, Funktion: Alla metoderna i klasserna och Integration: Alla, med läsningar och skrivningar allt utfällt. Ett val byter
+  nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion.
+- Ett hopfällt projekt är en ljusgrön, rundad ruta med projektikonen uppe till vänster, namnet och på raden under vad som ligger i det ("3 klasser · 4 funktioner", räknat efter filtret och det som är dolt); ett klick fäller ut det, ett klick till fäller ihop det.
+- En hopfälld klass är en liten ruta på samma sätt: klassikonen uppe till vänster, namnet i fet stil och på raden under "3 funktioner" (ingen rad när klassen inte har några). Den har ingen "+N"-bricka. Ett klick fäller ut klassen, ett klick till fäller ihop den.
+- **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
+- Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
+  filen med `--mermaid` och `--entry`. Den vägrar också i den fristående sidan när något är dolt eller "Visa delar som inte nås" är avbockat (filerna skrevs utan det valet).
+
+### Färger och tema
+
+Kartan har ett ljust och ett mörkt tema med VS Codes färger (Light Modern och Dark Modern). Typen står alltid i text och som ikon, aldrig bara som färg.
+
+| Del | Ljust | Mörkt |
+|---|---|---|
+| Solution (ramen "Systemet (…)") | `#652D90` | `#B180D7` |
+| Projekt | `#388A34` | `#89D185` |
+| Klass | `#D67E00` | `#EE9D28` |
+| Funktion | `#795E26` | `#DCDCAA` |
+| Integration, med läsningar och skrivningar | `#0063D3` | `#59A4F9` |
+| Anrop in | `#767676` | `#9D9D9D` |
+| Pilar mellan kod | `#A0A0A0` | `#6E6E6E` |
+
+Pilar till en integration har integrationens färg, pilar från ett anrop anropets. Sidans egna färger (bakgrund `#FFFFFF` och `#1F1F1F`, text `#3B3B3B` och `#CCCCCC`, accent `#005FB8` och `#0078D4`) klarar kontrast WCAG AA för text.
+
+**Tema** i raden är en knapp som byter mellan ljust och mörkt; ikonen visar temat man byter till (månen i ljust, solen i mörkt). Från början följer kartan datorn (`prefers-color-scheme`), också när det ändras medan sidan är öppen. Ett klick väljer det andra temat och sparar valet i webbläsaren som riktningen; väljer man datorns tema igen tas valet bort och sidan följer datorn på nytt. Färgerna byts utan ny utläggning.
+
+### Zoom
+
+Nere till höger i kartan finns **+**, **−**, **Passa in hela kartan** och under dem zoomen i procent. Knapparna zoomar 25 % åt gången runt kartans mitt, från 20 % till 400 %
+(så att små metodnamn går att läsa i stora kartor); Passa in visar hela kartan, eller vägen för de valda anropen, och zoomar aldrig in mer än 120 %.
+Med fokus i kartan eller på zoomknapparna gör tangenterna `+` (eller `=`), `-` och `0` samma sak. Ctrl + rullhjul (⌘ + rullhjul på Mac) zoomar, på pekskärm nyper man med två
+fingrar; vanligt rullhjul rullar sidan.
+
+## Bädda in kartan i en egen sida
+
+En sida som bäddar in kartan med `SystemMap.create(root, opts)` (se `systemmap.js`) får temaknappen. Inställningen `theme` låser temat och döljer knappen, för sidor med eget tema: `'light'` och `'dark'` väljer temat, `'auto'` följer datorn. Temat sätts som `data-theme="light"` eller `"dark"` på kartans rot, och färgerna i `systemmap.css` är variabler (`--map-bg`, `--map-fg`, `--map-accent` med flera, se början av filen) som sidan kan sätta själv på kartans rot.
 
 ## I en app
 
@@ -79,10 +129,10 @@ konfiguration står i [SagaPerception.SystemMap.AspNetCore](https://github.com/S
 ### Det som ingen ingång når
 
 Alla projekt (utom testprojekt) och alla klasser med metoder som har kod finns på kartan, också de som ingen ingång når. De ritas dämpade och streckade
-(`reached: false` i JSON), med förklaringen "Nås inte från någon ingång" i sidan, och i texten som en lista sist ("Nås inte från någon ingång:", per
-projekt). På nivåerna Funktioner och Allt syns också metoderna i en klass som nås men som ingen anropar. I sidan har **Visa** valet
-"Visa delar som inte nås" (från början ibockat, sparas i webbläsaren som det man bockar av); `--no-unreached` tar bort dem ur text, Mermaid och JSON och
-avbockar valet i `--html`. `--hide` fungerar på dem som på andra projekt och klasser.
+(`reached: false` i JSON), och i texten som en lista sist ("Nås inte från någon ingång:", per
+projekt). På nivåerna Funktioner och Allt syns också metoderna i en klass som nås men som ingen anropar. I sidan har rutan nere till vänster i kartan
+valet "Visa delar som inte nås", med den streckade rutan som förklaring (från början ibockat, sparas i webbläsaren som det man väljer); `--no-unreached`
+tar bort dem ur text, Mermaid och JSON och avbockar valet i `--html`. `--hide` fungerar på dem som på andra projekt och klasser.
 
 Vad som räknas som nått: det som en ingång anropar, direkt eller genom hjälpmetoder som kartan inte ritar, och det som körs utan att en ingång anropar det:
 konstruktorer, fält- och egenskapsvärden och egenskaper hos klasser som används, metoder som skickas vidare som värden (`list.Select(Load)`), och det som

@@ -439,10 +439,10 @@ public partial class CodeMapTests
                 "SignalR: SignalR: ChatHub.Send",
             }), "HTTP först, sedan en grupp per sort med sorten som etikett, också för ett ensamt anrop");
 
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-entry optgroup')].map(g => g.label + ' (' + g.children.length + ')')"),
+            Assert.That(await GroupsAsync(page, "entry"),
                 Is.EqualTo(new[] { "Bakgrundstjänster (1)", "Meddelanden (2)", "Jobb (1)", "SignalR (1)" }), "grupperna i listan med anrop");
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-entry option')].map(o => o.textContent)"),
-                Is.EqualTo(new[] { "Hela systemet", "POST /x", "Bakgrund: OrderCleanupWorker", "Meddelande: OrderPlaced → OrderPlacedConsumer", "Meddelande: OrderPlaced → OtherConsumer", "Jobb: OtherJob", "SignalR: ChatHub.Send" }));
+            Assert.That(await OptionTextsAsync(page, "entry"),
+                Is.EqualTo(new[] { "POST /x", "Bakgrund: OrderCleanupWorker", "Meddelande: OrderPlaced → OrderPlacedConsumer", "Meddelande: OrderPlaced → OtherConsumer", "Jobb: OtherJob", "SignalR: ChatHub.Send" }));
 
             // I kartan har bara gruppen med flera anrop en ruta; ett ensamt anrop står för sig.
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-callgroup').map(g => g.data('label'))"), Is.EqualTo(new[] { "Meddelanden" }));
@@ -453,9 +453,9 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<string?>("() => (SystemMap.entryFor(null, 'POST', '') || SystemMap.entryFor(null, undefined, undefined) || {}).kind || null"), Is.Null);
 
             // Ett valt anrop som inte är HTTP visar sin väg.
-            await page.SelectOptionAsync("#map-entry", new SelectOptionValue { Label = "Bakgrund: OrderCleanupWorker" });
+            await PickAsync(page, "entry", "Bakgrund: OrderCleanupWorker");
             await ready();
-            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.path').map(n => n.data('label')).sort()"),
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.path').map(n => n.data('label').split('\\n')[0]).sort()"),
                 Does.Contain("Bakgrund: OrderCleanupWorker").And.Contain("Writer"));
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-entry.dimmed').map(n => n.data('label')).sort()"), Does.Contain("POST /x").And.Not.Contain("Bakgrund: OrderCleanupWorker"));
         });

@@ -1,21 +1,27 @@
 // Systemkartan: ett nätverk ritat med Cytoscape.js och layouten fcose. Projekten är mjuka områden med klasserna i,
-// integrationerna är ikonnoder utanför systemet. Blått = systemets egen kod, grönt = utanför systemet, grått = anropen in.
+// integrationerna är ikonnoder utanför systemet. Färgerna är VS Codes (ett ljust och ett mörkt tema, se THEMES): solutionen lila, projekt grönt,
+// klass orange, funktion brunt (gult i det mörka), integration blått och anropen in grått; pilar mellan kod är grå, pilar till en integration blå.
 // Typen står alltid i text och som ikon, aldrig bara som färg.
 //
 // Används av den fristående sidan (page.html) och av sidor som bäddar in kartan. En karta per sida:
 //   var map = SystemMap.create(root, { mermaid: function (level, direction, entry) { return Promise<text>; }, ... });
 //   map.show(json);   // kartan som JSON (CodeMapJson)
 // Inställningar (alla valfria):
-//   mermaid(level, direction, entry): texten till "Exportera som Mermaid" i verktygsraden. Utan den syns inte knappen. Ett fel ges som
-//     { message, tip }.
+//   mermaid(level, direction, entry, hidden, unreached): texten till "Exportera som Mermaid" i verktygsraden. Utan den syns inte knappen. Ett fel
+//     ges som { message, tip }. Knappen vägrar själv när ett filter är valt eller flera anrop är kryssade, och när något är dolt eller delar som
+//     inte nås är avbockade, om inte sidan tar hand om det (mermaidAccepts). hidden är id:n på det som är dolt, unreached om delar som inte nås visas.
+//   mermaidAccepts: { hidden: true, unreached: true }: sidans fil följer det som är dolt (hidden) eller det som inte nås (unreached); knappen vägrar då inte för det.
 //   onError(error): när Mermaid-filen inte gick att hämta. Utan den står felet bredvid knappen.
-//   hidden: id:n på delar som är avbockade i "Visa" när kartan öppnas första gången (det man själv bockat av sparas och gäller före).
+//   hidden: id:n på delar som är dolda när kartan öppnas första gången (det sparade gäller före).
 //   unreached: false = "Visa delar som inte nås" är avbockad när kartan öppnas första gången (annars ibockad; det man själv väljer sparas och gäller före).
-//   mermaid får som fjärde värde id:n på det som är dolt och som femte om delar som inte nås visas, så att filen kan följa kartan.
-// Kartan fyller ytan sidan ger den: sidan sätter höjden med --map-height (annars hela fönstret). Anrop, riktning och nivå
-// väljs i raden ovanför kartan, där också exporten finns. Ett anrop går också att välja genom att klicka på dess nod.
-// "Visa" i raden väljer vilka projekt, klasser och integrationer som syns, och om det som ingen ingång når (delar med reached: false, ritade
-// dämpat och streckat) syns. SystemMap.hide(overview, ids) är regeln för det som döljs; SystemMap.dropUnreached(overview) tar bort det som inte nås.
+//   theme: 'light' eller 'dark' låser temat, 'auto' låter det följa datorn; båda döljer temaknappen, för sidor med eget tema. Utan den visas knappen
+//     "Tema" i raden (en knapp som byter mellan ljust och mörkt); från början följer kartan datorn, och valet sparas som riktningen.
+// Kartan fyller ytan sidan ger den: sidan sätter höjden med --map-height (annars hela fönstret). Anrop, projekt, klass, funktion och
+// integration väljs i sökbara listor i raden ovanför kartan, där också riktningen och exporten finns. Ett val av projekt, klass, funktion
+// eller integration är ett filter: kartan visar bara anropen som går genom det. Detaljnivån väljs i samma listor ("Visas inte", "Alla",
+// "Alla, med läsningar och skrivningar"). "Rensa" tar bort filtren. Ett anrop går också att välja genom att klicka på dess nod.
+// Rutan nere till vänster i kartan har valet om det som ingen ingång når (delar med reached: false, ritade dämpat och streckat) syns, och
+// "Visa dem" när något är dolt med hidden. SystemMap.hide(overview, ids) är regeln för det som döljs; SystemMap.dropUnreached(overview) tar bort det som inte nås.
 // SystemMap.summary(json) ger "4 anrop, 3 delar av systemet och 6 integrationer.".
 (function () {
   'use strict';
@@ -23,44 +29,63 @@
   // Integrationernas typer: [namn, kort namn under ikonen (där ikonen redan visar att det är ett annat system)].
   var KINDS = { database: ['Databas', 'Databas'], queue: ['Kö', 'Kö'], http: ['Annat system (HTTP)', 'HTTP'], wcf: ['Annat system (WCF/SOAP)', 'WCF/SOAP'],
     storage: ['Lagring', 'Lagring'], email: ['E-post', 'E-post'] };
-  var COLORS = { code: '#2a78d6', external: '#008300', entry: '#6b7a8f' };
-  // Riktnings- och nivåknapparna i verktygsraden.
-  var TOOLS = '.map-bar [data-level], .map-bar [data-direction]';
+  // Färgerna i varje tema. node: delarnas färger (kant, ikon, text i rubriker), arrows: pilarna mellan kod; fill: fyllningar; fg och bg: text i
+  // noder och kartans bakgrund (samma som sidans, systemmap.css); group: hur tydligt en utfälld yta tonas av sin färg.
+  var THEMES = {
+    light: { node: { solution: '#652D90', project: '#388A34', 'class': '#D67E00', method: '#795E26', integration: '#0063D3', entry: '#767676', arrows: '#A0A0A0' },
+      fg: '#3B3B3B', bg: '#FFFFFF', fill: { node: '#FFFFFF', entry: '#F8F8F8', round: '#EBF3FC', box: '#EEF5EE', boxLine: '#A6CBA4', group: 0.06 } },
+    dark: { node: { solution: '#B180D7', project: '#89D185', 'class': '#EE9D28', method: '#DCDCAA', integration: '#59A4F9', entry: '#9D9D9D', arrows: '#6E6E6E' },
+      fg: '#CCCCCC', bg: '#1F1F1F', fill: { node: '#1F1F1F', entry: '#262626', round: '#1A2838', box: '#222D22', boxLine: '#4C6E4A', group: 0.09 } }
+  };
   var FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  // Temaknappen: en knapp med bara ikon som visar temat man byter TILL (månen i ljust tema, solen i mörkt); namnet står i title och aria-label.
+  var THEME_ICONS = {
+    light: '<circle cx="9" cy="9" r="3.4"/><path d="M9 1.8v1.6M9 14.6v1.6M1.8 9h1.6M14.6 9h1.6M3.9 3.9l1.1 1.1M13 13l1.1 1.1M3.9 14.1L5 13M13 5l1.1-1.1"/>',
+    dark: '<path d="M14.8 11.2A6.3 6.3 0 0 1 6.8 3.2a6.3 6.3 0 1 0 8 8z"/>'
+  };
   var MARKUP =
     '<div class="map-wrap" id="map-wrap">' +
     '  <div class="map-bar" id="map-bar">' +
-    '    <span class="map-field"><label class="map-label" for="map-entry">Anrop</label><select id="map-entry" class="map-entry"></select></span>' +
-    '    <span class="map-field"><span class="map-label" aria-hidden="true">Riktning</span>' +
+    '    <span id="map-filters" class="map-filters"></span>' +
+    '    <button type="button" id="map-clear" aria-disabled="true" title="Tar bort valen av anrop, projekt, klass, funktion och integration">✕ Rensa</button>' +
+    '    <span class="map-field map-field-direction"><span class="map-label" aria-hidden="true">Riktning</span>' +
     '      <span class="segmented" role="group" aria-label="Riktning"><button type="button" data-direction="LR" title="Anropen går från vänster till höger">→</button><button type="button" data-direction="TB" title="Anropen går uppifrån och ned">↓</button></span></span>' +
-    '    <span class="map-field"><span class="map-label" aria-hidden="true">Nivå</span>' +
-    '      <span class="segmented" role="group" aria-label="Nivå"><button type="button" data-level="projects" title="Bara projekten och integrationerna">Projekt</button><button type="button" data-level="classes" title="Klasserna i varje projekt">Klasser</button><button type="button" data-level="methods" title="Metoderna i varje klass. Läsningar, skrivningar och meddelanden ligger kvar i integrationen.">Funktioner</button><button type="button" data-level="all" title="Allt: även läsningarna, skrivningarna och meddelandena i integrationerna">Allt</button></span></span>' +
-    '    <details class="map-extra map-show" id="map-show" name="map-extra" hidden><summary id="map-show-summary" title="Välj vad som syns på kartan">Visa</summary>' +
-    '      <div class="map-panel" id="map-show-panel" role="group" aria-labelledby="map-show-title"><h3 id="map-show-title">Välj vad som syns</h3>' +
-    '        <p class="map-panel-help">Avbockade delar döljs med det som ligger i dem. Vägarna genom dem finns kvar.</p>' +
-    '        <button type="button" id="map-show-all">Visa allt</button>' +
-    '        <label class="map-unreached" id="map-unreached-field" hidden><input type="checkbox" id="map-unreached"><span>Visa delar som inte nås</span></label>' +
-    '        <div id="map-tree"></div></div></details>' +
-    '    <span class="map-hint" id="map-hint" hidden></span>' +
+    '    <span class="map-field map-field-theme" id="map-theme-field"><span class="map-label" aria-hidden="true">Tema</span>' +
+    '      <button type="button" id="map-theme"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></span>' +
     '    <span id="map-export"><button type="button" id="map-mermaid" aria-label="Exportera som Mermaid" title="Exportera som Mermaid. Ett flödesschema att lägga i dokumentation. Filen följer riktningen, nivån och anropet du valt."><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.5 V11 M5.5 7.5 L9 11 L12.5 7.5"/><path d="M2.5 11.5 V15 H15.5 V11.5"/></svg></button>' +
     '      <span class="map-sr" id="map-mermaid-status"></span></span>' +
     '    <details class="map-extra" id="map-diff" name="map-extra" hidden><summary id="map-diff-summary" title="Anrop som bara finns i koden eller bara i API-beskrivningen"></summary><ul id="map-diff-list"></ul></details>' +
     '    <details class="map-extra" id="map-warnings" name="map-extra" hidden><summary id="map-warnings-summary"></summary><ul id="map-warnings-list"></ul></details>' +
     '  </div>' +
-    '  <div class="map-view" id="map-view"></div>' +
-    '  <div class="map-legend" id="map-legend" role="note" hidden><span class="map-swatch" aria-hidden="true"></span>Nås inte från någon ingång</div>' +
+    '  <div class="map-view" id="map-view" tabindex="0" role="group" aria-label="Systemkarta. Tangenterna + och − zoomar, 0 passar in hela kartan."></div>' +
+    '  <div class="map-status" id="map-status" hidden></div>' +
+    '  <div class="map-legend" id="map-legend" role="group" aria-label="Förklaring" hidden>' +
+    '    <label class="map-unreached" id="map-unreached-field" hidden><input type="checkbox" id="map-unreached"><span class="map-swatch" aria-hidden="true"></span><span>Visa delar som inte nås</span></label>' +
+    '    <span class="map-hidden-row" id="map-hidden-row" hidden><span class="map-hint" id="map-hint"></span><button type="button" id="map-show-all">Visa dem</button></span>' +
+    '  </div>' +
+    '  <div class="map-zoom-hint" id="map-zoom-hint" aria-hidden="true"></div>' +
+    '  <div class="map-zoom" id="map-zoom" role="group" aria-label="Zoom">' +
+    '    <button type="button" id="map-zoom-in" aria-label="Zooma in (+)" title="Zooma in (+)">+</button>' +
+    '    <button type="button" id="map-zoom-out" aria-label="Zooma ut (−)" title="Zooma ut (−)">−</button>' +
+    '    <button type="button" id="map-zoom-fit" aria-label="Passa in hela kartan (0)" title="Passa in hela kartan (0)"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 6.5V2.5H6.5M11.5 2.5H15.5V6.5M15.5 11.5V15.5H11.5M6.5 15.5H2.5V11.5"/></svg></button>' +
+    '    <div class="map-zoom-pct" id="map-zoom-pct" aria-live="off">100 %</div>' +
+    '  </div>' +
     '  <div class="map-card" id="map-card" hidden></div>' +
     '</div>' +
     '<div class="map-sr" id="map-live" role="status" aria-live="polite"></div>';
 
-  // open: delar användaren fällt ut. shut: delar på det valda anropets väg som användaren fällt ihop. card: noden i detaljkortet.
-  // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects, classes, methods eller all (vad som är utfällt från början).
-  // hidden: id → true för delarna användaren bockat av i "Visa". unreached: om delar som ingen ingång når syns. view: översikten utan det
-  // dolda (hide) och, om unreached är falskt, utan det som inte nås (dropUnreached), som allt ritas ur.
-  // out/into: pilarna från och till varje nod. visible: visibleOf för det som ritas just nu.
-  var state = { map: null, allNodes: {}, anyUnreached: false, view: null, hidden: {}, unreached: true, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: null, shut: {},
-    dir: stored('map-direction', ['LR', 'TB'], 'LR'), level: stored('map-level', ['projects', 'classes', 'methods', 'all'], 'classes'),
-    layout: null, steps: {}, base: {}, last: 1, card: null, hovered: null, pulses: [], root: null, opts: {}, tools: [], unfitted: false };
+  // open: delar användaren fällt ut. shut: delar användaren fällt ihop (open och shut gäller före nivån och vägen). card: noden i detaljkortet.
+  // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects, classes, methods eller all (vad som är utfällt från början); den enda
+  // sanningen om detaljnivån, och nivåvalen i listorna Klass, Funktion och Integration visar den.
+  // hidden: id → true för delarna som är dolda (hidden, sparat). unreached: om delar som ingen ingång når syns. pre: översikten utan det
+  // dolda (hide) och, om unreached är falskt, utan det som inte nås (dropUnreached). view: pre med filtret (filterView), som allt ritas ur.
+  // f: valen i listorna Projekt, Klass, Funktion och Integration: project, cls, fn och integ är listor med id (kryssade).
+  // picked: de kryssade anropen (entry: det enda anropet när bara ett är kryssat, annars null; pickedKeys: deras namn → true).
+  // calls: anropen som går genom filtret (namn → true), null utan filter. visibleEntries: anropen som visas. combos: de fem listorna.
+  // out/into: pilarna från och till varje nod. visible: visibleOf för det som ritas just nu. zoomGoal: dit en pågående zoom är på väg.
+  var state = { map: null, allNodes: {}, anyUnreached: false, pre: null, view: null, f: emptyFilter(), picked: [], pickedKeys: {}, calls: null, visibleEntries: [], combos: {}, hidden: {}, unreached: true, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: {}, shut: {},
+    dir: stored('map-direction', ['LR', 'TB'], 'LR'), theme: 'auto', mode: 'light', locked: false, mq: null, level: stored('map-level', ['projects', 'classes', 'methods', 'all'], 'classes'),
+    layout: null, steps: {}, base: {}, last: 1, card: null, hovered: null, pulses: [], root: null, opts: {}, unfitted: false, zoomGoal: null, zoomUi: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) {
@@ -90,6 +115,19 @@
   function integrationOf(id) {
     return (state.map && state.map.integrations.find(function (i) { return i.id === id; })) || { id: id, kind: '', name: id, detail: '' };
   }
+  // Föräldrakedjan: går uppåt från noden (den själv först) tills visit ger sant, och ger den noden, annars null. lookup: id → nod
+  // (state.nodes för det som syns, state.allNodes för hela kartan).
+  function climb(n, lookup, visit) {
+    for (; n; n = n.parent ? lookup[n.parent] : null) if (visit(n)) return n;
+    return null;
+  }
+  function projectNodeOf(n, lookup) { return climb(n, lookup, function (x) { return x.kind === 'project'; }); }
+  // En mängd (id → true) av id:n.
+  function idSet(ids) { var set = {}; ids.forEach(function (id) { set[id] = true; }); return set; }
+  // Är delen (i hela kartan) en av delarna i want, eller ligger den under någon av dem?
+  function within(id, want) { return !!climb(state.allNodes[id], state.allNodes, function (n) { return want[n.id]; }); }
+  // Kryssar eller avkryssar id i listan. Ger true när det blev kryssat.
+  function ticks(list, id) { var i = list.indexOf(id); if (i >= 0) list.splice(i, 1); else list.push(id); return i < 0; }
   // "ShopDatabase (databas, EF Core och SQL)", som i terminalen.
   function integrationLabel(it) { return it.name + (it.detail ? ' (' + it.detail + ')' : ''); }
   // Operationen som den visas: verbet, och för ett HTTP-anrop vars adress inte går att läsa ur koden (address: 'runtime') en förklaring.
@@ -149,48 +187,80 @@
     state.root = root; state.opts = opts || {};
     root.classList.add('systemmap');   // systemmap.css gäller det som står i roten
     root.innerHTML = MARKUP;
+    initTheme(root);
     $('map-export').hidden = !state.opts.mermaid;
     $('map-mermaid').addEventListener('click', downloadMermaid);
-    $('map-show-all').addEventListener('click', function () {
-      var off = !state.unreached && state.anyUnreached;
-      if (!hiddenIds().length && !off) return;
-      if (off) chooseUnreached(true);
-      setHidden({});
-    });
+    $('map-show-all').addEventListener('click', function () { if (hiddenIds().length) showHidden(); });
     $('map-unreached').addEventListener('change', function () { setUnreached(this.checked); });
-    $('map-tree').addEventListener('change', function (ev) {
-      var id = ev.target.getAttribute('data-part');
-      if (!id) return;
-      var next = Object.assign({}, state.hidden);
-      if (ev.target.checked) delete next[id]; else next[id] = true;
-      setHidden(next);
+    $('map-clear').addEventListener('click', function () {
+      if (this.getAttribute('aria-disabled') === 'true') return;
+      changeFilter(function () { state.f = emptyFilter(); state.level = 'classes'; setPicked([]); state.shut = {}; }, 'Filtren är borttagna.');
+      $('map-clear').blur();
     });
+    initZoom(root);
     // Esc stänger detaljkortet, och skillnader och varningar som fällts ut över kartan (fokus går då tillbaka till rubriken).
+    // En öppen lista stänger sig själv och stoppar Esc, så att inget annat stängs samtidigt.
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape') return;
       hideCard();
       var open = root.querySelector('.map-extra[open]');
       if (open) { open.open = false; open.querySelector('summary').focus(); }
     });
-    // Riktning och detaljnivå. Båda lägger ut kartan på nytt och sparas till nästa gång.
-    state.tools = Array.prototype.slice.call(root.querySelectorAll(TOOLS));
-    state.tools.forEach(function (b) {
+    // De fem listorna, med flerval. Anrop markerar vägarna i kartan; de andra är filter (changeFilter). Nivåvalen överst i Klass, Funktion och
+    // Integration är radioknappar: de byter state.level (se Filtret). Ett kryss i en lista och Rensa är från början ett kryss och Rensa i filtret.
+    var filters = $('map-filters');
+    function add(o) {
+      o.id = 'map-' + o.key;
+      o.empty = o.empty || 'Alla';
+      o.name = o.name || nameInMap;
+      o.onToggle = o.onToggle || function (id) { changeFilter(function (f) { ticks(f[o.key], id); }); };
+      o.onClear = o.onClear || function () { changeFilter(function (f) { f[o.key] = []; }); };
+      filters.appendChild((state.combos[o.key] = combo(o)).field);
+    }
+    add({ key: 'entry', label: 'Anrop', plural: 'anrop', empty: 'Hela systemet', note: 'Inget kryss = hela systemet', name: function (key) { return key; },
+      onToggle: function (key) { var l = state.picked.slice(); ticks(l, entryByKey(key)); choosePicked(l); },
+      onClear: function () { choosePicked([]); } });
+    add({ key: 'project', label: 'Projekt', plural: 'projekt',
+      onToggle: function (id) {
+        changeFilter(function (f) {
+          // Avkryssas ett projekt tas kryssen under det bort.
+          if (ticks(f.project, id)) return;
+          var gone = idSet([id]), outside = function (x) { return !within(x, gone); };
+          f.cls = f.cls.filter(outside); f.fn = f.fn.filter(outside);
+        });
+      } });
+    add({ key: 'cls', label: 'Klass', plural: 'klasser', levels: [{ value: 'all', text: 'Alla' }, { value: 'none', text: 'Visas inte' }],
+      onToggle: function (id) {
+        changeFilter(function (f) {
+          if (ticks(f.cls, id)) { if (state.level === 'projects') state.level = 'classes'; }
+          else f.fn = f.fn.filter(function (m) { return state.allNodes[m].parent !== id; });
+        });
+      },
+      onLevel: function (v) {
+        changeFilter(function (f) {
+          if (v === 'none') { f.cls = []; f.fn = []; state.level = 'projects'; }
+          else if (state.level === 'projects') state.level = 'classes';
+        });
+      } });
+    add({ key: 'fn', label: 'Funktion', plural: 'funktioner', levels: [{ value: 'none', text: 'Visas inte' }, { value: 'all', text: 'Alla' }],
+      onLevel: function (v) { changeFilter(function () { state.level = v === 'none' ? 'classes' : state.level === 'all' ? 'all' : 'methods'; }); } });
+    add({ key: 'integ', label: 'Integration', plural: 'integrationer', levels: [{ value: 'all', text: 'Alla' }, { value: 'reads', text: 'Alla, med läsningar och skrivningar' }],
+      onLevel: function (v) { changeFilter(function () { if (v === 'reads') state.level = 'all'; else if (state.level === 'all') state.level = 'methods'; }); } });
+    // Riktningen. Den lägger ut kartan på nytt och sparas till nästa gång.
+    Array.prototype.forEach.call(root.querySelectorAll('[data-direction]'), function (b) {
       b.addEventListener('click', function () {
-        if (b.hasAttribute('data-level')) { openLevel(b.getAttribute('data-level')); remember('map-level', state.level); }
-        else { state.dir = b.getAttribute('data-direction'); remember('map-direction', state.dir); }
-        syncTools(); hideCard();
+        state.dir = b.getAttribute('data-direction'); remember('map-direction', state.dir);
+        syncDirection(); hideCard();
         render(function () { fitView(); }, true);
       });
     });
-    $('map-entry').addEventListener('change', function () {
-      choose(this.value === '' ? null : state.map.entryPoints[Number(this.value)]);
-    });
+    syncDirection();
     return {
       show: renderMap,
       // Välj ett anrop (en ingång ur kartan, eller null för hela systemet). { focus: true } flyttar fokus till anropslistan.
       select: function (e, opts) {
         selectEntry(e);
-        if (opts && opts.focus) $('map-entry').focus({ preventScroll: true });
+        if (opts && opts.focus) state.combos.entry.input.focus({ preventScroll: true });
       },
       entryFor: entryFor,
       // Stegen för ett anrop som en lista (för sidor som visar vägen som text).
@@ -198,14 +268,64 @@
       loaded: function () { return !!state.map; }
     };
   }
+  // Temat: 'light', 'dark' eller 'auto' (följ datorn). Inställningen theme låser det och döljer knappen; annars gäller det sparade valet
+  // och från början 'auto'. mode är det som ritas (light eller dark) och står som data-theme på roten, där systemmap.css byter färgvariablerna.
+  var THEME_SAID = { light: 'Ljust tema.', dark: 'Mörkt tema.' };
+  function systemMode() { return state.mq && state.mq.matches ? 'dark' : 'light'; }
+  function initTheme(root) {
+    var forced = ['light', 'dark', 'auto'].indexOf(state.opts.theme) >= 0 ? state.opts.theme : null;
+    state.locked = !!forced;
+    state.theme = forced || stored('map-theme', ['light', 'dark'], 'auto');   // inget sparat val = följ datorn
+    state.mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    $('map-theme-field').hidden = state.locked;
+    // Ett klick byter till det andra temat och sparar det; blir det datorns tema tas valet bort, så att sidan följer datorn igen.
+    $('map-theme').addEventListener('click', function () {
+      var to = state.mode === 'dark' ? 'light' : 'dark';
+      if (to === systemMode()) { state.theme = 'auto'; try { sessionStorage.removeItem('map-theme'); } catch (e) { /* ingen lagring */ } }
+      else { state.theme = to; remember('map-theme', to); }
+      applyTheme(); announce(THEME_SAID[to]);
+    });
+    // Följer datorn gör kartan det medan sidan är öppen.
+    var follow = function () { if (state.theme === 'auto') applyTheme(); };
+    if (state.mq) { if (state.mq.addEventListener) state.mq.addEventListener('change', follow); else if (state.mq.addListener) state.mq.addListener(follow); }
+    applyTheme();
+  }
+  // Sätter temat på roten och knappen, och ritar om färgerna (inte utläggningen: noderna står kvar).
+  function applyTheme() {
+    state.mode = state.theme === 'auto' ? systemMode() : state.theme;
+    state.root.setAttribute('data-theme', state.mode);
+    var to = state.mode === 'dark' ? 'light' : 'dark', button = $('map-theme'), name = 'Byt till ' + (to === 'dark' ? 'mörkt' : 'ljust') + ' tema';
+    button.title = name; button.setAttribute('aria-label', name);
+    button.firstChild.innerHTML = THEME_ICONS[to];
+    if (state.cy) recolor();
+  }
+  function palette() { return THEMES[state.mode]; }
+  function syncDirection() {
+    Array.prototype.forEach.call(state.root.querySelectorAll('[data-direction]'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-direction') === state.dir ? 'true' : 'false');
+    });
+  }
 
-  // Kartan som Mermaid, att lägga i dokumentation: samma riktning, nivå och valda anrop som kartan visar.
+  // Kartan som Mermaid, att lägga i dokumentation: samma riktning, nivå och valda anrop som kartan visar. Filen följer inte filtret, flera
+  // anrop eller (om inte sidan tar hand om det, mermaidAccepts) det som är dolt eller inte nås: samma besked för alla sidor som bäddar in kartan.
+  var CLI = 'dotnet systemmap --mermaid karta.mmd';
+  function refusal(message, fix, flags) { return { message: message, tip: fix + ', eller skapa filen med ' + CLI + ' ' + flags + '.' }; }
+  function mermaidRefusal() {
+    var accepts = state.opts.mermaidAccepts || {}, hidden = 'Mermaid-filen kan inte följa det som är dolt i sidan.';
+    if (filterActive()) return refusal('Mermaid-filen kan inte följa filtret.', 'Välj Rensa', '--entry "<anrop>"');
+    if (state.picked.length > 1) return refusal('Mermaid-filen kan bara visa ett anrop i taget.', 'Kryssa ett anrop eller inget', '--entry "<anrop>"');
+    if (hiddenIds().length && !accepts.hidden) return refusal(hidden, 'Välj Visa dem i rutan nere till vänster', '--hide <namn>');
+    if (!state.unreached && !accepts.unreached) return refusal(hidden, 'Bocka i Visa delar som inte nås i rutan nere till vänster', '--no-unreached');
+    return null;
+  }
   async function downloadMermaid() {
     var button = $('map-mermaid'), status = $('map-mermaid-status');
     if (!state.map || button.getAttribute('aria-disabled') === 'true') return;
     button.setAttribute('aria-disabled', 'true');
     status.textContent = '';
     try {
+      var refused = mermaidRefusal();
+      if (refused) throw refused;
       var key = state.entry ? entryKey(state.entry) : null;
       var text = await state.opts.mermaid(state.level, state.dir, key, hiddenIds(), state.unreached);
       var name = 'systemmap' + (key ? '-' + key.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '') : '') + '.mmd';
@@ -233,20 +353,8 @@
     state.root.hidden = false;
     state.hidden = loadHidden(map);
     state.unreached = loadUnreached(map);
-    buildTree();
-    useView();
-    if (!state.open) openLevel(state.level);
-    syncTools();
-    var list = $('map-entry'); list.textContent = '';
-    var all = el('option', null, 'Hela systemet'); all.value = ''; list.appendChild(all);
-    state.groups = callGroups(map.entryPoints);
-    state.groups.forEach(function (g) {
-      var into = g.label ? list.appendChild(el('optgroup')) : list;
-      if (g.label) into.label = g.label;
-      g.entries.forEach(function (e) {
-        var o = el('option', null, entryKey(e)); o.value = String(map.entryPoints.indexOf(e)); into.appendChild(o);
-      });
-    });
+    prepare();
+    useView();   // tar också bort kryssade anrop som filtret stänger ute
     var diff = map.differences || [];
     $('map-diff-summary').textContent = 'Skillnader (' + diff.length + ')';
     fillList('map-diff-list', diff.map(function (d) {
@@ -262,14 +370,14 @@
     var some = map.entryPoints.length > 0, drawable = some && !!window.cytoscape;
     $('map-wrap').hidden = !drawable;
     hideCard();
-    if (!some) { if (state.cy) state.cy.elements().remove(); return; }
-    var keep = state.entry && entryFor(state.entry.operationId, state.entry.method, state.entry.path, state.entry.project);
     state.shut = {};
     if (state.cy) state.cy.elements().remove();       // ny karta: lägg ut allt från början
-    selectEntry(keep || null);
+    setPicked(state.picked.map(function (e) { return entryFor(e.operationId, e.method, e.path, e.project); }).filter(Boolean));
+    syncControls();
+    if (some) showPicked(true);
   }
 
-  // ---- Visa: välj vad som syns ----
+  // ---- Det som är dolt, det som inte nås och filtret ----
   // Delarna som går att dölja: projekt, klasser och integrationer. Anrop går inte att dölja.
   function hideable(n) { return n.kind === 'project' || n.kind === 'class' || n.kind === 'integration'; }
   function hiddenKey(map) { return 'map-hidden:' + (map.solution || ''); }
@@ -281,7 +389,7 @@
     return keep;
   }
   function hiddenIds() { return Object.keys(state.hidden); }
-  // Delar som ingen ingång når (projekt, klasser och metoder med reached: false). Finns inga syns inte valet i "Visa".
+  // Delar som ingen ingång når (projekt, klasser och metoder med reached: false). Finns inga syns inte valet i rutan nere till vänster.
   function isUnreached(n) { return n.reached === false; }
   function hasUnreached(map) { return map.overview.nodes.some(isUnreached); }
   function unreachedKey(map) { return 'map-unreached:' + (map.solution || ''); }
@@ -295,24 +403,46 @@
     if (!overview.nodes.some(isUnreached)) return overview;
     return { nodes: overview.nodes.filter(function (n) { return !isUnreached(n); }), links: overview.links };
   }
-  // Valet sparas till nästa gång; ritas om gör den som väljer.
-  function chooseUnreached(on) {
+  // Kartan utan de dolda delarna och, om det inte visas, utan det som ingen ingång når. Räknas om bara när kartan, det dolda eller
+  // valet om det som inte nås ändras, inte vid varje kryss i filtret.
+  function prepare() {
+    var pre = hideParts(state.map.overview, hiddenIds());
+    state.pre = state.unreached ? pre : dropUnreached(pre);
+  }
+  // Valen sparas till nästa gång; ritas om gör den som väljer.
+  function setUnreached(on) {
     state.unreached = on;
     remember(unreachedKey(state.map), on ? 'show' : 'hide');
+    prepare();
+    refresh(on ? 'Delar som inte nås visas.' : 'Delar som inte nås är dolda.');
   }
-  function setUnreached(on) {
-    chooseUnreached(on);
+  // "Visa dem": allt som var dolt visas, och det sparas.
+  function showHidden() {
+    state.hidden = {};
+    remember(hiddenKey(state.map), '[]');
+    prepare();
+    refresh('Alla delar visas.');
+  }
+  // Slutet på en ändring av det dolda, det som inte nås eller filtret: det som visas, listorna och rutorna följer med, skärmläsaren får veta
+  // vad som visas (said är en text, eller en funktion som ger den när kartan är uträknad) och kartan ritas om och passas in.
+  function refresh(said) {
     useView();
-    syncTree();
+    syncControls();
     hideCard();
-    announce(on ? 'Delar som inte nås visas.' : 'Delar som inte nås är dolda.');
+    announce(typeof said === 'function' ? said() : said);
     if (state.cy && state.map.entryPoints.length) render(function () { fitView(); }, true);
   }
-  // Kartan utan de dolda delarna, så att allt annat ritas ur state.view och bygger sina uppslag ur den.
+  // Kartan med filtret (state.pre ur filterView), så att allt annat ritas ur state.view och bygger sina uppslag ur den.
   function useView() {
-    state.view = hideParts(state.map.overview, hiddenIds());
-    if (!state.unreached) state.view = dropUnreached(state.view);
-    $('map-legend').hidden = !state.view.nodes.some(isUnreached);
+    sanitizeFilter();
+    var f = filterView(state.pre);
+    state.view = f.view; state.calls = f.calls;
+    state.visibleEntries = f.calls ? state.map.entryPoints.filter(function (e) { return f.calls[entryKey(e)]; }) : state.map.entryPoints;
+    state.groups = callGroups(state.visibleEntries);
+    // Faller det valda anropet bort ur filtret visas hela systemet.
+    if (f.calls && state.picked.some(function (e) { return !f.calls[entryKey(e)]; })) {
+      setPicked(state.picked.filter(function (e) { return f.calls[entryKey(e)]; })); state.shut = {};
+    }
     state.nodes = {}; state.kids = {}; state.out = {}; state.into = {};
     state.view.nodes.forEach(function (n) {
       state.nodes[n.id] = n;
@@ -324,62 +454,351 @@
     });
     computeSteps();
   }
-  // Det användaren valt: sparas, och kartan ritas om utan de dolda delarna.
-  function setHidden(next) {
-    state.hidden = next;
-    remember(hiddenKey(state.map), JSON.stringify(hiddenIds()));
-    useView();
-    syncTree();
-    hideCard();
-    var n = hiddenIds().length;
-    announce(n ? n + (n === 1 ? ' del är dold.' : ' delar är dolda.') : 'Alla delar visas.');
-    if (state.cy && state.map.entryPoints.length) render(function () { fitView(); }, true);
+
+  // ---- Filtret ----
+  // Listorna Projekt, Klass, Funktion och Integration är flerval (kryssrutor): inom en lista gäller ELLER. Klass, Funktion och Integration börjar
+  // med val av detaljnivå ("Alla", "Visas inte", "Alla, med läsningar och skrivningar", radioknappar): de är inga filter, de visar och byter
+  // state.level. Klass: Visas inte är projects, Klass: Alla är classes, Funktion: Alla är methods och Integration: Alla, med läsningar och
+  // skrivningar är all; "Klass: Visas inte" tar bort klassernas och funktionernas kryss och stänger av Funktion.
+  function emptyFilter() { return { project: [], cls: [], fn: [], integ: [] }; }
+  // Är något kryssat som filter? (Anrop är inget filter.)
+  function filterActive() { var f = state.f; return f.project.length + f.cls.length + f.fn.length + f.integ.length > 0; }
+  // Är allt som i början (Rensa är då grå)?
+  function pristine() { return !state.picked.length && !filterActive() && state.level === 'classes'; }
+  // Valen hänger ihop: projekten begränsar klasserna och funktionerna, klasserna funktionerna. Det som inte hör till de kryssade tas bort.
+  function normalizeFilter() {
+    var f = state.f;
+    if (f.project.length) {
+      var projects = idSet(f.project), inside = function (id) { return within(id, projects); };
+      f.cls = f.cls.filter(inside); f.fn = f.fn.filter(inside);
+    }
+    if (f.cls.length) { var classes = idSet(f.cls); f.fn = f.fn.filter(function (m) { return classes[state.allNodes[m].parent]; }); }
   }
-  // Bockarna: projekten med sina klasser, sedan integrationerna. Byggs om när en karta visas; syncTree sätter bockarna.
-  function buildTree() {
-    var nodes = state.map.overview.nodes, box = $('map-tree'), item = function (n, label) {
-      var li = el('li'), name = el('label'), input = el('input');
-      input.type = 'checkbox'; input.setAttribute('data-part', n.id);
-      if (n.parent) input.setAttribute('data-parent', n.parent);
-      name.appendChild(input); name.appendChild(el('span', null, label));
-      li.appendChild(name);
-      return li;
+  // Val som inte längre finns (t.ex. något som dolts) tas bort.
+  function sanitizeFilter() {
+    var f = state.f, here = idSet(state.pre.nodes.map(function (n) { return n.id; }));
+    ['project', 'cls', 'fn', 'integ'].forEach(function (k) { f[k] = f[k].filter(function (id) { return here[id]; }); });
+    normalizeFilter();
+  }
+  // Delarna som anropen ska gå genom: de mest precisa av funktioner, klasser och projekt som har kryss.
+  function targetIds() { var f = state.f; return f.fn.length ? f.fn : f.cls.length ? f.cls : f.project; }
+  // Kartan med bara anropen som går genom någon av de valda koddelarna (eller något under dem) och, om integrationer är valda, når någon av
+  // dem (eller något under den). Ger { view, calls }: översikten med bara de länkarna (med anropen begränsade till dessa) och noderna de går
+  // mellan med deras föräldrar, och anropens namn. De valda delarna visas alltid. Utan filter är view samma som översikten.
+  function filterView(pre) {
+    var f = state.f, targets = targetIds(), integs = f.integ, nodes = state.allNodes;
+    if (!targets.length && !integs.length) return { view: pre, calls: null };
+    var keep = {}, calls = null;
+    // Anropen i länkarna som har en av delarna (eller något under dem) i någon ände.
+    var through = function (roots) {
+      var set = {}, want = idSet(roots);
+      pre.links.forEach(function (l) {
+        if (within(l.from, want) || within(l.to, want)) l.entries.forEach(function (e) { set[e] = true; });
+      });
+      return set;
     };
-    box.textContent = '';
-    var code = el('ul', 'map-tree'), outside = el('ul', 'map-tree');
-    nodes.filter(function (n) { return n.kind === 'project'; }).forEach(function (p) {
-      var li = code.appendChild(item(p, p.name + (isUnreached(p) ? ' · nås inte' : ''))), classes = nodes.filter(function (c) { return c.kind === 'class' && c.parent === p.id; });
-      if (!classes.length) return;
-      var sub = li.appendChild(el('ul', 'map-tree'));
-      classes.forEach(function (c) { sub.appendChild(item(c, c.name + (isUnreached(c) ? ' · nås inte' : ''))); });
+    [targets, integs].forEach(function (roots) {
+      if (!roots.length) return;
+      var set = through(roots);
+      if (calls === null) calls = set;
+      else Object.keys(calls).forEach(function (e) { if (!set[e]) delete calls[e]; });
     });
-    nodes.filter(function (n) { return n.kind === 'integration'; }).forEach(function (i) {
-      var short = kindName(integrationOf(i.ref).kind, true);
-      outside.appendChild(item(i, short !== i.name ? i.name + ' · ' + short : i.name));
+    // En del och dess föräldrar visas; ett föräldraled som redan står med har sina föräldrar med.
+    var mark = function (id) { climb(nodes[id], nodes, function (n) { if (keep[n.id]) return true; keep[n.id] = true; return false; }); };
+    var links = [];
+    pre.links.forEach(function (l) {
+      var entries = l.entries.filter(function (e) { return calls[e]; });
+      if (!entries.length) return;
+      links.push(Object.assign({}, l, { entries: entries }));
+      mark(l.from); mark(l.to);
     });
-    [['Systemets egen kod', code], ['Utanför systemet', outside]].forEach(function (g) {
-      if (!g[1].children.length) return;
-      var set = el('fieldset'), legend = el('legend', null, g[0]);
-      set.appendChild(legend); set.appendChild(g[1]); box.appendChild(set);
+    targets.concat(integs).forEach(mark);
+    var visible = pre.nodes.filter(function (n) { return keep[n.id]; }).map(function (n) {
+      return Object.assign({}, n, { entries: (n.entries || []).filter(function (e) { return calls[e]; }) });
     });
-    $('map-show').hidden = !box.children.length;
-    syncTree();
+    return { view: { nodes: visible, links: links }, calls: calls };
   }
-  // En bock är ikryssad när delen syns. En del i en dold del står avbockad och går inte att ändra: bocka i den som döljer den.
-  function syncTree() {
+  // Ändrar valen (mutate ändrar state.f och får ändra state.level och annat), ritar om och passar in kartan. Ändrades inget görs inget.
+  // said är det skärmläsaren får höra, annars meningen om filtret eller nivån.
+  function changeFilter(mutate, said) {
+    var before = state.level, was = filterSignature();
+    mutate(state.f);
+    if (filterSignature() === was) return;
+    // Ny nivå: det man fällt ut eller ihop själv gäller tills nivån byts.
+    if (state.level !== before) { state.open = {}; state.shut = {}; remember('map-level', state.level); }
+    openSelected();
+    refresh(function () { return filterActive() ? statusSentence() : said || (state.level !== before ? LEVEL_TEXT[state.level] : 'Visar alla anrop.'); });
+  }
+  function filterSignature() { return JSON.stringify([state.f, state.level, Object.keys(state.pickedKeys)]); }
+  var LEVEL_TEXT = { projects: 'Visar bara projekten.', classes: 'Visar klasserna.', methods: 'Visar funktionerna.', all: 'Visar allt, även läsningar och skrivningar.' };
+  // Valda funktioner fäller ut sin klass och sitt projekt, valda klasser sitt projekt, så att de valda delarna syns oavsett nivå.
+  function openSelected() {
+    var f = state.f;
+    f.fn.concat(f.cls).forEach(function (id) {
+      climb(state.allNodes[id], state.allNodes, function (n) { if (n.parent) { state.open[n.parent] = true; delete state.shut[n.parent]; } });
+    });
+  }
+  function nameInMap(id) { return nameOf(id, state.allNodes); }
+  // Namnen på det valda, eller antalet när det är fler än två ("3 klasser").
+  function namesOf(ids, plural) {
+    return ids.length > 2 ? ids.length + ' ' + plural : ids.map(nameInMap).join(' och ');
+  }
+  function statusSentence() {
+    var f = state.f, targets = targetIds(), n = state.visibleEntries.length, total = state.map.entryPoints.length, where = [];
+    var plural = f.fn.length ? 'funktioner' : f.cls.length ? 'klasser' : 'projekt';
+    if (targets.length) where.push('genom ' + namesOf(targets, plural));
+    if (f.integ.length) where.push('till ' + namesOf(f.integ, 'integrationer'));
+    return n ? n + ' av ' + total + ' anrop går ' + where.join(' ') + '.' : 'Inga anrop går ' + where.join(' ') + '.';
+  }
+  // Statusrutan uppe till vänster i kartan: bara när ett filter är valt, och bara antalet (fälten säger vad som är valt).
+  function syncStatus() {
+    var box = $('map-status'), on = filterActive(), was = !box.hidden;
+    box.hidden = !on;
+    if (!on) return;
+    var n = state.visibleEntries.length;
+    box.textContent = '';
+    if (n) { box.appendChild(el('strong', null, String(n))); box.appendChild(document.createTextNode(' av ' + state.map.entryPoints.length + ' anrop')); }
+    else box.textContent = 'Inga anrop';
+    if (!was) placeStatus();
+  }
+  // Rutan ligger under verktygsraden, som kan ha brutits till flera rader. Den flyttas när den visas och när kartans storlek ändras.
+  function placeStatus() { $('map-status').style.top = ($('map-bar').offsetHeight + 10) + 'px'; }
+
+  // Listorna och det som visas av valen: texterna, vilka som är kryssade, nivåvalen (ur state.level), Rensa, rutan nere till vänster och statusrutan.
+  function syncControls() {
+    var f = state.f, c = state.combos, nodes = state.pre.nodes, level = state.level;
+    var groupsOf = function (list, groupName, text) {
+      var by = {}, out = [];
+      list.forEach(function (n) {
+        var g = groupName(n);
+        if (!by[g]) { by[g] = { label: g, items: [] }; out.push(by[g]); }
+        by[g].items.push({ value: n.id, text: text(n) });
+      });
+      return out;
+    };
+    c.entry.setItems(state.groups.map(function (g) {
+      return { label: g.label, items: g.entries.map(function (e) { var key = entryKey(e); return { value: key, text: key }; }) };
+    }));
+    syncPicked();
+    var projects = nodes.filter(function (n) { return n.kind === 'project'; });
+    c.project.setItems([{ label: null, items: projects.map(function (n) { return { value: n.id, text: n.name }; }) }]);
+    c.project.set(f.project, '');
+    var name = function (id) { return state.allNodes[id].name; };
+    var wanted = idSet(f.project), inProjects = function (n) { return !f.project.length || within(n.id, wanted); };
+    var classes = nodes.filter(function (n) { return n.kind === 'class' && inProjects(n); });
+    c.cls.setItems(groupsOf(classes, function (n) { return name(n.parent); }, function (n) { return n.name; }));
+    c.cls.set(f.cls, level === 'projects' ? 'none' : 'all');
+    var methods = nodes.filter(function (n) { return n.kind === 'method' && inProjects(n) && (!f.cls.length || f.cls.indexOf(n.parent) >= 0); });
+    c.fn.setItems(groupsOf(methods, function (n) { var k = state.allNodes[n.parent]; return name(k.parent) + ' / ' + k.name; }, function (n) { return n.name + '()'; }));
+    c.fn.set(f.fn, level === 'methods' || level === 'all' ? 'all' : 'none');
+    c.fn.setDisabled(level === 'projects');
+    var ints = nodes.filter(function (n) { return n.kind === 'integration'; });
+    c.integ.setItems(groupsOf(ints, function (n) { return kindName(integrationOf(n.ref).kind); }, function (n) { return n.name; }));
+    c.integ.set(f.integ, level === 'all' ? 'reads' : 'all');
+    syncLegend();
+    syncStatus();
+  }
+  // De kryssade anropen i Anrop-listan, och Rensa (grå när inget är valt).
+  function syncPicked() {
+    state.combos.entry.set(state.picked.map(entryKey), '');
+    $('map-clear').setAttribute('aria-disabled', pristine() ? 'true' : 'false');
+  }
+  // Rutan nere till vänster: valet om det som inte nås syns (med den streckade rutan som förklaring) och, när något är dolt, hur många och
+  // "Visa dem". Den syns bara när något av det finns.
+  function syncLegend() {
+    var n = hiddenIds().length, names = hiddenIds().map(nameInMap);
     $('map-unreached-field').hidden = !state.anyUnreached;
     $('map-unreached').checked = state.unreached;
-    Array.prototype.forEach.call($('map-tree').querySelectorAll('input[data-part]'), function (box) {
-      var blocked = !!state.hidden[box.getAttribute('data-parent')], dimmed = !state.unreached && isUnreached(state.allNodes[box.getAttribute('data-part')] || {});
-      box.checked = !state.hidden[box.getAttribute('data-part')] && !blocked && !dimmed;
-      box.disabled = blocked || dimmed;
+    $('map-hidden-row').hidden = n === 0;
+    $('map-hint').textContent = n === 1 ? '1 dold med --hide' : n + ' dolda med --hide';
+    $('map-hint').title = $('map-show-all').title = (n === 1 ? 'Dold: ' : 'Dolda: ') + names.join(', ');
+    $('map-legend').hidden = !state.anyUnreached && n === 0;
+  }
+
+  // ---- Sökbara listor med flerval ----
+  // En sökbar lista enligt ARIA 1.2 (combobox med listbox, aria-multiselectable). Alternativen har en kryssruta; högst upp kan det finnas
+  // nivåval (radioknappar). Bredden (minst) sätter systemmap.css. o: key, id, label, plural ("klasser"), levels ([{ value, text }] eller null),
+  // empty (texten när inget är kryssat och det inte finns nivåval), note (grå rad överst i listan), name(value) (namnet i title när flera är
+  // kryssade), onToggle(value), onLevel(value), onClear().
+  // setItems(groups): [{ label, items: [{ value, text }] }] (label null = ingen gruppetikett). set(values, level): de kryssade och valt nivåval.
+  // Alternativens element byggs när listan öppnas och efter att alternativen ändrats; en sökning och ett kryss växlar bara hidden och aria-selected.
+  // Skriv filtrerar (delsträng, skiftlägesokänsligt). Pil upp och ned, Home och End flyttar; Enter och Mellanslag (när inget är skrivet) växlar
+  // ett val; listan står kvar öppen. Esc, Tab eller klick utanför stänger den och återställer texten.
+  function combo(o) {
+    var field = el('span', 'map-field map-field-' + o.key), label = el('label', 'map-label', o.label), box = el('span', 'map-combo');
+    var input = el('input', 'map-input'), arrow = el('span', 'map-arrow', '▾'), clear = el('button', 'map-x', '×'), list = el('ul', 'map-list');
+    var levels = o.levels || [], groups = [], sig = '', texts = Object.create(null);
+    var options = [], parts = [], none = null, built = false;   // alternativen (li, nivåvalen först), grupperna med sina alternativ och "Inga träffar"
+    var checked = [], level = null, shown = [], display = '';
+    var opened = false, typed = false, active = -1, query = '';
+    label.htmlFor = input.id = o.id;
+    input.type = 'text'; input.setAttribute('role', 'combobox'); input.setAttribute('aria-expanded', 'false'); input.setAttribute('aria-controls', o.id + '-list');
+    input.setAttribute('aria-autocomplete', 'list'); input.autocomplete = 'off'; input.spellcheck = false;
+    arrow.setAttribute('aria-hidden', 'true');
+    clear.type = 'button'; clear.hidden = true; clear.setAttribute('aria-label', 'Ta bort filtret ' + o.label); clear.title = 'Ta bort filtret ' + o.label;
+    list.id = o.id + '-list'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-multiselectable', 'true'); list.setAttribute('aria-label', o.label); list.hidden = true;
+    box.appendChild(input); box.appendChild(arrow); box.appendChild(clear); box.appendChild(list); field.appendChild(label); field.appendChild(box);
+
+    function textOf(value) { return value in texts ? texts[value] : value; }
+    // Det som står i fältet när listan är stängd: nivåtexten, namnet eller antalet.
+    function summary() {
+      if (!checked.length) { var lv = levels.filter(function (l) { return l.value === level; })[0]; return lv ? lv.text : o.empty; }
+      return checked.length === 1 ? textOf(checked[0]) : checked.length + ' ' + o.plural;
+    }
+    function sync() {
+      display = summary();
+      if (!opened || !typed) { input.value = display; if (opened && document.activeElement === input) input.select(); }   // öppen utan sökning: texten visar valet
+      box.classList.toggle('has-value', checked.length > 0);
+      clear.hidden = !checked.length;
+      input.title = checked.length > 1 ? checked.map(o.name).join(', ') : '';
+      // Ett kryssat val får plats med hela namnet (minst den bredd systemmap.css ger).
+      input.style.width = checked.length ? Math.ceil(textWidth(display, 16) * 1.08) + 64 + 'px' : '';
+    }
+    function highlight(into, text, q) {
+      var i = q ? text.toLowerCase().indexOf(q) : -1;
+      into.textContent = '';
+      if (i < 0) { into.textContent = text; return; }
+      into.appendChild(document.createTextNode(text.slice(0, i)));
+      into.appendChild(el('mark', null, text.slice(i, i + q.length)));
+      into.appendChild(document.createTextNode(text.slice(i + q.length)));
+    }
+    // Bygger alternativen: nivåvalen först, sedan grupperna.
+    function build() {
+      list.textContent = ''; options = []; parts = [];
+      var option = function (into, item, isLevel) {
+        var li = el('li', 'map-option'), mark = el('span', isLevel ? 'map-radio' : 'map-check'), text = el('span', 'map-text', item.text);
+        li.id = o.id + '-o' + options.length; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', 'false');
+        li._value = item.value; li._level = isLevel; li._text = item.text; li._label = text; li._query = ''; li._on = false;
+        mark.setAttribute('aria-hidden', 'true');
+        li.appendChild(mark); li.appendChild(text);
+        into.appendChild(li); options.push(li);
+        return li;
+      };
+      // En grupp: en yta med etiketten (nivåvalen har ingen synlig) och en ul för skärmläsaren.
+      var group = function (name, items, isLevel) {
+        var wrap = el('li', isLevel ? 'map-levels' : null), ul = el('ul');
+        wrap.setAttribute('role', 'presentation'); ul.setAttribute('role', 'group'); ul.setAttribute('aria-label', name);
+        if (!isLevel) { var title = el('div', 'map-group-label', name); title.setAttribute('aria-hidden', 'true'); wrap.appendChild(title); }
+        parts.push({ wrap: wrap, lis: items.map(function (item) { return option(ul, item, isLevel); }) });
+        wrap.appendChild(ul); list.appendChild(wrap);
+      };
+      if (o.note) { var note = el('li', 'map-note', o.note); note.setAttribute('role', 'presentation'); list.appendChild(note); }
+      if (levels.length) group('Nivå', levels, true);
+      groups.forEach(function (g) {
+        if (g.label) group(g.label, g.items, false);
+        else g.items.forEach(function (item) { option(list, item, false); });
+      });
+      none = el('li', 'map-none', 'Inga träffar'); none.setAttribute('role', 'presentation'); none.hidden = true; list.appendChild(none);
+      built = true;
+    }
+    // Det som är valt (aria-selected): nivåvalet och de kryssade.
+    function paint() {
+      var on = idSet(checked);
+      options.forEach(function (li) {
+        var selected = li._level ? li._value === level : !!on[li._value];
+        if (selected !== li._on) { li._on = selected; li.setAttribute('aria-selected', selected ? 'true' : 'false'); }
+      });
+    }
+    function keyOf(li) { return li._value + '|' + li._level; }
+    // Sökningen: träffarna visas (med träffen markerad), resten och tomma grupper döljs. Nivåvalen står kvar. at: alternativet som ska
+    // vara markerat om det finns kvar (keyOf), annars första träffen vid sökning och annars översta alternativet.
+    function show(at) {
+      var q = query.toLowerCase(), any = false;
+      if (shown[active]) shown[active].classList.remove('active');
+      options.forEach(function (li) {
+        if (li._level) return;
+        var hit = !q || li._text.toLowerCase().indexOf(q) >= 0;
+        li.hidden = !hit;
+        if (!hit) return;
+        any = true;
+        if (li._query !== q) { li._query = q; highlight(li._label, li._text, q); }
+      });
+      parts.forEach(function (p) { p.wrap.hidden = !p.lis.some(function (li) { return !li.hidden; }); });
+      none.hidden = any;
+      shown = options.filter(function (li) { return !li.hidden; });
+      var start = 0;
+      shown.forEach(function (li, i) { li._at = i; });
+      if (q) shown.some(function (li, i) { if (li._level) return false; start = i; return true; });
+      if (at) shown.forEach(function (li, i) { if (keyOf(li) === at) start = i; });
+      active = -1;
+      setActive(shown.length ? start : -1, !at);
+    }
+    function setActive(i, scroll) {
+      if (shown[active]) shown[active].classList.remove('active');
+      active = i;
+      var li = shown[i];
+      if (!li) { input.removeAttribute('aria-activedescendant'); return; }
+      li.classList.add('active');
+      input.setAttribute('aria-activedescendant', li.id);
+      if (scroll === false) return;
+      var t = li.offsetTop, b = t + li.offsetHeight;
+      if (t < list.scrollTop + 24) list.scrollTop = Math.max(0, t - 24);
+      else if (b > list.scrollTop + list.clientHeight) list.scrollTop = b - list.clientHeight;
+    }
+    // Öppnar listan. Utan sökning markeras texten, så att det man skriver ersätter den.
+    function open(q) {
+      opened = true; query = q; list.hidden = false; input.setAttribute('aria-expanded', 'true');
+      if (!built) build();
+      paint();
+      show(null);
+      if (!q) input.select();
+    }
+    function close() {
+      if (!opened) return;
+      opened = false; typed = false; query = ''; list.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant');
+      input.value = display;   // texten är åter det valda
+    }
+    function activate(li) { if (li._level) o.onLevel(li._value); else o.onToggle(li._value); }
+    input.addEventListener('click', function () { if (!opened) open(''); });
+    input.addEventListener('input', function () { typed = true; query = input.value.trim(); if (opened) show(null); else open(query); });
+    input.addEventListener('keydown', function (ev) {
+      var n = shown.length;
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (!opened) open('');
+        else if (n) setActive(ev.key === 'ArrowDown' ? (active + 1) % n : (active - 1 + n) % n);
+      } else if ((ev.key === 'Home' || ev.key === 'End') && opened) {
+        ev.preventDefault();
+        if (n) setActive(ev.key === 'Home' ? 0 : n - 1);
+      } else if (ev.key === 'Enter' && opened) {
+        ev.preventDefault();
+        if (shown[active]) activate(shown[active]);
+      } else if (ev.key === ' ' && (!opened || !typed)) {
+        // Mellanslag växlar valet så länge inget är skrivet; annars är det ett tecken i sökningen.
+        ev.preventDefault();
+        if (!opened) open(''); else if (shown[active]) activate(shown[active]);
+      } else if (ev.key === 'Escape' && opened) {
+        ev.preventDefault(); ev.stopPropagation();   // stänger bara listan
+        close();
+      }
     });
-    var n = hiddenIds().length, hint = $('map-hint'), off = !state.unreached && state.anyUnreached;
-    hint.textContent = (n ? n + ' dolda' : '') + (n && off ? ', ' : '') + (off ? 'inte nådda dolda' : '');
-    hint.hidden = n === 0 && !off;
-    hint.title = n === 1 && !off ? 'En del av systemet är dold. Öppna Visa för att se den igen.' : 'Delar av systemet är dolda. Öppna Visa för att se dem igen.';
-    $('map-show-summary').setAttribute('aria-label', n || off ? 'Visa, ' + (hint.textContent) : 'Visa');
-    $('map-show-all').setAttribute('aria-disabled', n || off ? 'false' : 'true');
+    list.addEventListener('mousedown', function (ev) { ev.preventDefault(); });   // fokus stannar i fältet
+    list.addEventListener('click', function (ev) {
+      var li = ev.target.closest ? ev.target.closest('.map-option') : null;
+      if (li) activate(li);
+    });
+    list.addEventListener('mousemove', function (ev) {
+      var li = ev.target.closest ? ev.target.closest('.map-option') : null;
+      if (li && li._at !== active) setActive(li._at, false);
+    });
+    clear.addEventListener('click', function () { o.onClear(); input.focus(); });
+    field.addEventListener('focusout', function (ev) { if (!field.contains(ev.relatedTarget)) close(); });
+    return {
+      field: field, input: input,
+      set: function (values, lv) { checked = values; level = lv; sync(); if (opened) paint(); },
+      // Ändrade alternativ byggs om (och står kvar öppna om listan är öppen); samma alternativ som förut rörs inte.
+      setItems: function (g) {
+        var next = JSON.stringify(g);
+        if (next === sig) return;
+        sig = next; groups = g; built = false; texts = Object.create(null);
+        g.forEach(function (grp) { grp.items.forEach(function (item) { texts[item.value] = item.text; }); });
+        if (!opened) return;
+        var at = shown[active] ? keyOf(shown[active]) : null, top = list.scrollTop;
+        build(); paint(); show(at);
+        list.scrollTop = top;
+      },
+      setDisabled: function (off) { if (off) close(); input.disabled = off; box.classList.toggle('disabled', off); }
+    };
   }
 
   // Kartan utan de dolda delarna (samma regel som CodeMapOverview.Hide i C#). Ett dolt projekt eller en dold klass tas bort med sina
@@ -441,53 +860,59 @@
   function entryKey(e) { return (e.name || e.method + ' ' + e.path) + (e.qualifier ? ' (' + e.qualifier + ')' : ''); }
   function entryByKey(key) { return state.map.entryPoints.find(function (e) { return entryKey(e) === key; }) || null; }
 
-  // Ett val av användaren (i menyn eller på kartan): samma som selectEntry, och skärmläsaren får veta vad som visas.
-  function choose(e) {
-    selectEntry(e);
-    announce(e ? 'Visar vägen för ' + entryKey(e) + '.' : 'Visar hela systemet.');
+  // De kryssade anropen. entry är det enda anropet när bara ett är kryssat, annars null.
+  function setPicked(list) {
+    state.picked = list;
+    state.entry = list.length === 1 ? list[0] : null;
+    state.pickedKeys = {};
+    list.forEach(function (e) { state.pickedKeys[entryKey(e)] = true; });
   }
-
-  // Välj ett anrop (eller null = hela systemet). Delarna på anropets väg fälls ut och vägen markeras; resten tonas ned.
-  // En puls går längs vägen en gång, i den ordning anropen görs.
-  function selectEntry(e) {
-    var changed = state.entry !== e;
-    if (changed) state.shut = {};
-    state.entry = e;
-    $('map-entry').value = e ? String(state.map.entryPoints.indexOf(e)) : '';
+  function anyPicked(keys) { return state.picked.length > 0 && (keys || []).some(function (k) { return state.pickedKeys[k]; }); }
+  // Ett val av användaren (i listan eller på kartan): bara Anrop-listan och Rensa följer med, kartan ritas om.
+  function choosePicked(list) {
+    var same = list.length === state.picked.length && list.every(function (e) { return state.picked.indexOf(e) >= 0; });
+    if (!same) state.shut = {};
+    setPicked(list);
+    syncPicked();
+    showPicked(!same);
+  }
+  // Andra anrop fäller ut andra delar: allt läggs ut på nytt (och glider dit), så att ordningen blir rätt.
+  function showPicked(fresh) {
     if (!window.cytoscape) return;
     hideCard();
-    // Ett annat anrop fäller ut andra delar: allt läggs ut på nytt (och glider dit), så att ordningen blir rätt.
-    render(function () { fitView(e ? function () { pulse(entryKey(e)); } : null); }, changed);
+    var one = state.entry;
+    render(function () { fitView(one ? function () { pulse(entryKey(one)); } : null); }, fresh);
   }
+  function choose(list) {
+    choosePicked(list);
+    var n = list.length;
+    announce(n === 0 ? 'Visar hela systemet.' : n === 1 ? 'Visar vägen för ' + entryKey(list[0]) + '.' : 'Visar vägarna för ' + n + ' anrop.');
+  }
+  // Välj exakt ett anrop (en ingång ur kartan), eller null/undefined = hela systemet.
+  function selectEntry(e) { choosePicked(e ? [e] : []); }
 
   // Delar som fälls ut av sig själva när ett anrop är valt: projekten och integrationerna på vägen (då syns läsningar,
   // skrivningar och meddelanden). Klasserna står kvar som noder.
   function onPath(id) {
     var n = state.nodes[id];
-    return !!state.entry && !!n && (n.kind === 'integration' || n.kind === 'project') && n.entries.indexOf(entryKey(state.entry)) >= 0;
+    return !!n && (n.kind === 'integration' || n.kind === 'project') && anyPicked(n.entries);
   }
-  function isOpen(id) { return !!state.open[id] || (onPath(id) && !state.shut[id]); }
+  // Utfälld: det användaren fällt ut eller ihop (open, shut) gäller före nivån. Nivån fäller ut projekten (Klass: Alla), projekten och
+  // klasserna (Funktion: Alla) eller allt (Integration: med läsningar och skrivningar); på nivån Projekt är inget utfällt.
+  function levelOpens(n) {
+    var l = state.level;
+    return l === 'all' || (l === 'classes' && n.kind === 'project') || (l === 'methods' && (n.kind === 'project' || n.kind === 'class'));
+  }
+  function isOpen(id) {
+    if (state.open[id]) return true;
+    if (state.shut[id]) return false;
+    return state.level !== 'projects' && (levelOpens(state.nodes[id]) || onPath(id));
+  }
   function toggle(id) {
-    if (isOpen(id)) { delete state.open[id]; if (onPath(id)) state.shut[id] = true; }
+    if (isOpen(id)) { delete state.open[id]; state.shut[id] = true; }
     else { state.open[id] = true; delete state.shut[id]; }
     hideCard();
     render();
-  }
-  // Detaljnivån: bara projekten, klasserna i projekten (från början), metoderna i klasserna eller allt utfällt. Det man sedan
-  // fäller ut eller ihop själv gäller tills man väljer en nivå igen.
-  function openLevel(level) {
-    state.level = level; state.open = {}; state.shut = {};
-    Object.keys(state.kids).forEach(function (id) {
-      var kind = state.nodes[id].kind;
-      if (level === 'all' || (level === 'classes' && kind === 'project') || (level === 'methods' && (kind === 'project' || kind === 'class'))) state.open[id] = true;
-      else if (level === 'projects') state.shut[id] = true;
-    });
-  }
-  function syncTools() {
-    state.tools.forEach(function (b) {
-      var on = b.getAttribute('data-level') === state.level || b.getAttribute('data-direction') === state.dir;
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
   }
 
   // Delen som syns för en nod: den själv, eller den närmaste hopfällda delen den ligger i. Svaren gäller tills nästa ritning.
@@ -501,8 +926,8 @@
 
   // ---- Utseendet ----
   function projectOf(n) {
-    while (n && n.kind !== 'project') n = n.parent ? state.nodes[n.parent] : null;
-    return n ? n.name : null;
+    var p = projectNodeOf(n, state.nodes);
+    return p ? p.name : null;
   }
   // Steget för varje klass i sitt projekt: 1 när ett anrop in eller ett annat projekt anropar den (eller ingen gör det),
   // annars 1 + det högsta steget hos klasserna i projektet som anropar den. Vägen räknas med ett tak, så att cykler tar slut.
@@ -552,9 +977,17 @@
     if (n.kind === 'integration' || n.kind === 'operation') return state.last;
     return (state.base[projectOf(n)] || 1) + stepOf(n) - 1;
   }
-  // Färgen för en nodtyp eller en ikon i förklaringen: grått för anropen in, blått för systemets kod, grönt för resten.
+  // Färgen för en nodtyp i temat som ritas: egen färg för projekt, klass och funktion, integrationens för den och dess rader, anropens för anrop
+  // (och rutorna runt dem).
   function colorOf(kind) {
-    return kind === 'entry' ? COLORS.entry : kind === 'project' || kind === 'class' || kind === 'method' ? COLORS.code : COLORS.external;
+    var c = palette().node;
+    return kind === 'project' || kind === 'class' || kind === 'method' ? c[kind] : kind === 'integration' || kind === 'operation' ? c.integration : c.entry;
+  }
+  // Pilens färg: till en integration integrationens, från ett anrop anropets, annars grå. kind: 'integration', 'entry' eller 'arrows'.
+  function arrowColor(kind) { return palette().node[kind]; }
+  function arrowKind(from, to) {
+    var a = state.nodes[from], b = state.nodes[to];
+    return b && (b.kind === 'integration' || b.kind === 'operation') ? 'integration' : !a || a.kind === 'entry' ? 'entry' : 'arrows';
   }
   // Ikonen för en del, eller null (metoder och rader i andra integrationer än köer har ingen).
   var ENTRY_ICONS = { 'razor-page': 'page', 'blazor-page': 'page', 'mvc-view': 'page', background: 'background', console: 'console', consumer: 'message', job: 'job', grpc: 'plug', signalr: 'signal' };
@@ -591,10 +1024,47 @@
       ICONS[kind] + '</g>') : '';
   }
   // Brickan på en hopfälld del: hur mycket som finns inuti, t.ex. "+6".
+  // Kanten har kartans bakgrund och siffran nodens fyllning, så att den syns i båda temana.
   function badgeUri(count, color) {
-    var text = '+' + count, w = 12 + text.length * 7;
-    return svgUri(w, 18, '<rect x="0.75" y="0.75" width="' + (w - 1.5) + '" height="16.5" rx="8.25" fill="' + color + '" stroke="#ffffff" stroke-width="1.5"/>' +
-      '<text x="' + (w / 2) + '" y="13" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff">' + text + '</text>');
+    var text = '+' + count, w = 12 + text.length * 7, t = palette();
+    return svgUri(w, 18, '<rect x="0.75" y="0.75" width="' + (w - 1.5) + '" height="16.5" rx="8.25" fill="' + color + '" stroke="' + t.bg + '" stroke-width="1.5"/>' +
+      '<text x="' + (w / 2) + '" y="13" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="' + t.fill.node + '">' + text + '</text>');
+  }
+  // Det som beror på temat för en nod: färgen, ikonen och brickan. ck: nodtypen för färgen, ik: ikonen, count: antalet i brickan (0 = ingen).
+  function look(ck, ik, count) {
+    var color = colorOf(ck);
+    return { color: color, icon: ik ? iconUri(ik, color) : '', badge: count ? badgeUri(count, color) : '' };
+  }
+  // Byte av tema: färgerna ritas om utan ny utläggning.
+  function recolor() {
+    var cy = state.cy;
+    cy.batch(function () {
+      cy.style(cyStyle(palette()));
+      cy.nodes().forEach(function (n) {
+        var ck = n.data('ck');
+        if (ck) n.data(look(ck, n.data('ik'), n.data('bn')));
+      });
+      cy.edges().forEach(function (e) { var ek = e.data('ek'); if (ek) e.data('color', arrowColor(ek)); });
+    });
+  }
+
+  // "N funktioner" under en hopfälld klass (räknat i det som visas efter filtret), eller tomt när klassen inte har några.
+  function functionsText(id) {
+    var n = (state.kids[id] || []).filter(function (k) { return state.nodes[k].kind === 'method'; }).length;
+    return n ? n + (n === 1 ? ' funktion' : ' funktioner') : '';
+  }
+  // Vad som ligger i ett projekt (det som syns om det fälldes ut, enligt filtret): "3 klasser · 4 funktioner". Delar som är 0 utelämnas.
+  function contentText(id) {
+    var classes = 0, methods = 0, stack = (state.kids[id] || []).slice(), n;
+    while (stack.length) {
+      n = state.nodes[stack.pop()];
+      if (n.kind === 'class') classes++; else if (n.kind === 'method') methods++;
+      stack = stack.concat(state.kids[n.id] || []);
+    }
+    var parts = [];
+    if (classes) parts.push(classes + (classes === 1 ? ' klass' : ' klasser'));
+    if (methods) parts.push(methods + (methods === 1 ? ' funktion' : ' funktioner'));
+    return parts.join(' \u00b7 ');
   }
 
   var measurer = null, measured = {}, measuredSize = 0;
@@ -612,31 +1082,39 @@
   // Det som syns just nu: noder (med compound-föräldrar för det som är utfällt) och pilar, där en pil in i en hopfälld del
   // räknas till delen och dubbletter slås ihop. Ger också placeringsreglerna för fcose (rules, align).
   function graphElements() {
-    var map = state.map, key = state.entry ? entryKey(state.entry) : null, nodes = [], edges = [], byId = {}, layers = {}, info = {}, parentOf = {}, pads = { system: { x: 20, y: 44 } };
+    var map = state.map, key = state.picked.length > 0, nodes = [], edges = [], byId = {}, layers = {}, info = {}, parentOf = {}, pads = { system: { x: 20, y: 44 } };
     state.visible = {};
-    var mark = function (list) { return key ? (list.indexOf(key) >= 0 ? ' path' : ' dimmed') : ''; };
+    var mark = function (list) { return key ? (anyPicked(list) ? ' path' : ' dimmed') : ''; };
     var file = String(map.solution || '').split(/[\\/]/).pop();
     nodes.push({ group: 'nodes', data: { id: 'system', label: 'Systemet' + (file ? ' (' + file + ')' : '') }, classes: 'system' });
     var add = function (n, parent) {
-      var kids = state.kids[n.id], open = !!kids && isOpen(n.id), color = colorOf(n.kind), kind = iconKind(n);
+      var kids = state.kids[n.id], open = !!kids && isOpen(n.id), kind = iconKind(n);
       var label = n.kind === 'method' ? n.name + '()' : n.kind === 'operation' ? operationText(n.name, n.address) : n.name;
       if (n.kind === 'integration') {
         var short = kindName(integrationOf(n.ref).kind, true);
         if (short !== n.name) label += open ? ' · ' + short : '\n' + short;
       }
       // Rader (metoder, operationer) och avlånga noder (klass, projekt, anrop) har namnet inuti; integrationer är runda med namnet under.
-      var pill = n.kind === 'method' || n.kind === 'operation', round = n.kind === 'integration' && !open, icon = kind ? iconUri(kind, color) : '';
-      var data = { id: n.id, label: label, color: color, icon: icon, badge: kids && !open ? badgeUri(kids.length, color) : '' };
+      var pill = n.kind === 'method' || n.kind === 'operation', round = n.kind === 'integration' && !open;
+      // Ett hopfällt projekt är en liten variant av den utfällda rutan: texten med innehållet ersätter brickan. En hopfälld klass är en ännu
+      // mindre ruta med antalet funktioner på raden under namnet (ingen rad om det är 0) och ingen bricka.
+      var box = n.kind === 'project' && !open, cbox = n.kind === 'class' && !open, inside = box ? contentText(n.id) : cbox ? functionsText(n.id) : '';
+      if (inside) label += '\n' + inside;
+      var count = kids && !open && !box && !cbox ? kids.length : 0;
+      var data = Object.assign({ id: n.id, label: label, ck: n.kind, ik: kind, bn: count }, look(n.kind, kind, count)), icon = data.icon;
       if (parent) data.parent = parent;
+      var widest = function (px) { return Math.max.apply(null, label.split('\n').map(function (t) { return textWidth(t, px); })); };
       if (pill) data.w = Math.ceil(textWidth(label, 13)) + (icon ? 44 : 24);
-      else if (!open && !round) data.w = Math.ceil(textWidth(label, 14) * (n.kind === 'project' ? 1.08 : 1)) + 56;
-      var shape = open ? 'group' : pill ? 'pill' : round ? 'round' : 'long';
+      else if (box) data.w = Math.max(Math.ceil(widest(14) * 1.08) + 72, 230);
+      else if (cbox) data.w = Math.ceil(widest(14) * 1.08) + 60;
+      else if (!open && !round) data.w = Math.ceil(textWidth(label, 14)) + 56;
+      var shape = open ? 'group' : box ? 'box' : cbox ? 'cbox' : pill ? 'pill' : round ? 'round' : 'long';
       var cls = shape + ' t-' + n.kind + (data.badge ? ' badge' : '') + (icon && pill ? ' with-icon' : '') + (isUnreached(n) ? ' unreached' : '') + mark(n.entries);
       nodes.push({ group: 'nodes', data: data, classes: cls });
       parentOf[n.id] = parent;
       if (open) pads[n.id] = { x: (n.kind === 'class' ? 10 : 12) + 2, y: (n.kind === 'class' ? 10 : 12) + 24 };
       else info[n.id] = { w: data.w || (round ? Math.max(60, Math.max.apply(null, label.split('\n').map(function (t) { return textWidth(t, 14); })) + 8) : 60),
-        h: round ? 94 : pill ? 26 : n.kind === 'project' ? 40 : n.kind === 'entry' ? 30 : 34 };
+        h: round ? 94 : pill ? 26 : box ? 84 : cbox ? 50 : n.kind === 'entry' ? 30 : 34 };
       if (open) kids.forEach(function (k) { add(state.nodes[k], n.id); });
       else { var c = columnOf(n); (layers[c] = layers[c] || []).push(n); }
     };
@@ -646,7 +1124,7 @@
       var keys = g.entries.map(entryKey), gid = 'cg:' + g.label;
       keys.forEach(function (k) { order['in:' + k] = seq++; });
       if (!g.label || g.single) return;
-      nodes.push({ group: 'nodes', data: { id: gid, label: g.label, color: COLORS.entry }, classes: 'group t-callgroup' + mark(keys) });
+      nodes.push({ group: 'nodes', data: Object.assign({ id: gid, label: g.label, ck: 'callgroup' }, look('callgroup')), classes: 'group t-callgroup' + mark(keys) });
       pads[gid] = { x: 16, y: 40 };
       fixed[gid] = true;
       keys.forEach(function (k) { callGroup['in:' + k] = gid; });
@@ -679,7 +1157,7 @@
     // nodernas storlek och ytornas kanter. Inom lagret får fcose placera fritt, men ytor bredvid varandra hålls isär.
     var lr = state.dir !== 'TB';
     var plan = arrange({ layers: layers, info: info, parentOf: parentOf, pads: pads, edges: edges, lr: lr,
-      calls: map.entryPoints.map(function (e) { return 'in:' + entryKey(e); }), order: order, fixed: fixed, groupOf: callGroup });
+      calls: state.visibleEntries.map(function (e) { return 'in:' + entryKey(e); }), order: order, fixed: fixed, groupOf: callGroup });
     var calls = plan.calls, rules = plan.rules, ints = plan.integrations;
     // Anropen in. Från vänster till höger (→: uppifrån och ned) står de i den ordning som ger färst korsningar; avståndet räknas
     // från mitt till mitt. Uppifrån och ned blir varje ruta (eller ensamt anrop) en kolumn med anropen under varandra, och
@@ -734,9 +1212,10 @@
     units.forEach(function (u) { line(alongFlow, paired[u.id] ? u.calls.concat([paired[u.id]]) : u.calls); });
     return {
       elements: nodes.concat(plan.anchors).concat(drawn.map(function (e) {
-        return { group: 'edges', data: { id: e.id, source: e.a, target: e.b, color: colorOf(state.nodes[e.b].kind) }, classes: mark(e.entries).trim() };
+        var ek = arrowKind(e.a, e.b);
+        return { group: 'edges', data: { id: e.id, source: e.a, target: e.b, ek: ek, color: arrowColor(ek) }, classes: mark(e.entries).trim() };
       })).concat(bands.map(function (b, i) {
-        return { group: 'edges', data: { id: 'band:' + i, source: b[0], target: b[1], color: '#ffffff', len: b[2] + 2 }, classes: 'band' };
+        return { group: 'edges', data: { id: 'band:' + i, source: b[0], target: b[1], color: '#000000', len: b[2] + 2 }, classes: 'band' };
       })),
       rules: rules,
       align: Object.keys(align).length ? align : null,
@@ -1000,20 +1479,32 @@
     return { rules: rules, anchors: anchors, seed: seed, rank: rank, calls: entries.length === m.calls.length ? entries : m.calls, integrations: integrations };
   }
 
-  var CY_STYLE = [
-    { selector: 'node', style: { label: 'data(label)', 'font-family': FONT, 'font-size': 14, color: '#1b2430', 'text-wrap': 'wrap',
+  // Kartans stil i ett tema (t ur THEMES). Färgen på varje nod och pil står i dess data (color, icon, badge) och byts av recolor.
+  function cyStyle(t) {
+    var f = t.fill;
+    return [
+    { selector: 'node', style: { label: 'data(label)', 'font-family': FONT, 'font-size': 14, color: t.fg, 'text-wrap': 'wrap',
       'text-max-width': 150, 'line-height': 1.25, 'min-zoomed-font-size': 6 } },
-    // Klasser, projekt och anrop: avlånga runda noder med ikonen till vänster och namnet inuti.
-    { selector: 'node.long', style: { shape: 'round-rectangle', 'corner-radius': 17, width: 'data(w)', height: 34, 'background-color': '#ffffff',
+    // Anrop in: avlånga runda noder med ikonen till vänster och namnet inuti.
+    { selector: 'node.long', style: { shape: 'round-rectangle', 'corner-radius': 17, width: 'data(w)', height: 34, 'background-color': f.node,
       'border-width': 2, 'border-color': 'data(color)', 'background-image': 'data(icon)', 'background-width': 18, 'background-height': 18,
       'background-position-x': 12, 'background-position-y': '50%', 'text-valign': 'center', 'text-halign': 'center', 'text-margin-x': 12,
       'text-max-width': 400 } },
-    { selector: 'node.long.t-project', style: { height: 40, 'corner-radius': 20, 'background-color': '#f1f6fd', 'font-weight': 600 } },
-    { selector: 'node.long.t-entry', style: { height: 30, 'corner-radius': 15, 'background-color': '#eef1f5', 'font-size': 13 } },
-    // Integrationer: stora runda ikonnoder med namnet under, på en ljus bakgrund så att det går att läsa över pilarna.
-    { selector: 'node.round', style: { shape: 'ellipse', width: 60, height: 60, 'background-color': '#eef7ee', 'border-width': 2.5,
+    // Hopfällt projekt: som den utfällda projektrutan i liten, men täckande så att pilarna inte syns genom texten.
+    { selector: 'node.box', style: { shape: 'round-rectangle', 'corner-radius': 24, width: 'data(w)', height: 84, 'background-color': f.box,
+      'background-opacity': 1, 'border-width': 1.5, 'border-color': f.boxLine, 'font-weight': 600, 'line-height': 1.5, 'text-wrap': 'wrap',
+      'text-valign': 'center', 'text-halign': 'center', 'text-max-width': 400, 'background-image': 'data(icon)', 'background-width': 18,
+      'background-height': 18, 'background-position-x': 16, 'background-position-y': 14, 'background-clip': 'node' } },
+    // Hopfälld klass: en liten ruta som den utfällda klassrutan, med namnet och antalet funktioner, kant i klassens färg.
+    { selector: 'node.cbox', style: { shape: 'round-rectangle', 'corner-radius': 12, width: 'data(w)', height: 50, 'background-color': f.node,
+      'background-opacity': 1, 'border-width': 1.5, 'border-color': 'data(color)', 'font-weight': 600, 'line-height': 1.45, 'text-valign': 'center',
+      'text-halign': 'center', 'text-margin-x': 8, 'text-max-width': 400, 'background-image': 'data(icon)', 'background-width': 16,
+      'background-height': 16, 'background-position-x': 10, 'background-position-y': 9, 'background-clip': 'node' } },
+    { selector: 'node.long.t-entry', style: { height: 30, 'corner-radius': 15, 'background-color': f.entry, 'font-size': 13 } },
+    // Integrationer: stora runda ikonnoder med namnet under, på kartans bakgrund så att det går att läsa över pilarna.
+    { selector: 'node.round', style: { shape: 'ellipse', width: 60, height: 60, 'background-color': f.round, 'border-width': 2.5,
       'border-color': 'data(color)', 'background-image': 'data(icon)', 'background-width': 28, 'background-height': 28, 'text-valign': 'bottom',
-      'text-margin-y': 6, 'text-background-color': '#fcfcfb', 'text-background-opacity': 0.9, 'text-background-padding': 2,
+      'text-margin-y': 6, 'text-background-color': t.bg, 'text-background-opacity': 0.9, 'text-background-padding': 2,
       'text-background-shape': 'roundrectangle', 'font-weight': 600 } },
     // Brickan "+6" i övre högra hörnet på det som går att fälla ut.
     { selector: 'node.badge', style: {
@@ -1024,29 +1515,30 @@
       'background-position-y': ['50%', '0%'], 'background-offset-x': [0, 8], 'background-offset-y': [0, -9],
       'background-clip': ['node', 'none'], 'background-image-containment': ['inside', 'over'], 'bounds-expansion': 12 } },
     // Rader inuti en utfälld del: metoder och det som görs mot en integration.
-    { selector: 'node.pill', style: { shape: 'round-rectangle', width: 'data(w)', height: 26, 'background-color': '#ffffff', 'border-width': 1.5,
+    { selector: 'node.pill', style: { shape: 'round-rectangle', width: 'data(w)', height: 26, 'background-color': f.node, 'border-width': 1.5,
       'border-color': 'data(color)', 'font-size': 13, 'text-valign': 'center', 'text-halign': 'center', 'text-max-width': 400 } },
     { selector: 'node.pill.with-icon', style: { 'background-image': 'data(icon)', 'background-width': 16, 'background-height': 16,
       'background-position-x': 8, 'background-position-y': 5, 'text-margin-x': 10 } },
-    // Utfällda delar: mjuka ytor med namnet ovanför.
-    { selector: 'node.group', style: { shape: 'round-rectangle', 'corner-radius': 18, 'background-color': 'data(color)', 'background-opacity': 0.06,
-      'border-width': 1.5, 'border-color': 'data(color)', 'border-opacity': 0.35, padding: 12, 'text-valign': 'top', 'text-halign': 'center',
-      'text-margin-y': -4, 'font-weight': 600, color: '#1b2430', 'compound-sizing-wrt-labels': 'include', 'background-image': 'none' } },
-    { selector: 'node.t-project.group', style: { 'corner-radius': 24, 'background-opacity': 0.07 } },
-    { selector: 'node.t-class.group', style: { 'background-color': '#ffffff', 'background-opacity': 0.9, padding: 10, 'corner-radius': 14, 'border-opacity': 0.6 } },
-    { selector: 'node.t-integration.group', style: { 'background-opacity': 0.08, 'border-opacity': 0.55 } },
+    // Utfällda delar: mjuka ytor tonade av sin färg, med namnet ovanför.
+    { selector: 'node.group', style: { shape: 'round-rectangle', 'corner-radius': 18, 'background-color': 'data(color)', 'background-opacity': f.group,
+      'border-width': 1.5, 'border-color': 'data(color)', 'border-opacity': 0.45, padding: 12, 'text-valign': 'top', 'text-halign': 'center',
+      'text-margin-y': -4, 'font-weight': 600, color: t.fg, 'compound-sizing-wrt-labels': 'include', 'background-image': 'none' } },
+    { selector: 'node.t-project.group', style: { 'corner-radius': 24, 'background-opacity': f.group + 0.01 } },
+    // En utfälld klass är fylld med nodens fyllning, så att funktionerna och pilarna inuti syns tydligt.
+    { selector: 'node.t-class.group', style: { 'background-color': f.node, 'background-opacity': 1, padding: 10, 'corner-radius': 14, 'border-opacity': 0.8 } },
+    { selector: 'node.t-integration.group', style: { 'background-opacity': f.group + 0.02, 'border-opacity': 0.55 } },
     // Systemgränsen: allt inom den är systemets egen kod.
-    { selector: 'node.system', style: { shape: 'round-rectangle', 'corner-radius': 36, 'background-opacity': 0, 'border-width': 1.5,
-      'border-style': 'dashed', 'border-color': '#94a3b8', padding: 18, 'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -6,
-      color: '#536071', 'font-size': 14, 'compound-sizing-wrt-labels': 'include' } },
+    { selector: 'node.system', style: { shape: 'round-rectangle', 'corner-radius': 36, 'background-color': t.node.solution, 'background-opacity': 0.035,
+      'border-width': 1.5, 'border-style': 'dashed', 'border-color': t.node.solution, padding: 18, 'text-valign': 'top', 'text-halign': 'center',
+      'text-margin-y': -6, color: t.node.solution, 'font-size': 14, 'font-weight': 600, 'compound-sizing-wrt-labels': 'include' } },
     { selector: 'edge', style: { width: 1.6, 'curve-style': 'bezier', 'line-color': 'data(color)', 'target-arrow-color': 'data(color)',
       'target-arrow-shape': 'triangle', 'arrow-scale': 0.85, opacity: 0.75 } },
     // Det som ingen ingång når: dämpat och streckat (streck, inte bara blekare, så att det syns även utan att skilja på ljushet).
-    { selector: 'node.unreached', style: { opacity: 0.6, 'border-style': 'dashed', 'background-color': '#f4f5f7' } },
-    { selector: 'node.group.unreached', style: { 'background-color': '#f4f5f7', 'background-opacity': 0.5 } },
+    { selector: 'node.unreached', style: { opacity: 0.6, 'border-style': 'dashed', 'background-color': f.entry } },
+    { selector: 'node.group.unreached', style: { 'background-color': f.entry, 'background-opacity': 0.5 } },
     { selector: '.dimmed', style: { opacity: 0.18 } },
     { selector: 'edge.path', style: { width: 3, opacity: 1 } },
-    { selector: 'node.long.path, node.round.path', style: { 'border-width': 3.5 } },
+    { selector: 'node.long.path, node.box.path, node.cbox.path, node.round.path', style: { 'border-width': 3.5 } },
     // Pulsen längs vägen och grannarna när muspekaren står på en nod.
     { selector: '.pulse', style: { 'underlay-color': 'data(color)', 'underlay-opacity': 0.35, 'underlay-padding': 7, 'underlay-shape': 'ellipse' } },
     { selector: 'edge.pulse', style: { width: 6, 'underlay-padding': 5 } },
@@ -1054,7 +1546,8 @@
     // Hjälpmedel för layouten som inte ska synas: fjädrarna mellan anropen in och ankarna mellan lagren.
     { selector: 'edge.band', style: { opacity: 0, events: 'no' } },
     { selector: 'node.anchor', style: { width: 1, height: 1, opacity: 0, events: 'no', label: '' } }
-  ];
+    ];
+  }
 
   // fresh: lägg ut allt från början (första gången, ny riktning eller detaljnivå); annars flyttas det som redan står bara så
   // mycket som behövs (och då räcker en snabbare genomräkning). Etiketterna under integrationerna räknas inte in i storleken,
@@ -1092,18 +1585,26 @@
   function render(after, fresh) {
     var view = $('map-view'), cy = state.cy;
     if (!cy) {
-      cy = state.cy = cytoscape({ container: view, style: CY_STYLE, elements: [], minZoom: 0.2, maxZoom: 2.5,
+      cy = state.cy = cytoscape({ container: view, style: cyStyle(palette()), elements: [], minZoom: 0.2, maxZoom: 4,
         userZoomingEnabled: false, boxSelectionEnabled: false, autounselectify: true });
       cy.on('tap', 'node', function (ev) { tapNode(ev.target.id()); });
       cy.on('tap', function (ev) { if (ev.target === cy) hideCard(); });
       cy.on('mouseover', 'node', function (ev) { view.style.cursor = 'pointer'; view.title = ev.target.hasClass('unreached') ? 'Nås inte från någon ingång' : ''; hover(ev.target); });
       cy.on('mouseout', 'node', function () { view.style.cursor = ''; view.title = ''; hover(null); });
       cy.on('viewport', placeCard);
+      cy.on('viewport', updateZoom);
       cy.on('position', 'node', placeCard);
       // Rullhjulet zoomar bara med Ctrl (⌘ på Mac); annars rullar sidan som vanligt.
       view.addEventListener('wheel', function (ev) { cy.userZoomingEnabled(ev.ctrlKey || ev.metaKey); }, true);
+      // Nyp med två fingrar zoomar: Cytoscape styr nyp med samma userZoomingEnabled, så det slås på bara medan två fingrar rör skärmen.
+      view.addEventListener('touchstart', function (ev) { if (ev.touches.length >= 2) cy.userZoomingEnabled(true); }, true);
+      var pinchOff = function (ev) { if (ev.touches.length < 2) cy.userZoomingEnabled(false); };
+      view.addEventListener('touchend', pinchOff, true);
+      view.addEventListener('touchcancel', pinchOff, true);
+      updateZoom();
       if (window.ResizeObserver) new ResizeObserver(function () {
         cy.resize();
+        placeStatus();
         // Ritades kartan medan den saknade storlek (dold flik) passas den in nu, när den har fått en.
         if (state.unfitted && view.clientWidth && view.clientHeight && view.getAttribute('data-ready')) { state.unfitted = false; fitView(); }
       }).observe(view);
@@ -1188,14 +1689,58 @@
     if (!cy) return;
     var eles = cy.elements(selector).not('.anchor');
     if (!eles.length) eles = cy.elements().not('.anchor');
-    var bb = eles.boundingBox(), w = cy.width() - 60, h = cy.height() - 40;
+    // Statusrutan uppe till vänster får plats: kartan passas in under den.
+    var status = $('map-status'), top = status.hidden ? 0 : status.offsetHeight + 20;
+    var bb = eles.boundingBox(), w = cy.width() - 60, h = cy.height() - 40 - top;
     var zoom = Math.max(cy.minZoom(), Math.min(1.2, w / Math.max(1, bb.w), h / Math.max(1, bb.h)));
-    var pan = { x: cy.width() / 2 - zoom * (bb.x1 + bb.w / 2), y: cy.height() / 2 - zoom * (bb.y1 + bb.h / 2) };
+    var pan = { x: cy.width() / 2 - zoom * (bb.x1 + bb.w / 2), y: top + (cy.height() - top) / 2 - zoom * (bb.y1 + bb.h / 2) };
     if (motion()) cy.animate({ zoom: zoom, pan: pan }, { duration: 450, easing: 'ease-in-out-cubic', complete: done });
     else { cy.viewport({ zoom: zoom, pan: pan }); if (done) done(); }
   }
+  // Zoomknapparna nere till höger, procenten och tangenterna + (=), - och 0 när fokus är i kartan eller på zoomknapparna.
+  function initZoom(root) {
+    var mac = /Mac|iPhone|iPad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+    var view = $('map-view'), box = $('map-zoom');
+    state.zoomUi = { pct: $('map-zoom-pct'), zoomIn: $('map-zoom-in'), zoomOut: $('map-zoom-out'), text: null, atMax: null, atMin: null };
+    $('map-zoom-hint').textContent = (mac ? '⌘' : 'Ctrl') + ' + rullhjul zoomar';
+    state.zoomUi.zoomIn.addEventListener('click', function () { zoomBy(1.25); });
+    state.zoomUi.zoomOut.addEventListener('click', function () { zoomBy(1 / 1.25); });
+    $('map-zoom-fit').addEventListener('click', function () { fitView(); });
+    root.addEventListener('keydown', function (ev) {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.defaultPrevented) return;
+      var t = ev.target;
+      if (t !== view && !box.contains(t)) return;
+      if (ev.key === '+' || ev.key === '=') zoomBy(1.25);
+      else if (ev.key === '-' || ev.key === '−') zoomBy(1 / 1.25);
+      else if (ev.key === '0') fitView();
+      else return;
+      ev.preventDefault();
+    });
+  }
+  // Zoomar med faktorn runt kartans mitt, mjukt om det går, inom minZoom och maxZoom.
+  function zoomBy(factor) {
+    var cy = state.cy;
+    if (!cy) return;
+    var from = cy.animated() && state.zoomGoal ? state.zoomGoal : cy.zoom();
+    var to = Math.max(cy.minZoom(), Math.min(cy.maxZoom(), from * factor));
+    if (Math.abs(to - from) < 1e-6) return;
+    var center = { x: cy.width() / 2, y: cy.height() / 2 };
+    if (motion()) {
+      state.zoomGoal = to;
+      cy.animate({ zoom: { level: to, renderedPosition: center } }, { duration: 200, easing: 'ease-in-out-cubic', complete: function () { state.zoomGoal = null; } });
+    } else cy.zoom({ level: to, renderedPosition: center });
+  }
+  // Procenten och att knapparna är avstängda vid gränsen. Skriver bara det som ändrats, eftersom den körs vid varje steg i en zoom.
+  function updateZoom() {
+    var cy = state.cy, ui = state.zoomUi;
+    if (!cy) return;
+    var z = cy.zoom(), text = Math.round(z * 100) + ' %', atMax = z >= cy.maxZoom() - 1e-6, atMin = z <= cy.minZoom() + 1e-6;
+    if (text !== ui.text) { ui.text = text; ui.pct.textContent = text; }
+    if (atMax !== ui.atMax) { ui.atMax = atMax; ui.zoomIn.setAttribute('aria-disabled', atMax ? 'true' : 'false'); }
+    if (atMin !== ui.atMin) { ui.atMin = atMin; ui.zoomOut.setAttribute('aria-disabled', atMin ? 'true' : 'false'); }
+  }
   // Vägen för det valda anropet, annars hela kartan.
-  function fitView(done) { fitTo(state.entry ? '.path' : '*', done); }
+  function fitView(done) { fitTo(state.picked.length ? '.path' : '*', done); }
 
   // Muspekaren på en nod: noden och dess grannar syns tydligt, resten bleknar.
   function hover(node) {
@@ -1241,16 +1786,17 @@
     var n = state.nodes[id];
     if (!n) return;
     // Ett anrop väljs genom att klicka på dess nod; ett klick till på samma nod visar hela systemet igen.
-    if (n.kind === 'entry') { var e = entryByKey(n.name); choose(e && state.entry === e ? null : e); return; }
+    if (n.kind === 'entry') { var e = entryByKey(n.name); choose(e && state.entry !== e ? [e] : []); return; }
     if (state.kids[id]) { toggle(id); return; }
     showCard(id);
   }
 
-  // "OrderService.PlaceAsync", "ShopDatabase: läsa Customers" eller "POST /orders".
-  function nameOf(id) {
-    var n = state.nodes[id];
+  // "OrderService.PlaceAsync", "ShopDatabase: läsa Customers" eller "POST /orders". lookup: id → nod, från början det som syns.
+  function nameOf(id, lookup) {
+    lookup = lookup || state.nodes;
+    var n = lookup[id];
     if (!n) return id;
-    var parent = n.parent && state.nodes[n.parent];
+    var parent = n.parent && lookup[n.parent];
     if (n.kind === 'method') return (parent ? parent.name + '.' : '') + n.name;
     if (n.kind === 'operation') return (parent ? parent.name + ': ' : '') + operationText(n.name, n.address);
     return n.name;
@@ -1316,6 +1862,9 @@
     if (x + box.offsetWidth > view.clientWidth - 8) x = p.x - r - box.offsetWidth;
     x = Math.max(8, Math.min(x, view.clientWidth - box.offsetWidth - 8));
     y = Math.max(8, Math.min(y, view.clientHeight - box.offsetHeight - 8));
+    // Zoomrutan nere till höger ska inte täckas: kortet flyttas då upp ovanför den.
+    var zoom = $('map-zoom'), zoomW = zoom.offsetWidth + 24, zoomH = zoom.offsetHeight + 24;
+    if (x + box.offsetWidth > view.clientWidth - zoomW && y + box.offsetHeight > view.clientHeight - zoomH) y = Math.max(8, view.clientHeight - zoomH - box.offsetHeight);
     box.style.left = (x + view.offsetLeft) + 'px'; box.style.top = (y + view.offsetTop) + 'px';   // kortet ligger i map-wrap, under verktygsraden
   }
 

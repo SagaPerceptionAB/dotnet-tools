@@ -230,7 +230,8 @@ public partial class CodeMapTests
         await WithPageAsync(map, async (page, ready) =>
         {
             Assert.That(await page.IsVisibleAsync("#map-legend"), Is.True);
-            Assert.That(await page.InnerTextAsync("#map-legend"), Is.EqualTo("Nås inte från någon ingång"));
+            Assert.That(await page.InnerTextAsync("#map-legend"), Is.EqualTo("Visa delar som inte nås"), "valet, med den streckade rutan som förklaring");
+            Assert.That(await page.IsHiddenAsync("#map-hidden-row"), Is.True, "inget är dolt med --hide");
             Assert.That(await page.EvaluateAsync<string[]>(Unreached), Is.EqualTo(new[] { "class:Api/LegacyExporter", "class:Lib/Orphan", "class:Tools/Migrator", "proj:Tools" }),
                 "på nivån Klasser: klasserna och projektet, inte metoderna");
             var style = await page.EvaluateAsync<string[]>("() => { const n = SystemMap.cy().getElementById('class:Api/LegacyExporter'); return [n.style('border-style'), n.style('opacity')]; }");
@@ -238,7 +239,7 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<string>("() => SystemMap.cy().getElementById('class:Api/OrderService').style('border-style')"), Is.EqualTo("solid"), "det som nås är som förut");
 
             // Metoderna syns när klasserna fälls ut, med nivån Funktioner.
-            await page.ClickAsync("[data-level='methods']");
+            await LevelAsync(page, "methods");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-method.unreached').map(n => n.id()).sort()"),
                 Is.EqualTo(new[] { "method:Api/LegacyExporter.Convert", "method:Api/LegacyExporter.Export", "method:Api/OrderService.Archive", "method:Lib/Orphan.Gone", "method:Tools/Migrator.Run" }));
@@ -255,7 +256,7 @@ public partial class CodeMapTests
             Assert.That(await page.InnerTextAsync("#map-card"), Does.Contain("Används av anropen: GET /orders").And.Not.Contain("Nås inte"));
 
             // Ett valt anrop dämpar dem som allt annat som inte är på vägen.
-            await page.SelectOptionAsync("#map-entry", new SelectOptionValue { Label = "GET /orders" });
+            await PickAsync(page, "entry", "GET /orders");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.GreaterThan(0));
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').not('.dimmed').length"), Is.Zero, "med ett valt anrop är de dämpade som allt annat utanför vägen");
@@ -269,63 +270,67 @@ public partial class CodeMapTests
         await WithPageAsync(map, async (page, ready) =>
         {
             Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True);
-            await page.ClickAsync("#map-show-summary");
             Assert.That(await page.IsHiddenAsync("#map-unreached-field"), Is.True);
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
         });
     }
 
     [Test]
-    public async Task Page_panel_lists_unreached_parts_and_has_a_toggle_that_is_on_and_remembered()
+    public async Task Page_legend_has_a_toggle_for_unreached_parts_that_is_on_and_remembered()
     {
         var map = await WithUnreached();
         await WithPageAsync(map, async (page, ready) =>
         {
-            await page.ClickAsync("#map-show-summary");
             Assert.That(await page.InnerTextAsync("#map-unreached-field"), Is.EqualTo("Visa delar som inte nås"));
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.True, "från början ibockad");
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-tree label')].map(l => l.textContent)"),
-                Does.Contain("LegacyExporter · nås inte").And.Contain("Tools · nås inte").And.Contain("OrderService").And.Not.Contain("OrderService · nås inte"));
+            Assert.That(await OptionTextsAsync(page, "cls"), Does.Contain("LegacyExporter").And.Contain("OrderService"));
 
-            // De går att dölja som andra delar.
-            await page.UncheckAsync("input[data-part='class:Api/LegacyExporter']");
-            await ready();
-            Assert.That(await page.EvaluateAsync<string[]>(Unreached), Does.Not.Contain("class:Api/LegacyExporter").And.Contain("class:Lib/Orphan"));
-            Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("1 dolda"));
-            await page.CheckAsync("input[data-part='class:Api/LegacyExporter']");
-            await ready();
-
-            // Valet tar bort allt som inte nås, och förklaringen med dem.
+            // Valet tar bort allt som inte nås. Rutan står kvar, så att man kan bocka i det igen.
             await page.UncheckAsync("#map-unreached");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True);
-            Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("inte nådda dolda"));
-            Assert.That(await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('#map-tree input[data-part]')].filter(b => b.disabled).map(b => b.getAttribute('data-part')).sort()"),
-                Is.EqualTo(new[] { "class:Api/LegacyExporter", "class:Lib/Orphan", "class:Tools/Migrator", "proj:Tools" }), "kryssrutorna för dem är avbockade och går inte att ändra");
+            Assert.That(await page.IsVisibleAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsHiddenAsync("#map-hidden-row"), Is.True, "bara valet, inget är dolt med --hide");
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-class').map(n => n.id()).sort()"), Is.EqualTo(new[] { "class:Api/OrderService", "class:Api/OrdersController", "class:Lib/Store" }),
                 "det som nås är kvar");
+            Assert.That(await OptionTextsAsync(page, "cls"), Does.Not.Contain("LegacyExporter"), "det som inte nås går inte att välja");
 
             // Det sparas i webbläsaren.
             await page.ReloadAsync();
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
-            await page.ClickAsync("#map-show-summary");
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False);
 
             // Mermaid-filen kan inte följa det som är dolt.
             await page.ClickAsync("#map-mermaid");
             Assert.That(await page.InnerTextAsync("#map-mermaid-status"), Does.Contain("Mermaid-filen kan inte följa det som är dolt").And.Contain("--no-unreached"));
 
-            // Visa allt ger tillbaka dem.
-            await page.ClickAsync("#map-show-all");
+            // Att bocka i det ger tillbaka dem.
+            await page.CheckAsync("#map-unreached");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.GreaterThan(0));
-            Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.True);
             await page.ReloadAsync();
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.GreaterThan(0), "också det sparas");
         });
+    }
+
+    [Test]
+    public async Task Page_with_both_hidden_parts_and_unreached_parts_has_both_in_the_legend_and_the_saved_choice_to_show_unreached_beats_no_unreached()
+    {
+        var map = await WithUnreached();
+        await WithPageAsync(map, async (page, ready) =>
+        {
+            Assert.That(await page.IsVisibleAsync("#map-unreached-field"), Is.True);
+            Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("1 dold med --hide"));
+            Assert.That(await page.GetAttributeAsync("#map-hint", "title"), Does.Contain("LegacyExporter"));
+            Assert.That(await page.EvaluateAsync<string[]>(Unreached), Does.Not.Contain("class:Api/LegacyExporter").And.Contain("class:Lib/Orphan"));
+            await page.ClickAsync("#map-show-all");
+            await ready();
+            Assert.That(await page.EvaluateAsync<string[]>(Unreached), Does.Contain("class:Api/LegacyExporter"));
+            Assert.That(await page.IsHiddenAsync("#map-hidden-row"), Is.True);
+            Assert.That(await page.IsVisibleAsync("#map-unreached-field"), Is.True, "rutan står kvar med valet om det som inte nås");
+        }, HiddenIn(map, "LegacyExporter"));
     }
 
     [Test]
@@ -335,7 +340,6 @@ public partial class CodeMapTests
         await WithPageAsync(map, async (page, ready) =>
         {
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
-            await page.ClickAsync("#map-show-summary");
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False);
             await page.CheckAsync("#map-unreached");
             await ready();

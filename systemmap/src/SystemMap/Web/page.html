@@ -8,8 +8,11 @@
 <title>Systemkarta – __TITLE__</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #f5f7fa; color: #1b2430; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-  .empty { margin: 24px; padding: 8px 12px; background: #eef1f5; border-left: 4px solid #94a3b8; border-radius: 4px; }
+  body { margin: 0; background: #ffffff; color: #3b3b3b; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .empty { margin: 24px; padding: 8px 12px; background: #f8f8f8; border-left: 4px solid #767676; border-radius: 4px; }
+  /* Sidan följer kartans tema (kartan sätter data-theme på sin rot): Light Modern och Dark Modern. */
+  body:has(#map[data-theme=dark]) { background: #1f1f1f; color: #cccccc; color-scheme: dark; }
+  body:has(#map[data-theme=dark]) .empty { background: #262626; border-left-color: #9d9d9d; }
   [hidden] { display: none !important; }
 __STYLE__
 </style>
@@ -29,16 +32,12 @@ __SCRIPTS__
   $('empty').hidden = json.entryPoints.length > 0;
   var map = SystemMap.create($('map'), {
     // Mermaid-texten skrevs när sidan skapades, en för varje nivå och anrop, vänster till höger. Uppifrån och ned skiljer
-    // sig bara på första raden.
-    // Delar som är dolda i sidan (id:n) finns inte i de skrivna filerna, så då får man veta hur man får en fil utan dem.
+    // sig bara på första raden. Det som är dolt i sidan och delar som inte nås avbockade finns inte i de skrivna filerna: då vägrar
+    // knappen själv (systemmap.js) och talar om hur man får en fil utan dem.
     hidden: hidden,
     // Delar som ingen ingång når visas från början om inte sidan skapades med --no-unreached; det man själv väljer sparas och gäller före.
     unreached: __UNREACHED__,
-    mermaid: function (level, direction, entry, hiddenNow, unreachedShown) {
-      if (hiddenNow && hiddenNow.length) return Promise.reject({ message: 'Mermaid-filen kan inte följa det som är dolt i sidan.',
-        tip: 'Välj Visa allt, eller skapa filen med dotnet systemmap --mermaid karta.mmd --hide <namn>.' });
-      if (unreachedShown === false) return Promise.reject({ message: 'Mermaid-filen kan inte följa det som är dolt i sidan.',
-        tip: 'Bocka i Visa delar som inte nås, eller skapa filen med dotnet systemmap --mermaid karta.mmd --no-unreached.' });
+    mermaid: function (level, direction, entry) {
       var text = mermaid[level + '|' + (entry || '')];
       if (!text) return Promise.reject({ message: 'Mermaid-filen för det här valet finns inte i sidan.', tip: 'Skapa sidan på nytt.' });
       return Promise.resolve(direction === 'TB' ? text.replace(/^flowchart LR/, 'flowchart TB') : text);

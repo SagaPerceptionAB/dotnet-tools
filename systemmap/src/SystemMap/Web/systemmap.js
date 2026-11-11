@@ -972,6 +972,20 @@
       '<text x="' + (w / 2) + '" y="13" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff">' + text + '</text>');
   }
 
+  // Vad som ligger i ett projekt (det som syns om det fälldes ut, enligt filtret): "3 klasser · 4 funktioner". Delar som är 0 utelämnas.
+  function contentText(id) {
+    var classes = 0, methods = 0, stack = (state.kids[id] || []).slice(), n;
+    while (stack.length) {
+      n = state.nodes[stack.pop()];
+      if (n.kind === 'class') classes++; else if (n.kind === 'method') methods++;
+      stack = stack.concat(state.kids[n.id] || []);
+    }
+    var parts = [];
+    if (classes) parts.push(classes + (classes === 1 ? ' klass' : ' klasser'));
+    if (methods) parts.push(methods + (methods === 1 ? ' funktion' : ' funktioner'));
+    return parts.join(' \u00b7 ');
+  }
+
   var measurer = null, measured = {}, measuredSize = 0;
   function textWidth(text, size) {
     size = size || 13;
@@ -1001,17 +1015,21 @@
       }
       // Rader (metoder, operationer) och avlånga noder (klass, projekt, anrop) har namnet inuti; integrationer är runda med namnet under.
       var pill = n.kind === 'method' || n.kind === 'operation', round = n.kind === 'integration' && !open, icon = kind ? iconUri(kind, color) : '';
-      var data = { id: n.id, label: label, color: color, icon: icon, badge: kids && !open ? badgeUri(kids.length, color) : '' };
+      // Ett hopfällt projekt är en liten variant av den utfällda rutan: texten med innehållet ersätter brickan.
+      var box = n.kind === 'project' && !open, inside = box ? contentText(n.id) : '';
+      if (inside) label += '\n' + inside;
+      var data = { id: n.id, label: label, color: color, icon: icon, badge: kids && !open && !box ? badgeUri(kids.length, color) : '' };
       if (parent) data.parent = parent;
       if (pill) data.w = Math.ceil(textWidth(label, 13)) + (icon ? 44 : 24);
-      else if (!open && !round) data.w = Math.ceil(textWidth(label, 14) * (n.kind === 'project' ? 1.08 : 1)) + 56;
-      var shape = open ? 'group' : pill ? 'pill' : round ? 'round' : 'long';
+      else if (box) data.w = Math.max(Math.ceil(Math.max.apply(null, label.split('\n').map(function (t) { return textWidth(t, 14); })) * 1.08) + 72, 230);
+      else if (!open && !round) data.w = Math.ceil(textWidth(label, 14)) + 56;
+      var shape = open ? 'group' : box ? 'box' : pill ? 'pill' : round ? 'round' : 'long';
       var cls = shape + ' t-' + n.kind + (data.badge ? ' badge' : '') + (icon && pill ? ' with-icon' : '') + (isUnreached(n) ? ' unreached' : '') + mark(n.entries);
       nodes.push({ group: 'nodes', data: data, classes: cls });
       parentOf[n.id] = parent;
       if (open) pads[n.id] = { x: (n.kind === 'class' ? 10 : 12) + 2, y: (n.kind === 'class' ? 10 : 12) + 24 };
       else info[n.id] = { w: data.w || (round ? Math.max(60, Math.max.apply(null, label.split('\n').map(function (t) { return textWidth(t, 14); })) + 8) : 60),
-        h: round ? 94 : pill ? 26 : n.kind === 'project' ? 40 : n.kind === 'entry' ? 30 : 34 };
+        h: round ? 94 : pill ? 26 : box ? 84 : n.kind === 'entry' ? 30 : 34 };
       if (open) kids.forEach(function (k) { add(state.nodes[k], n.id); });
       else { var c = columnOf(n); (layers[c] = layers[c] || []).push(n); }
     };
@@ -1383,7 +1401,11 @@
       'border-width': 2, 'border-color': 'data(color)', 'background-image': 'data(icon)', 'background-width': 18, 'background-height': 18,
       'background-position-x': 12, 'background-position-y': '50%', 'text-valign': 'center', 'text-halign': 'center', 'text-margin-x': 12,
       'text-max-width': 400 } },
-    { selector: 'node.long.t-project', style: { height: 40, 'corner-radius': 20, 'background-color': '#f1f6fd', 'font-weight': 600 } },
+    // Hopfällt projekt: som den utfällda projektrutan i liten, men täckande så att pilarna inte syns genom texten.
+    { selector: 'node.box', style: { shape: 'round-rectangle', 'corner-radius': 24, width: 'data(w)', height: 84, 'background-color': '#eef4fc',
+      'background-opacity': 1, 'border-width': 1.5, 'border-color': '#a9c6ee', 'font-weight': 600, 'line-height': 1.5, 'text-wrap': 'wrap',
+      'text-valign': 'center', 'text-halign': 'center', 'text-max-width': 400, 'background-image': 'data(icon)', 'background-width': 18,
+      'background-height': 18, 'background-position-x': 16, 'background-position-y': 14, 'background-clip': 'node' } },
     { selector: 'node.long.t-entry', style: { height: 30, 'corner-radius': 15, 'background-color': '#eef1f5', 'font-size': 13 } },
     // Integrationer: stora runda ikonnoder med namnet under, på en ljus bakgrund så att det går att läsa över pilarna.
     { selector: 'node.round', style: { shape: 'ellipse', width: 60, height: 60, 'background-color': '#eef7ee', 'border-width': 2.5,
@@ -1421,7 +1443,7 @@
     { selector: 'node.group.unreached', style: { 'background-color': '#f4f5f7', 'background-opacity': 0.5 } },
     { selector: '.dimmed', style: { opacity: 0.18 } },
     { selector: 'edge.path', style: { width: 3, opacity: 1 } },
-    { selector: 'node.long.path, node.round.path', style: { 'border-width': 3.5 } },
+    { selector: 'node.long.path, node.box.path, node.round.path', style: { 'border-width': 3.5 } },
     // Pulsen längs vägen och grannarna när muspekaren står på en nod.
     { selector: '.pulse', style: { 'underlay-color': 'data(color)', 'underlay-opacity': 0.35, 'underlay-padding': 7, 'underlay-shape': 'ellipse' } },
     { selector: 'edge.pulse', style: { width: 6, 'underlay-padding': 5 } },

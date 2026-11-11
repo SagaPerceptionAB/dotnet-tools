@@ -85,6 +85,7 @@ Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick
 - Detaljnivån är en enda och väljs överst i listorna Klass, Funktion och Integration med radioknappar; listorna visar den: Klass: Visas inte är bara
   projekten, Klass: Alla klasserna, Funktion: Alla metoderna i klasserna och Integration: Alla, med läsningar och skrivningar allt utfällt. Ett val byter
   nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion.
+- Ett hopfällt projekt är en ljusblå, rundad ruta med projektikonen uppe till vänster, namnet och på raden under vad som ligger i det ("3 klasser · 4 funktioner", räknat efter filtret och det som är dolt); ett klick fäller ut det, ett klick till fäller ihop det.
 - **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
 - Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
   filen med `--mermaid` och `--entry`. Den vägrar också i den fristående sidan när något är dolt eller "Visa delar som inte nås" är avbockat (filerna skrevs utan det valet).

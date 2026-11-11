@@ -34,7 +34,12 @@ public partial class CodeMapTests
     }
 
     /// <summary>Det som skärmläsaren senast fick höra.</summary>
-    private static Task<string> LiveAsync(IPage page) => page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent");
+    // Skärmläsarens text. announce() tömmer rutan och skriver texten en stund senare (så att samma text läses upp igen), så vänta tills den finns.
+    private static async Task<string> LiveAsync(IPage page)
+    {
+        await page.WaitForFunctionAsync("() => document.getElementById('map-live').textContent !== ''");
+        return await page.EvaluateAsync<string>("() => document.getElementById('map-live').textContent");
+    }
 
     /// <summary>Klickar på anropets nod i kartan.</summary>
     private static Task TapEntryAsync(IPage page, string label) =>

@@ -11,6 +11,9 @@ namespace SystemMap;
 /// En ingång vars namn en annan ingång också skulle ha har <c>qualifier</c> (projektet, se <see cref="EntryPoint.Qualifier"/>); namnet i översikten är då
 /// <c>Bakgrund: Worker (Jobs)</c>. En del i översikten som ingen ingång når har <c>reached: false</c>; saknas fältet nås den. Ett HTTP-anrop vars adress inte går att läsa ur koden
 /// (den bestäms vid körning) har <c>address: "runtime"</c> i steget och i översiktens rad; <c>operation</c> och <c>name</c> är då bara verbet.
+/// <c>projectReferences</c> har en rad för varje projektreferens (csproj) mellan systemets projekt: <c>use</c> är <c>calls</c> (anrop från projektet till det andra),
+/// <c>startup</c> (bara uppstart), <c>code</c> (används på annat sätt, t.ex. typer eller gränssnitt) eller <c>unused</c>; <c>calls</c> är antalet anrop in som går genom
+/// referensen, <c>callsBack</c> om anropen också går åt andra hållet, och <c>examples</c> med <c>file</c> och <c>line</c> visar vad projektet använder.
 /// </summary>
 public static class CodeMapJson
 {
@@ -64,6 +67,17 @@ public static class CodeMapJson
             operationId = d.OperationId,
             handler = d.Handler,
         }).ToList(),
+        projectReferences = map.References.OrderBy(r => r.From, StringComparer.Ordinal).ThenBy(r => r.To, StringComparer.Ordinal).Select(r => new
+        {
+            from = r.From,
+            to = r.To,
+            use = UseCode(r.Use),
+            calls = r.Calls,
+            callsBack = r.CallsBack,
+            examples = r.Examples,
+            file = r.File,
+            line = r.Line,
+        }).ToList(),
         warnings = map.Warnings.Order(StringComparer.Ordinal).ToList(),
         hidden = hidden is { Count: > 0 } ? hidden.Order(StringComparer.Ordinal).ToList() : null,
         overview = Overview(overview ?? CodeMapOverview.Build(map)),
@@ -112,6 +126,14 @@ public static class CodeMapJson
         EntryKind.Job => "job",
         EntryKind.Grpc => "grpc",
         _ => "signalr",
+    };
+
+    public static string UseCode(ReferenceUse use) => use switch
+    {
+        ReferenceUse.Calls => "calls",
+        ReferenceUse.Startup => "startup",
+        ReferenceUse.Code => "code",
+        _ => "unused",
     };
 
     public static string KindCode(AppKind kind) => kind switch

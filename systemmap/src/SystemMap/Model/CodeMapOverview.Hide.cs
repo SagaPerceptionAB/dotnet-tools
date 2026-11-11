@@ -86,6 +86,7 @@ public static partial class CodeMapOverview
             Projects = map.Projects.Where(p => !hidden.Contains(ProjectId(p))).ToList(),
             Integrations = map.Integrations.Where(i => !hidden.Contains(IntegrationNodeId(i.Id))).ToList(),
             EntryPoints = map.EntryPoints.Select(e => e with { Steps = Without(e.Steps) }).ToList(),
+            ProjectReferences = map.References.Where(r => !hidden.Contains(ProjectId(r.From)) && !hidden.Contains(ProjectId(r.To))).ToList(),
             Apps = map.Apps.Where(a => !hidden.Contains(ProjectId(a.Project)))
                 .Select(a => a with { HttpClients = a.HttpClients.Where(c => !hidden.Contains(IntegrationNodeId(c.IntegrationId))).ToList() }).ToList(),
             Code = map.Code is null ? null : new CodeInventory(

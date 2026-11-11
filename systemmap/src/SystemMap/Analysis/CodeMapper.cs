@@ -65,6 +65,7 @@ public static class CodeMapper
         warnings.AddRange(resolver.Warnings);
         var order = ProjectOrder(entryPoints);
         var code = await CodeInventoryFinder.FindAsync(projects, models, walker, order.ToHashSet(StringComparer.Ordinal), root, ct);
+        var references = ProjectReferenceFinder.Find(projects, models, entryPoints, root, ct);
         return new CodeMapModel(
             solutionPath,
             order,
@@ -73,7 +74,8 @@ public static class CodeMapper
             apps,
             differences,
             warnings.Select(w => Relative(w, root)).Distinct().Order(StringComparer.Ordinal).ToList(),
-            code);
+            code,
+            references);
     }
 
     /// <summary>

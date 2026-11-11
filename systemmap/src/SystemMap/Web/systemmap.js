@@ -32,9 +32,9 @@
   // Färgerna i varje tema. node: delarnas färger (kant, ikon, text i rubriker), arrows: pilarna mellan kod; fill: fyllningar; fg och bg: text i
   // noder och kartans bakgrund (samma som sidans, systemmap.css); group: hur tydligt en utfälld yta tonas av sin färg.
   var THEMES = {
-    light: { node: { solution: '#652D90', project: '#388A34', 'class': '#D67E00', method: '#795E26', integration: '#0063D3', entry: '#767676', arrows: '#A0A0A0' },
+    light: { node: { solution: '#652D90', project: '#388A34', 'class': '#D67E00', method: '#795E26', integration: '#0063D3', entry: '#767676', arrows: '#A0A0A0', ref: '#767676', warn: '#BF8803' },
       fg: '#3B3B3B', bg: '#FFFFFF', fill: { node: '#FFFFFF', entry: '#F8F8F8', round: '#EBF3FC', box: '#EEF5EE', boxLine: '#A6CBA4', group: 0.06 } },
-    dark: { node: { solution: '#B180D7', project: '#89D185', 'class': '#EE9D28', method: '#DCDCAA', integration: '#59A4F9', entry: '#9D9D9D', arrows: '#6E6E6E' },
+    dark: { node: { solution: '#B180D7', project: '#89D185', 'class': '#EE9D28', method: '#DCDCAA', integration: '#59A4F9', entry: '#9D9D9D', arrows: '#6E6E6E', ref: '#9D9D9D', warn: '#CCA700' },
       fg: '#CCCCCC', bg: '#1F1F1F', fill: { node: '#1F1F1F', entry: '#262626', round: '#1A2838', box: '#222D22', boxLine: '#4C6E4A', group: 0.09 } }
   };
   var FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -61,6 +61,10 @@
     '  <div class="map-status" id="map-status" hidden></div>' +
     '  <div class="map-legend" id="map-legend" role="group" aria-label="Förklaring" hidden>' +
     '    <label class="map-unreached" id="map-unreached-field" hidden><input type="checkbox" id="map-unreached"><span class="map-swatch" aria-hidden="true"></span><span>Visa delar som inte nås</span></label>' +
+    '    <span class="map-refs" id="map-refs" role="group" aria-label="Linjerna mellan projekten" hidden><strong>Mellan projekten</strong>' +
+    '      <span class="map-ref-row"><span class="map-line" aria-hidden="true"></span><span>anrop som går genom referensen (antal anrop in)</span></span>' +
+    '      <span class="map-ref-row"><span class="map-line dashed" aria-hidden="true"></span><span>referens i csproj som används på annat sätt (uppstart, anrop åt andra hållet)</span></span>' +
+    '      <span class="map-ref-row warn"><span class="map-line dashed warn" aria-hidden="true"></span><span>referens i csproj som inte används</span></span></span>' +
     '    <span class="map-hidden-row" id="map-hidden-row" hidden><span class="map-hint" id="map-hint"></span><button type="button" id="map-show-all">Visa dem</button></span>' +
     '  </div>' +
     '  <div class="map-zoom-hint" id="map-zoom-hint" aria-hidden="true"></div>' +
@@ -74,8 +78,9 @@
     '</div>' +
     '<div class="map-sr" id="map-live" role="status" aria-live="polite"></div>';
 
-  // open: delar användaren fällt ut. shut: delar användaren fällt ihop (open och shut gäller före nivån och vägen). card: noden i detaljkortet.
-  // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects, classes, methods eller all (vad som är utfällt från början); den enda
+  // open: delar användaren fällt ut (också anropsgrupper, 'cg:' och etiketten). shut: delar användaren fällt ihop (open och shut gäller före nivån och vägen).
+  // callBox, callKids: anrop → anropsgruppen det ligger i, och hopfälld anropsgrupp → anropen i den (för var nya noder börjar). card: noden i detaljkortet.
+  // dir: LR (vänster → höger) eller TB (uppifrån och ned). level: projects (från början), classes, methods eller all (vad som är utfällt); den enda
   // sanningen om detaljnivån, och nivåvalen i listorna Klass, Funktion och Integration visar den.
   // hidden: id → true för delarna som är dolda (hidden, sparat). unreached: om delar som ingen ingång når syns. pre: översikten utan det
   // dolda (hide) och, om unreached är falskt, utan det som inte nås (dropUnreached). view: pre med filtret (filterView), som allt ritas ur.
@@ -83,9 +88,9 @@
   // picked: de kryssade anropen (entry: det enda anropet när bara ett är kryssat, annars null; pickedKeys: deras namn → true).
   // calls: anropen som går genom filtret (namn → true), null utan filter. visibleEntries: anropen som visas. combos: de fem listorna.
   // out/into: pilarna från och till varje nod. visible: visibleOf för det som ritas just nu. zoomGoal: dit en pågående zoom är på väg.
-  var state = { map: null, allNodes: {}, anyUnreached: false, pre: null, view: null, f: emptyFilter(), picked: [], pickedKeys: {}, calls: null, visibleEntries: [], combos: {}, hidden: {}, unreached: true, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: {}, shut: {},
-    dir: stored('map-direction', ['LR', 'TB'], 'LR'), theme: 'auto', mode: 'light', locked: false, mq: null, level: stored('map-level', ['projects', 'classes', 'methods', 'all'], 'classes'),
-    layout: null, steps: {}, base: {}, last: 1, card: null, hovered: null, pulses: [], root: null, opts: {}, unfitted: false, zoomGoal: null, zoomUi: null };
+  var state = { map: null, allNodes: {}, anyUnreached: false, pre: null, view: null, f: emptyFilter(), picked: [], pickedKeys: {}, calls: null, visibleEntries: [], combos: {}, hidden: {}, unreached: true, groups: [], entry: null, cy: null, nodes: {}, kids: {}, out: {}, into: {}, visible: {}, open: {}, shut: {}, callBox: {}, callKids: {},
+    dir: stored('map-direction', ['LR', 'TB'], 'LR'), theme: 'auto', mode: 'light', locked: false, mq: null, level: stored('map-level', ['projects', 'classes', 'methods', 'all'], 'projects'),
+    layout: null, steps: {}, base: {}, last: 1, refsShown: false, followers: {}, card: null, hovered: null, pulses: [], root: null, opts: {}, unfitted: false, zoomGoal: null, zoomUi: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) {
@@ -194,7 +199,7 @@
     $('map-unreached').addEventListener('change', function () { setUnreached(this.checked); });
     $('map-clear').addEventListener('click', function () {
       if (this.getAttribute('aria-disabled') === 'true') return;
-      changeFilter(function () { state.f = emptyFilter(); state.level = 'classes'; setPicked([]); state.shut = {}; }, 'Filtren är borttagna.');
+      changeFilter(function () { state.f = emptyFilter(); state.level = 'projects'; setPicked([]); state.shut = {}; }, 'Filtren är borttagna.');
       $('map-clear').blur();
     });
     initZoom(root);
@@ -464,7 +469,7 @@
   // Är något kryssat som filter? (Anrop är inget filter.)
   function filterActive() { var f = state.f; return f.project.length + f.cls.length + f.fn.length + f.integ.length > 0; }
   // Är allt som i början (Rensa är då grå)?
-  function pristine() { return !state.picked.length && !filterActive() && state.level === 'classes'; }
+  function pristine() { return !state.picked.length && !filterActive() && state.level === 'projects'; }
   // Valen hänger ihop: projekten begränsar klasserna och funktionerna, klasserna funktionerna. Det som inte hör till de kryssade tas bort.
   function normalizeFilter() {
     var f = state.f;
@@ -612,7 +617,8 @@
     $('map-hidden-row').hidden = n === 0;
     $('map-hint').textContent = n === 1 ? '1 dold med --hide' : n + ' dolda med --hide';
     $('map-hint').title = $('map-show-all').title = (n === 1 ? 'Dold: ' : 'Dolda: ') + names.join(', ');
-    $('map-legend').hidden = !state.anyUnreached && n === 0;
+    $('map-refs').hidden = !state.refsShown;
+    $('map-legend').hidden = !state.anyUnreached && n === 0 && !state.refsShown;
   }
 
   // ---- Sökbara listor med flerval ----
@@ -915,6 +921,24 @@
     render();
   }
 
+  // En anropsgrupp (en yta med anrop och ett namn, som "/orders") är hopfälld från början och ritas som ett enda anrop ("/orders · 5 anrop").
+  // Den är utfälld när användaren fällt ut den (open, som för projekt och klasser) eller när ett valt anrop ligger i den (om användaren
+  // inte fällt ihop den: shut). Gruppens id är 'cg:' och etiketten, både hopfälld (ett anrop) och utfälld (ytan).
+  function callsOpen(g) {
+    var id = 'cg:' + g.label;
+    if (state.open[id]) return true;
+    if (state.shut[id]) return false;
+    return anyPicked(g.entries.map(entryKey));
+  }
+  function toggleCalls(id) {
+    var g = state.groups.filter(function (x) { return 'cg:' + x.label === id; })[0];
+    if (!g) return;
+    if (callsOpen(g)) { delete state.open[id]; state.shut[id] = true; }
+    else { state.open[id] = true; delete state.shut[id]; }
+    hideCard();
+    render();
+  }
+
   // Delen som syns för en nod: den själv, eller den närmaste hopfällda delen den ligger i. Svaren gäller tills nästa ritning.
   function visibleOf(id) {
     if (id in state.visible) return state.visible[id];
@@ -931,10 +955,12 @@
   }
   // Steget för varje klass i sitt projekt: 1 när ett anrop in eller ett annat projekt anropar den (eller ingen gör det),
   // annars 1 + det högsta steget hos klasserna i projektet som anropar den. Vägen räknas med ett tak, så att cykler tar slut.
-  // Ger också första lagret för varje projekt (base) och lagret för integrationerna (last).
-  var MAX_STEP = 6;
+  // Ger också första lagret för varje projekt (base) och lagret för integrationerna (last). Projekten står efter varandra i flödets
+  // ordning: ett projekts djup är kortaste vägen från ett anrop in (projekten som anropen går in i har djup 1, projekten de anropar
+  // djup 2 och så vidare), och projekt på samma djup delar lager.
+  var MAX_STEP = 6, MAX_DEPTH = 1000;
   function computeSteps() {
-    var steps = {}, roots = {}, calls = [], base = {}, span = {}, next = 1;
+    var steps = {}, roots = {}, calls = [], base = {}, span = {}, next = 1, depth = {}, onward = {};
     var owner = function (id) {
       var n = state.nodes[id];
       while (n && n.kind !== 'class' && n.kind !== 'entry') n = n.parent ? state.nodes[n.parent] : null;
@@ -944,9 +970,18 @@
     state.view.links.forEach(function (k) {
       var a = owner(k.from), b = owner(k.to);
       if (!a || !b || a === b || b.kind !== 'class') return;
+      if (a.kind === 'entry') depth[projectOf(b)] = 1;
+      else if (projectOf(a) !== projectOf(b)) (onward[projectOf(a)] = onward[projectOf(a)] || []).push(projectOf(b));
       if (a.kind === 'entry' || projectOf(a) !== projectOf(b)) roots[b.id] = true;
       else calls.push([a.id, b.id]);
     });
+    // Djupet: bredden först från projekten som anropen går in i, så att varje projekt får kortaste vägen.
+    var wave = Object.keys(depth);
+    while (wave.length) {
+      var after = [];
+      wave.forEach(function (p) { (onward[p] || []).forEach(function (q) { if (!(q in depth)) { depth[q] = depth[p] + 1; after.push(q); } }); });
+      wave = after;
+    }
     for (var round = 0, changed = true; round < MAX_STEP && changed; round++) {
       changed = false;
       calls.forEach(function (c) {
@@ -959,12 +994,33 @@
     Object.keys(steps).forEach(function (id) { if (!isUnreached(state.nodes[id])) { var p = projectOf(state.nodes[id]); top[p] = Math.max(top[p] || 1, steps[id]); } });
     Object.keys(steps).forEach(function (id) { if (isUnreached(state.nodes[id])) steps[id] = Math.min(MAX_STEP + 1, (top[projectOf(state.nodes[id])] || 0) + 1); });
     Object.keys(steps).forEach(function (id) { var p = projectOf(state.nodes[id]); span[p] = Math.max(span[p] || 1, steps[id]); });
-    // Projekten efter varandra i den ordning anropen når dem, sedan integrationerna, och sist projekt som ingen ingång når.
-    var projects = state.view.nodes.filter(function (n) { return n.kind === 'project'; });
-    projects.filter(function (n) { return !isUnreached(n); }).forEach(function (n) { base[n.name] = next; next += span[n.name] || 1; });
+    // Projekten efter varandra i flödets ordning (djupet), sedan integrationerna, och sist projekt som ingen ingång når. Projekt på samma djup
+    // delar lager (samma första lager); nästa djup börjar efter det bredaste av dem. Inom ett djup står de i ordningen i state.view.nodes.
+    var projects = state.view.nodes.filter(function (n) { return n.kind === 'project'; }), levels = {};
+    projects.filter(function (n) { return !isUnreached(n); }).forEach(function (n) { var d = depth[n.name] || MAX_DEPTH; (levels[d] = levels[d] || []).push(n); });
+    Object.keys(levels).map(Number).sort(function (x, y) { return x - y; }).forEach(function (d) {
+      var widest = 1;
+      levels[d].forEach(function (n) { base[n.name] = next; widest = Math.max(widest, span[n.name] || 1); });
+      next += widest;
+    });
+    // Ett projekt som ingen ingång når men som ett annat projekt refererar står i lagret efter det som refererar det (inte sist), så att
+    // linjen mellan dem blir kort. Ett som ingen refererar står sist.
+    var loose = projects.filter(isUnreached), refs = state.map.projectReferences || [], placed = true, followers = {};
+    while (placed) {
+      placed = false;
+      loose = loose.filter(function (n) {
+        var from = refs.filter(function (r) { return r.to === n.name && r.from !== n.name && r.from in base; });
+        if (!from.length) return true;
+        base[n.name] = Math.max.apply(null, from.map(function (r) { return base[r.from] + (span[r.from] || 1); }));
+        followers[n.name] = true;
+        next = Math.max(next, base[n.name] + (span[n.name] || 1));
+        placed = true;
+        return false;
+      });
+    }
     var last = next;
-    projects.filter(isUnreached).forEach(function (n) { base[n.name] = ++next; next += (span[n.name] || 1) - 1; });
-    state.steps = steps; state.base = base; state.last = last;
+    loose.forEach(function (n) { base[n.name] = ++next; next += (span[n.name] || 1) - 1; });
+    state.steps = steps; state.base = base; state.last = last; state.followers = followers;
   }
   function stepOf(n) {
     while (n && n.kind !== 'class') n = n.parent ? state.nodes[n.parent] : null;
@@ -1118,11 +1174,23 @@
       if (open) kids.forEach(function (k) { add(state.nodes[k], n.id); });
       else { var c = columnOf(n); (layers[c] = layers[c] || []).push(n); }
     };
-    // Anropen i en grupp ligger i en egen yta med områdets namn, i fast ordning (sökväg, metod).
-    var callGroup = {}, order = {}, fixed = {}, seq = 0;
+    // Anropen i en grupp ligger i en egen yta med områdets namn, i fast ordning (sökväg, metod). En grupp som inte är utfälld ritas
+    // som ett enda anrop ("/orders · 5 anrop"); pilarna från de anropen blir pilar från det. calls: anropen (och hopfällda grupper) i
+    // ordning; shut: anrop → den hopfällda gruppen det ligger i; shutKids: hopfälld grupp → anropen i den.
+    var callGroup = {}, order = {}, fixed = {}, seq = 0, calls0 = [], shut = {}, shutKids = {};
     state.groups.forEach(function (g) {
       var keys = g.entries.map(entryKey), gid = 'cg:' + g.label;
-      keys.forEach(function (k) { order['in:' + k] = seq++; });
+      if (g.label && !g.single && !callsOpen(g)) {
+        var text = g.label + ' \u00b7 ' + keys.length + ' anrop', kinds = g.entries.map(function (e) { return e.kind; });
+        var ik = kinds.every(function (k) { return k === kinds[0]; }) && ENTRY_ICONS[kinds[0]] || 'entry', w = Math.ceil(textWidth(text, 14)) + 56;
+        nodes.push({ group: 'nodes', data: Object.assign({ id: gid, label: text, ck: 'entry', ik: ik, bn: 0, w: w }, look('entry', ik)), classes: 'long t-entry t-calls' + mark(keys) });
+        info[gid] = { w: w, h: 30 };
+        (layers[0] = layers[0] || []).push({ id: gid });
+        order[gid] = seq++; calls0.push(gid); shutKids[gid] = [];
+        keys.forEach(function (k) { shut['in:' + k] = gid; shutKids[gid].push('in:' + k); });
+        return;
+      }
+      keys.forEach(function (k) { order['in:' + k] = seq++; calls0.push('in:' + k); });
       if (!g.label || g.single) return;
       nodes.push({ group: 'nodes', data: Object.assign({ id: gid, label: g.label, ck: 'callgroup' }, look('callgroup')), classes: 'group t-callgroup' + mark(keys) });
       pads[gid] = { x: 16, y: 40 };
@@ -1130,12 +1198,13 @@
       keys.forEach(function (k) { callGroup['in:' + k] = gid; });
     });
     state.view.nodes.forEach(function (n) {
-      if (n.kind === 'entry') add(n, callGroup[n.id] || null);
+      if (n.kind === 'entry') { if (!shut[n.id]) add(n, callGroup[n.id] || null); }
       else if (n.kind === 'integration') add(n, null);
       else if (n.kind === 'project') add(n, 'system');
     });
     state.view.links.forEach(function (k) {
       var a = visibleOf(k.from), b = visibleOf(k.to);
+      a = shut[a] || a;
       if (!a || !b || a === b) return;
       var id = 'k:' + a + '>' + b, e = byId[id];
       if (!e) { e = byId[id] = { id: id, a: a, b: b, entries: [] }; edges.push(e); }
@@ -1155,9 +1224,10 @@
     // Placeringen (arrange) ger lagren i flödets riktning, ordningen inom varje lager (färre korsande pilar), en startplacering
     // och reglerna till fcose. Allt i ett lager står före allt i nästa (till vänster om eller ovanför), med avstånd som räknar in
     // nodernas storlek och ytornas kanter. Inom lagret får fcose placera fritt, men ytor bredvid varandra hålls isär.
-    var lr = state.dir !== 'TB';
+    var lr = state.dir !== 'TB', counted = 0, refEdges = referenceEdges(key);
     var plan = arrange({ layers: layers, info: info, parentOf: parentOf, pads: pads, edges: edges, lr: lr,
-      calls: state.visibleEntries.map(function (e) { return 'in:' + entryKey(e); }), order: order, fixed: fixed, groupOf: callGroup });
+      calls: calls0, order: order, fixed: fixed, groupOf: callGroup });
+    state.callBox = Object.assign({}, callGroup, shut); state.callKids = shutKids;
     var calls = plan.calls, rules = plan.rules, ints = plan.integrations;
     // Anropen in. Från vänster till höger (→: uppifrån och ned) står de i den ordning som ger färst korsningar; avståndet räknas
     // från mitt till mitt. Uppifrån och ned blir varje ruta (eller ensamt anrop) en kolumn med anropen under varandra, och
@@ -1210,17 +1280,38 @@
       paired[pick] = id; lastIn[layer] = { id: id, call: pick };
     });
     units.forEach(function (u) { line(alongFlow, paired[u.id] ? u.calls.concat([paired[u.id]]) : u.calls); });
+    state.refsShown = state.level === 'projects' && !key && (refEdges.length > 0 || counted > 0);
     return {
       elements: nodes.concat(plan.anchors).concat(drawn.map(function (e) {
-        var ek = arrowKind(e.a, e.b);
-        return { group: 'edges', data: { id: e.id, source: e.a, target: e.b, ek: ek, color: arrowColor(ek) }, classes: mark(e.entries).trim() };
-      })).concat(bands.map(function (b, i) {
+        var ek = arrowKind(e.a, e.b), a = state.nodes[e.a], b = state.nodes[e.b], between = !!a && !!b && a.kind === 'project' && b.kind === 'project';
+        // Pilen mellan två projekt som har anrop får antalet anrop in som går igenom.
+        if (between) counted++;
+        return { group: 'edges', data: { id: e.id, source: e.a, target: e.b, ek: ek, color: arrowColor(ek), text: between ? e.entries.length + ' anrop' : '', ents: between ? e.entries : null },
+          classes: (mark(e.entries) + (between ? ' counted' : '')).trim() };
+      })).concat(refEdges).concat(bands.map(function (b, i) {
         return { group: 'edges', data: { id: 'band:' + i, source: b[0], target: b[1], color: '#000000', len: b[2] + 2 }, classes: 'band' };
       })),
       rules: rules,
       align: Object.keys(align).length ? align : null,
       seed: plan.seed
     };
+  }
+
+  // Projektreferenserna (csproj) utan anrop från projektet till det andra som tunna streckade linjer: grå när de används på annat sätt
+  // (uppstart, typer, anrop åt andra hållet; lätt böjd när anropen går åt andra hållet så att den inte täcker anropspilen), orange med
+  // texten "används inte" när inget används. Bara på nivån Projekt, mellan projekt som ritas hopfällda, och inte när ett anrop är valt.
+  // Linjerna räknas inte med i utläggningen (runLayout).
+  function referenceEdges(key) {
+    var out = [], ids = {};
+    if (state.level !== 'projects' || key) return out;
+    state.view.nodes.forEach(function (n) { if (n.kind === 'project' && !isOpen(n.id)) ids[n.name] = n.id; });
+    (state.map.projectReferences || []).forEach(function (r) {
+      if (r.use === 'calls' || !ids[r.from] || !ids[r.to]) return;
+      var unused = r.use === 'unused', ek = unused ? 'warn' : 'ref';
+      out.push({ group: 'edges', data: { id: 'ref:' + ids[r.from] + '>' + ids[r.to], source: ids[r.from], target: ids[r.to], ek: ek, color: arrowColor(ek), text: unused ? 'används inte' : '' },
+        classes: 'ref ' + (unused ? 'ref-unused' : 'ref-used') + (r.callsBack ? ' ref-back' : '') });
+    });
+    return out;
   }
 
   // Anropen in uppifrån och ned: en kolumn per ruta (anropen under varandra) eller ensamt anrop, i anropens ordning. w är
@@ -1420,7 +1511,7 @@
     var seed = {}, cross = {}, cap = lr ? 520 : 1100, edge = 0;
     layerNos.forEach(function (c, li) {
       var ids = inLayer[c].slice().sort(byRank), lines = [[]], used = 0, last = null;
-      if (!lr && !li && state.nodes[ids[0]] && state.nodes[ids[0]].kind === 'entry') {
+      if (!lr && !li && m.calls.indexOf(ids[0]) >= 0) {
         // Uppifrån och ned: anropen i kolumner, en per ruta, med anropen under varandra (samma mått som reglerna).
         var cols = columns(ids, m.groupOf, m.info, m.pads), x = 0, rows = 0;
         cols.forEach(function (u, i) {
@@ -1536,6 +1627,15 @@
     // Det som ingen ingång når: dämpat och streckat (streck, inte bara blekare, så att det syns även utan att skilja på ljushet).
     { selector: 'node.unreached', style: { opacity: 0.6, 'border-style': 'dashed', 'background-color': f.entry } },
     { selector: 'node.group.unreached', style: { 'background-color': f.entry, 'background-opacity': 0.5 } },
+    // Antalet anrop på pilen mellan två projekt.
+    { selector: 'edge.counted', style: { label: 'data(text)', 'font-family': FONT, 'font-size': 12, color: t.fg, 'text-margin-y': -11, 'text-background-color': t.bg,
+      'text-background-opacity': 1, 'text-background-padding': 3, 'text-background-shape': 'roundrectangle', 'min-zoomed-font-size': 6 } },
+    // Projektreferenser (csproj): tunna streckade linjer, och orange med texten "används inte" när de inte används.
+    { selector: 'edge.ref', style: { width: 1.4, 'line-style': 'dashed', 'line-dash-pattern': [7, 5], 'curve-style': 'straight', 'arrow-scale': 0.8,
+      'source-endpoint': 'outside-to-node', 'target-endpoint': 'outside-to-node', 'z-index': 1 } },
+    { selector: 'edge.ref-back', style: { 'curve-style': 'unbundled-bezier', 'control-point-distances': [-40], 'control-point-weights': [0.5] } },
+    { selector: 'edge.ref-unused', style: { 'target-label': 'data(text)', 'target-text-offset': 60, 'font-family': FONT, 'font-size': 12, 'font-style': 'italic', color: t.node.warn,
+      'text-background-color': t.bg, 'text-background-opacity': 1, 'text-background-padding': 3, 'text-background-shape': 'roundrectangle', 'min-zoomed-font-size': 6 } },
     { selector: '.dimmed', style: { opacity: 0.18 } },
     { selector: 'edge.path', style: { width: 3, opacity: 1 } },
     { selector: 'node.long.path, node.box.path, node.cbox.path, node.round.path', style: { 'border-width': 3.5 } },
@@ -1550,14 +1650,14 @@
   }
 
   // fresh: lägg ut allt från början (första gången, ny riktning eller detaljnivå); annars flyttas det som redan står bara så
-  // mycket som behövs (och då räcker en snabbare genomräkning). Etiketterna under integrationerna räknas inte in i storleken,
+  // mycket som behövs (och då räcker en snabbare genomräkning). fcose animerar inte och passar inte in kartan: tighten flyttar ihop
+  // anropen och integrationerna efteråt, och runLayout glider och passar in (så att inget hoppar). Etiketterna under integrationerna räknas inte in i storleken,
   // annars blir kartan glest utspridd. Uppifrån och ned får lagren breda ut sig mer (lägre gravitation), annars blir kartan
   // smal och hög.
-  function fcose(g, fresh, fit) {
+  function fcose(g, fresh) {
     var lr = state.dir !== 'TB';
     return {
-      name: 'fcose', quality: fresh ? 'proof' : 'default', randomize: false, animate: motion() && !fit && !fresh, animationDuration: 450,
-      animationEasing: 'ease-in-out-cubic', fit: !!fit, padding: 30, nodeDimensionsIncludeLabels: false, packComponents: false, tile: false,
+      name: 'fcose', quality: fresh ? 'proof' : 'default', randomize: false, animate: false, fit: false, padding: 30, nodeDimensionsIncludeLabels: false, packComponents: false, tile: false,
       // Ankarna mellan lagren ska bara hålla isär lagren, inte knuffa på noderna.
       nodeRepulsion: function (n) { return n.hasClass('anchor') ? 1 : lr ? 6000 : 9000; }, edgeElasticity: 0.45,
       // Anropen in står nära sin controller; övriga pilar får lite mer luft.
@@ -1566,6 +1666,141 @@
       gravity: lr ? 0.3 : 0.15, gravityCompound: 1.0, gravityRangeCompound: 1, numIter: 2500, nodeSeparation: 45,
       relativePlacementConstraint: g.rules, alignmentConstraint: g.align || undefined
     };
+  }
+  // Efter layouten flyttas anropen och integrationerna närmare systemrutan, så att pilarna blir korta och kartan kan zoomas in mer.
+  // Anropen (och anropsgrupperna) flyttas ihop i flödets riktning så att luften mellan dem och systemrutan blir TIGHT_AIR. Integrationerna
+  // ställs i en tät kolumn intill systemrutans andra sida, med samma luft, i sin ordning tvärs flödet och centrerade mot systemrutan. Blir
+  // kolumnen längre än systemrutan tvärs flödet bryts den i flera kolumner efter varandra: de bitar som har flest pilar står närmast.
+  var TIGHT_AIR = 90;
+  // Linjerna mellan projekten när noderna står där de ska: en referenslinje som skulle gå genom en annan nod böjs runt den, och texten "N anrop"
+  // flyttas så att den inte ligger över någon nod (eller utelämnas när pilen är för kort för den). Står kvar där de är när noderna sedan flyttas.
+  var LINE_MARGIN = 10;
+  function routeLines() {
+    var cy = state.cy;
+    if (!cy || !cy.edges('.ref, .counted').length) return;
+    var boxes = cy.nodes().filter(function (n) { return !n.isParent() && !n.hasClass('anchor'); }).map(function (n) {
+      return { id: n.id(), b: n.boundingBox({ includeLabels: false, includeOverlays: false }) };
+    });
+    var apart = function (e) { return boxes.filter(function (x) { return x.id !== e.source().id() && x.id !== e.target().id(); }); };
+    var inside = function (pt, b, m) { return pt.x > b.x1 - m && pt.x < b.x2 + m && pt.y > b.y1 - m && pt.y < b.y2 + m; };
+    // Sätter böjen d (0 = rak) och säger om linjen som Cytoscape då ritar går fri från alla andra noder. Kurvan räknas med Cytoscapes egna
+    // ändpunkter (där linjen möter nodernas kant) och kontrollpunkt: en kurva räknad från nodernas mitt skiljer sig från den ritade, mest när
+    // noderna är breda (bredden beror på typsnittet), så den kunde gå fri i uträkningen men skära en nod i bilden.
+    var bend = function (e, d) {
+      if (d === 0) e.style({ 'curve-style': 'straight' });
+      else e.style({ 'curve-style': 'unbundled-bezier', 'control-point-distances': [d], 'control-point-weights': [0.5] });
+    };
+    var clearOf = function (e, others) {
+      var s = e.sourceEndpoint(), t = e.targetEndpoint(), c = e.style('curve-style') === 'unbundled-bezier' ? (e.controlPoints() || [])[0] : null;
+      for (var i = 0; i <= 48; i++) {
+        var k = i / 48, u = 1 - k;
+        var pt = c ? { x: u * u * s.x + 2 * u * k * c.x + k * k * t.x, y: u * u * s.y + 2 * u * k * c.y + k * k * t.y } : { x: s.x + (t.x - s.x) * k, y: s.y + (t.y - s.y) * k };
+        if (others.some(function (o) { return inside(pt, o.b, LINE_MARGIN); })) return false;
+      }
+      return true;
+    };
+    cy.edges('.ref').forEach(function (e) {
+      var others = apart(e), back = e.hasClass('ref-back');
+      // Raka linjen (eller den lätt böjda när anropen går åt andra hållet) först, sedan allt mer böjd, åt båda hållen, tills den går förbi allt.
+      var tries = back ? [-40, 40] : [0];
+      for (var d = back ? 80 : 40; d <= 600; d += 40) tries.push(d, -d);
+      var free = tries.filter(function (d) { bend(e, d); return clearOf(e, others); })[0];
+      // Går ingen böj fri står linjen som förut: rak, eller lätt böjd när anropen går åt andra hållet.
+      bend(e, free === undefined ? tries[0] : free);
+    });
+    cy.edges('.counted').forEach(function (e) { placeCount(e, boxes); });
+  }
+  // Texten på pilen ligger mitt på den synliga delen (mellan nodernas kanter), ovanför eller under linjen, där den inte täcker någon nod.
+  // Är den synliga delen kortare än texten plus 20 px utelämnas texten (kortet för paret har antalet).
+  function placeCount(e, boxes) {
+    var text = e.data('text') || e.data('count');
+    if (!text) return;
+    e.data('count', text);
+    var a = e.source().position(), b = e.target().position(), dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy) || 1, ux = dx / dist, uy = dy / dist;
+    var reach = function (n) { var bb = n.boundingBox({ includeLabels: false, includeOverlays: false }); return Math.min(ux ? (bb.w / 2) / Math.abs(ux) : Infinity, uy ? (bb.h / 2) / Math.abs(uy) : Infinity); };
+    var from = reach(e.source()), to = dist - reach(e.target()), w = textWidth(text, 12), mid = e.midpoint(), here = { x: mid.x, y: mid.y };
+    var lo = from + w / 2 + 10, hi = to - w / 2 - 10;
+    var clear = function (c) {
+      var r = { x1: c.x - w / 2 - 4, x2: c.x + w / 2 + 4, y1: c.y - 11, y2: c.y + 11 };
+      return !boxes.some(function (o) { return o.b.x1 < r.x2 && o.b.x2 > r.x1 && o.b.y1 < r.y2 && o.b.y2 > r.y1; });
+    };
+    var spot = null;
+    if (hi >= lo) {
+      var steps = [(from + to) / 2];
+      for (var k = 1; k < 40; k++) steps.push((from + to) / 2 + 12 * k, (from + to) / 2 - 12 * k);
+      [-11, 11, -24, 24].some(function (off) {
+        return steps.some(function (s) {
+          if (s < lo || s > hi) return false;
+          var c = { x: a.x + ux * s - uy * off, y: a.y + uy * s + ux * off };
+          if (!clear(c)) return false;
+          spot = c; return true;
+        });
+      });
+    }
+    if (!spot) { e.data('text', ''); return; }
+    e.data('text', text);
+    e.style({ 'text-margin-x': spot.x - here.x, 'text-margin-y': spot.y - here.y });
+  }
+  // Ett projekt som ingen ingång når men som ett annat refererar (computeSteps: followers) står i sitt lager, men utan pilar styr inget var
+  // det hamnar i lagret: det ställs vid sidan av de andra projekten i lagret, efter dem tvärs flödet, så att linjen från det som refererar det är kort.
+  function placeFollowers() {
+    var cy = state.cy, lr = state.dir !== 'TB';
+    Object.keys(state.followers || {}).forEach(function (name) {
+      var node = cy.nodes('.t-project').filter(function (n) { return !n.isParent() && n.data('label').split('\n')[0] === name; })[0];
+      if (!node) return;
+      var layer = columnOf(state.nodes[node.id()]);
+      var peers = cy.nodes('.t-project').not(node).filter(function (n) { return n.data('label').split('\n')[0] in state.base; });
+      if (!peers.length) return;
+      var same = peers.filter(function (n) { return columnOf(state.nodes[n.id()]) === layer; }), bb = peers.boundingBox({ includeLabels: false, includeOverlays: false });
+      var p = node.position();
+      if (same.length) { var sb = same.boundingBox({ includeLabels: false, includeOverlays: false }); p = lr ? { x: (sb.x1 + sb.x2) / 2, y: p.y } : { x: p.x, y: (sb.y1 + sb.y2) / 2 }; }
+      // Efter de andra tvärs flödet (nedanför, eller till höger uppifrån och ned).
+      node.position(lr ? { x: p.x, y: bb.y2 + 24 + node.height() / 2 } : { x: bb.x2 + 24 + node.width() / 2, y: p.y });
+    });
+  }
+  function tighten() {
+    var cy = state.cy, sys = cy.getElementById('system');
+    if (!sys.length) return;
+    var lr = state.dir !== 'TB', across = lr ? 'y' : 'x', box = function (c, labels) { return c.boundingBox({ includeLabels: !!labels, includeOverlays: false }); };
+    var shift = function (eles, dx, dy) {
+      eles.forEach(function (n) { if (!n.isParent()) { var p = n.position(); n.position({ x: p.x + dx, y: p.y + dy }); } });
+    };
+    // Luften räknas från rutan; hur långt den är tvärs flödet räknas med namnet (som står ovanför rutan).
+    var body = box(sys), start = lr ? body.x1 : body.y1, end = lr ? body.x2 : body.y2, whole = box(sys, true);
+    var from = lr ? whole.y1 : whole.x1, to = lr ? whole.y2 : whole.x2;
+    var calls = cy.nodes('.t-entry, .t-callgroup');
+    if (calls.length) {
+      var b = box(calls), d = (start - TIGHT_AIR) - (lr ? b.x2 : b.y2);
+      shift(calls.union(calls.descendants()), lr ? d : 0, lr ? 0 : d);
+    }
+    // En enhet är en integration (en rund nod, eller en yta med rader när den är utfälld) med sina mått längs flödet (utan namnet) och
+    // tvärs över det (med namnet under ikonen). Hälften av luften tvärs över flödet är den ordinarie (halva steget) om ytan inte kräver mer.
+    var step = lr ? 112 : 130, gap = lr ? 70 : 60;
+    var units = cy.nodes('.t-integration').map(function (u) {
+      var all = u.union(u.descendants()), b0 = box(all), b1 = box(all, true), leaf = !u.isParent();
+      var at = leaf ? u.position() : { x: (b0.x1 + b0.x2) / 2, y: (b0.y1 + b0.y2) / 2 }, half = step / 2;
+      if (!leaf) half = Math.max(half, (lr ? b1.h : b1.w) / 2 + 8);
+      return { all: all, at: at, along: leaf ? (lr ? u.width() : u.height()) : lr ? b0.w : b0.h, half: half, arrows: all.incomers('edge').not('.band').length };
+    }).sort(function (a, c) { return a.at[across] - c.at[across]; });
+    if (!units.length) return;
+    var total = units.reduce(function (s, u) { return s + 2 * u.half; }, 0), cols = Math.max(1, Math.ceil(total / Math.max(to - from, step)));
+    var parts = [], used = 0;
+    for (var i = 0; i < cols; i++) parts.push({ units: [], arrows: 0, along: 0, length: 0, at: i });
+    units.forEach(function (u) {
+      var part = parts[Math.min(cols - 1, Math.floor((used + u.half) / (total / cols)))];
+      part.units.push(u); part.arrows += u.arrows; part.along = Math.max(part.along, u.along); part.length += 2 * u.half; used += 2 * u.half;
+    });
+    parts = parts.filter(function (p) { return p.units.length; }).sort(function (p, q) { return q.arrows - p.arrows || p.at - q.at; });
+    var near = end + TIGHT_AIR, mid = (from + to) / 2;
+    parts.forEach(function (p) {
+      var along = near + p.along / 2, cross = mid - p.length / 2;
+      p.units.forEach(function (u) {
+        cross += u.half;
+        shift(u.all, lr ? along - u.at.x : cross - u.at.x, lr ? cross - u.at.y : along - u.at.y);
+        cross += u.half;
+      });
+      near += p.along + gap;
+    });
   }
   // fcose använder slumptal; med samma frö ger samma kod samma bild.
   function seeded(seed, fn) {
@@ -1588,7 +1823,10 @@
       cy = state.cy = cytoscape({ container: view, style: cyStyle(palette()), elements: [], minZoom: 0.2, maxZoom: 4,
         userZoomingEnabled: false, boxSelectionEnabled: false, autounselectify: true });
       cy.on('tap', 'node', function (ev) { tapNode(ev.target.id()); });
+      cy.on('tap', 'edge', function (ev) { tapEdge(ev.target); });
       cy.on('tap', function (ev) { if (ev.target === cy) hideCard(); });
+      cy.on('mouseover', 'edge.counted, edge.ref', function () { view.style.cursor = 'pointer'; });
+      cy.on('mouseout', 'edge.counted, edge.ref', function () { view.style.cursor = ''; });
       cy.on('mouseover', 'node', function (ev) { view.style.cursor = 'pointer'; view.title = ev.target.hasClass('unreached') ? 'Nås inte från någon ingång' : ''; hover(ev.target); });
       cy.on('mouseout', 'node', function () { view.style.cursor = ''; view.title = ''; hover(null); });
       cy.on('viewport', placeCard);
@@ -1613,6 +1851,7 @@
     var before = {}, first = cy.nodes().length === 0;
     cy.nodes().forEach(function (n) { before[n.id()] = n.position(); });
     var g = graphElements();
+    syncLegend();
     cy.elements().stop(true);   // se runLayout
     cy.batch(function () {
       cy.elements().remove();
@@ -1635,35 +1874,42 @@
         list.forEach(function (b) { cy.getElementById(b.id).position({ x: b.x + g.seed[b.id].x - mx, y: b.y + g.seed[b.id].y - my }); });
       });
     });
-    runLayout(g, after, first || !!fresh, first, !first && fresh ? before : null);
+    runLayout(g, after, first || !!fresh, first, first ? null : before);
   }
   // Var en ny nod börjar: där närmaste förälder eller hopfälld del stod (at: vilken del), eller mitt bland delarna den ersätter.
   function startOf(id, before) {
+    // Anrop som kommer ur en grupp (hopfälld eller utfälld) börjar där gruppen stod, och en grupp som fälls ihop börjar mitt bland sina anrop.
+    var box = state.callBox[id];
+    if (box && before[box]) return { x: before[box].x, y: before[box].y, at: box };
     for (var n = state.nodes[id]; n; n = n.parent ? state.nodes[n.parent] : null)
       if (before[n.id]) return { x: before[n.id].x, y: before[n.id].y, at: n.id };
-    var sum = { x: 0, y: 0 }, count = 0, stack = (state.kids[id] || []).slice();
+    var sum = { x: 0, y: 0 }, count = 0, stack = (state.kids[id] || state.callKids[id] || []).slice();
     while (stack.length) {
       var k = stack.pop();
       if (before[k]) { sum.x += before[k].x; sum.y += before[k].y; count++; } else stack = stack.concat(state.kids[k] || []);
     }
     return count ? { x: sum.x / count, y: sum.y / count, at: '*' + id } : null;
   }
-  // before: var noderna stod innan, när allt läggs ut på nytt (de glider då dit från där de stod).
+  // before: var noderna stod innan (de glider dit de ska från där de stod), null första gången. fit: passa in kartan direkt.
   function runLayout(g, after, fresh, fit, before) {
     var view = $('map-view'), cy = state.cy;
     if (state.layout) state.layout.stop();
     view.removeAttribute('data-ready');
-    var layout = state.layout = cy.layout(fcose(g, fresh, fit));
+    var layout = state.layout = cy.elements().not('.ref').layout(fcose(g, fresh));
     var done = function () {
       if (state.layout !== layout) return;
       state.unfitted = !view.clientWidth || !view.clientHeight;
+      routeLines();
       view.setAttribute('data-ready', 'true');
       if (after) after();
     };
     layout.one('layoutstop', function () {
       if (state.layout !== layout) return;
+      placeFollowers();
+      tighten();
+      if (fit) fitView(null, true);
       if (!before || !motion()) return done();
-      // Ny utläggning av allt: den är räknad från startplatsen, men noderna går mjukt dit från där de stod.
+      // Utläggningen är räknad på en gång; noderna går mjukt dit från där de stod.
       var end = {}, moving = [];
       cy.nodes().forEach(function (n) {
         if (n.isParent()) return;
@@ -1684,7 +1930,7 @@
   }
 
   // Visar det som matchar (t.ex. '.path' eller '*'), mjukt om det går, och zoomar aldrig in mer än 120 %.
-  function fitTo(selector, done) {
+  function fitTo(selector, done, instant) {
     var cy = state.cy;
     if (!cy) return;
     var eles = cy.elements(selector).not('.anchor');
@@ -1694,7 +1940,7 @@
     var bb = eles.boundingBox(), w = cy.width() - 60, h = cy.height() - 40 - top;
     var zoom = Math.max(cy.minZoom(), Math.min(1.2, w / Math.max(1, bb.w), h / Math.max(1, bb.h)));
     var pan = { x: cy.width() / 2 - zoom * (bb.x1 + bb.w / 2), y: top + (cy.height() - top) / 2 - zoom * (bb.y1 + bb.h / 2) };
-    if (motion()) cy.animate({ zoom: zoom, pan: pan }, { duration: 450, easing: 'ease-in-out-cubic', complete: done });
+    if (motion() && !instant) cy.animate({ zoom: zoom, pan: pan }, { duration: 450, easing: 'ease-in-out-cubic', complete: done });
     else { cy.viewport({ zoom: zoom, pan: pan }); if (done) done(); }
   }
   // Zoomknapparna nere till höger, procenten och tangenterna + (=), - och 0 när fokus är i kartan eller på zoomknapparna.
@@ -1740,7 +1986,7 @@
     if (atMin !== ui.atMin) { ui.atMin = atMin; ui.zoomOut.setAttribute('aria-disabled', atMin ? 'true' : 'false'); }
   }
   // Vägen för det valda anropet, annars hela kartan.
-  function fitView(done) { fitTo(state.picked.length ? '.path' : '*', done); }
+  function fitView(done, instant) { fitTo(state.picked.length ? '.path' : '*', done, instant); }
 
   // Muspekaren på en nod: noden och dess grannar syns tydligt, resten bleknar.
   function hover(node) {
@@ -1783,6 +2029,8 @@
   }
 
   function tapNode(id) {
+    // En anropsgrupp: ett klick på det hopfällda anropet fäller ut den, ett klick på ytan (namnet eller kanten) fäller ihop den.
+    if (id.indexOf('cg:') === 0) { toggleCalls(id); return; }
     var n = state.nodes[id];
     if (!n) return;
     // Ett anrop väljs genom att klicka på dess nod; ett klick till på samma nod visar hela systemet igen.
@@ -1852,12 +2100,50 @@
     box.hidden = false;
     placeCard();
   }
+  // Detaljkortet för en linje mellan två projekt (en pil med anrop eller en referens i csproj): vad referensen används till, exempel och var.
+  function tapEdge(edge) {
+    if (edge.hasClass('band') || edge.hasClass('anchor')) return;
+    var a = state.nodes[edge.source().id()], b = state.nodes[edge.target().id()];
+    if (!a || !b || a.kind !== 'project' || b.kind !== 'project') return;
+    var box = $('map-card'), refs = state.map.projectReferences || [];
+    var ref = refs.filter(function (r) { return r.from === a.name && r.to === b.name; })[0], back = refs.filter(function (r) { return r.from === b.name && r.to === a.name; })[0];
+    var entries = edge.data('ents') || [], rows = [], warn = !!ref && ref.use === 'unused';
+    if (ref) rows.push(['Referensen', referenceText(ref, a.name, b.name), warn]);
+    else rows.push(['Referensen', 'Ingen projektreferens från ' + a.name + ' till ' + b.name + '.']);
+    if (entries.length) rows.push(['Används av anropen', entries.join(', ')]);
+    if (ref && ref.callsBack) rows.push(['Åt andra hållet', 'Anrop går också från ' + b.name + ' till ' + a.name + (back && back.calls ? ' (' + back.calls + ' anrop)' : '') + '.']);
+    if (ref && ref.examples && ref.examples.length) rows.push(['Exempel', ref.examples.join('; ')]);
+    if (ref && ref.file) rows.push(['Finns i', where(ref.file, ref.line)]);
+    box.textContent = '';
+    var close = el('button', 'close', '×'); close.type = 'button'; close.setAttribute('aria-label', 'Stäng detaljerna');
+    close.addEventListener('click', hideCard);
+    box.appendChild(close);
+    box.appendChild(el('h3', null, a.name + ' → ' + b.name));
+    rows.forEach(function (r) {
+      var p = el('p', r[2] ? 'warn' : null);
+      p.appendChild(el('span', 'label', r[0] + ': '));
+      p.appendChild(document.createTextNode(r[1]));
+      box.appendChild(p);
+    });
+    state.card = edge.id();
+    box.hidden = false;
+    placeCard();
+  }
+  // Vad en projektreferens används till, som en mening.
+  function referenceText(r, from, to) {
+    var first = r.examples && r.examples[0] ? r.examples[0] : '';
+    if (r.use === 'calls') return 'Används av ' + r.calls + ' anrop.';
+    if (r.use === 'startup') return 'Används bara vid uppstart' + (first ? ' (' + first + ')' : '') + '. Inga anrop går från ' + from + ' till ' + to + '.';
+    if (r.use === 'code') return 'Används i koden' + (first ? ' (' + first + ')' : '') + ', men inga anrop går från ' + from + ' till ' + to + '.';
+    return 'Används inte: ingen kod i ' + from + ' använder något i ' + to + '. Referensen kan ändå behövas av andra skäl, t.ex. ett paket som följer med.';
+  }
   function hideCard() { state.card = null; $('map-card').hidden = true; }
   function placeCard() {
     if (!state.card || !state.cy) return;
     var box = $('map-card'), node = state.cy.getElementById(state.card);
     if (!node.length) { hideCard(); return; }
-    var view = $('map-view'), p = node.renderedPosition(), r = node.renderedOuterWidth() / 2 + 12;
+    // En linje har kortet vid mitten, en nod vid sin sida.
+    var view = $('map-view'), p = node.isEdge() ? node.renderedMidpoint() : node.renderedPosition(), r = (node.isEdge() ? 0 : node.renderedOuterWidth() / 2) + 12;
     var x = p.x + r, y = p.y - 20;
     if (x + box.offsetWidth > view.clientWidth - 8) x = p.x - r - box.offsetWidth;
     x = Math.max(8, Math.min(x, view.clientWidth - box.offsetWidth - 8));
@@ -1889,6 +2175,6 @@
     });
     return ol;
   }
-  // groups, hide, dropUnreached, entryFor, cy och steps används av testerna.
-  window.SystemMap = { create: create, summary: summary, groups: callGroups, hide: hideParts, dropUnreached: dropUnreached, entryFor: entryFor, cy: function () { return state.cy; }, steps: function () { return state.steps; } };
+  // groups, hide, dropUnreached, entryFor, cy, steps och routeLines används av testerna.
+  window.SystemMap = { create: create, summary: summary, groups: callGroups, hide: hideParts, dropUnreached: dropUnreached, entryFor: entryFor, cy: function () { return state.cy; }, steps: function () { return state.steps; }, routeLines: routeLines };
 })();

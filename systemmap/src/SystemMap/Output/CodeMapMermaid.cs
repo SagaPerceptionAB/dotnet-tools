@@ -165,6 +165,15 @@ public static class CodeMapMermaid
         foreach (var (from, to, labels) in edges)
             lines.Add($"  {IdOf(byId[from])} -->{(labels.Count == 0 ? "" : $"|\"{string.Join("<br/>", labels.Select(Escape))}\"|")} {IdOf(byId[to])}");
 
+        // Referenser (csproj) som inte har anrop mellan projekten: streckade pilar med hur de används. Bara på projektnivå och för hela systemet.
+        if (level == MapLevel.Projects && entry is null)
+        {
+            var projectNodes = nodes.Where(n => n.Kind == OverviewKind.Project).ToDictionary(n => n.Name, StringComparer.Ordinal);
+            foreach (var r in map.References.Where(r => r.Use != ReferenceUse.Calls))
+                if (projectNodes.TryGetValue(r.From, out var a) && projectNodes.TryGetValue(r.To, out var b))
+                    lines.Add($"  {IdOf(a)} -.->|\"{r.Use switch { ReferenceUse.Unused => "används inte", ReferenceUse.Startup => "bara uppstart", _ => "används" }}\"| {IdOf(b)}");
+        }
+
         lines.Add("  classDef entry fill:#eef0f3,stroke:#6b7a8f,color:#1f2933");
         lines.Add("  classDef code fill:#dceafa,stroke:#2a78d6,color:#1f2933");
         lines.Add("  classDef codearea fill:#f3f8fd,stroke:#2a78d6,color:#1f2933");

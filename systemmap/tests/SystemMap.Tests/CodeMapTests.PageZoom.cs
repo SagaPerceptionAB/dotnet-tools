@@ -35,7 +35,7 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<double>(Zoom), Is.EqualTo(start).Within(1e-6));
             Assert.That(await page.InnerTextAsync(ZoomPct), Is.EqualTo($"{Math.Round(start * 100)} %"));
             Assert.That(await page.EvaluateAsync<double>(Zoom), Is.LessThanOrEqualTo(1.2), "passa in zoomar aldrig in mer än 120 %");
-        });
+        }, groupsOpen: false);   // inpassningen gäller kartan som den ritas från början
     }
 
     [Test]
@@ -69,7 +69,7 @@ public partial class CodeMapTests
             // Procenten följer även zoom som sätts på annat sätt (nyp, Ctrl + rullhjul) och fitView.
             await page.EvaluateAsync("() => SystemMap.cy().zoom({ level: 0.5, renderedPosition: { x: 10, y: 10 } })");
             Assert.That(await page.InnerTextAsync(ZoomPct), Is.EqualTo("50 %"));
-        });
+        }, groupsOpen: false);   // inpassningen gäller kartan som den ritas från början
     }
 
     /// <summary>Klickar knappen tills den blir avstängd (aria-disabled): en avstängd knapp går inte att klicka.</summary>

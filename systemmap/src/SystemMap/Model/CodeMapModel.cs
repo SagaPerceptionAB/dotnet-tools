@@ -29,10 +29,26 @@ public sealed record CodeMapModel(
     IReadOnlyList<AppFacts> Apps,
     IReadOnlyList<SpecDifference> Differences,
     IReadOnlyList<string> Warnings,
-    CodeInventory? Code = null)
+    CodeInventory? Code = null,
+    IReadOnlyList<ProjectReference>? ProjectReferences = null)
 {
-    public const int SchemaVersion = 3;   // 2: fälten heter på engelska. 3: ingångar som inte är HTTP saknar method och path, och delar som inte nås har reached: false. Ett HTTP-anrop vars adress inte går att läsa har address: "runtime". Ett anrop vars namn en annan ingång delar har qualifier (projektet)
+    public const int SchemaVersion = 4;   // 2: fälten heter på engelska. 3: ingångar som inte är HTTP saknar method och path, och delar som inte nås har reached: false. Ett HTTP-anrop vars adress inte går att läsa har address: "runtime". Ett anrop vars namn en annan ingång delar har qualifier (projektet). 4: projectReferences, hur varje projektreferens (csproj) används
+
+    /// <summary>Projektreferenserna mellan systemets projekt, sorterade på från och till (tom om analysen inte gjorts).</summary>
+    public IReadOnlyList<ProjectReference> References => ProjectReferences ?? [];
 }
+
+/// <summary>Hur en projektreferens används: anrop som går genom den, bara vid uppstart, på annat sätt i koden, eller inte alls.</summary>
+public enum ReferenceUse { Calls, Startup, Code, Unused }
+
+/// <summary>
+/// En projektreferens (csproj) från <paramref name="From"/> till <paramref name="To"/> mellan två av systemets projekt, och hur den används.
+/// </summary>
+/// <param name="Calls">Antal ingångar vars väg går från kod i From till kod i To.</param>
+/// <param name="CallsBack">Sant om någon väg går åt andra hållet, från To till From.</param>
+/// <param name="Examples">Upp till tre exempel på vad From använder i To, t.ex. "implementerar IOrderRepository". Tom när <see cref="Use"/> är <see cref="ReferenceUse.Unused"/>.</param>
+/// <param name="File">Filen (relativt solutionens katalog, med snedstreck) där det första exemplet står, eller null.</param>
+public sealed record ProjectReference(string From, string To, ReferenceUse Use, int Calls, bool CallsBack, IReadOnlyList<string> Examples, string? File, int? Line);
 
 /// <summary>
 /// Systemets egen kod, för att visa det som ingen ingång når: alla projekt (utom testprojekt) och klasserna i dem som har metoder med kod.

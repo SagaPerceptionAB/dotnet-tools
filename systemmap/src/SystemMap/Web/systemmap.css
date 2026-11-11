@@ -10,14 +10,14 @@
   --map-bg: #ffffff; --map-bar: #f8f8f8; --map-fg: #3b3b3b; --map-muted: #616161; --map-input: #ffffff; --map-border: #cecece;
   --map-accent: #005fb8; --map-accent-hover: #0258a8; --map-accent-fg: #ffffff; --map-widget: #f8f8f8; --map-wborder: #e5e5e5;
   --map-select: #e8e8e8; --map-hover: #f2f2f2; --map-mark: #005fb8; --map-disabled: #e5e5e5; --map-disabled-fg: #6b6b6b;
-  --map-shadow: rgba(0, 0, 0, .16); --map-integration: #0063d3; --map-dim: #f8f8f8;
+  --map-shadow: rgba(0, 0, 0, .16); --map-integration: #0063d3; --map-dim: #f8f8f8; --map-warn: #BF8803;
 }
 :where(.systemmap[data-theme=dark]) {
   color-scheme: dark;
   --map-bg: #1f1f1f; --map-bar: #181818; --map-fg: #cccccc; --map-muted: #9d9d9d; --map-input: #313131; --map-border: #3c3c3c;
   --map-accent: #0078d4; --map-accent-hover: #026ec1; --map-accent-fg: #ffffff; --map-widget: #202020; --map-wborder: #454545;
   --map-select: #04395e; --map-hover: #2a2d2e; --map-mark: #4daafc; --map-disabled: #262626; --map-disabled-fg: #8c8c8c;
-  --map-shadow: rgba(0, 0, 0, .5); --map-integration: #59a4f9; --map-dim: #262626;
+  --map-shadow: rgba(0, 0, 0, .5); --map-integration: #59a4f9; --map-dim: #262626; --map-warn: #CCA700;
 }
 .systemmap { color: var(--map-fg); }
 .systemmap [hidden] { display: none !important; }
@@ -104,6 +104,7 @@
 .map-card h3 { margin: 0 28px 6px 0; font-size: 15px; }
 .map-card p { margin: 3px 0; word-break: break-word; }
 .map-card .label { font-weight: 600; }
+.map-card .warn { color: var(--map-warn); }
 .map-card .close { position: absolute; top: 4px; right: 4px; min-height: 0; padding: 2px 9px; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--map-muted); }
 
 /* Stegen för ett anrop, där en sida visar dem (map.steps()). */
@@ -123,6 +124,14 @@
 .map-hidden-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .systemmap .map-hidden-row button { min-height: 32px; padding: 2px 12px; }
 .map-swatch { flex: none; width: 20px; height: 12px; border: 1.5px dashed var(--map-muted); border-radius: 4px; background: var(--map-dim); opacity: .75; }
+
+/* Linjerna mellan projekten (anrop, referenser i csproj): tre rader i rutan nere till vänster, med en linjebit som i kartan. */
+.map-refs { display: flex; flex-direction: column; gap: 2px; }
+.map-ref-row { display: flex; align-items: center; gap: 10px; }
+.map-ref-row.warn { color: var(--map-warn); }
+.map-line { flex: none; width: 34px; border-top: 2px solid var(--map-muted); }
+.map-line.dashed { border-top-style: dashed; }
+.map-line.warn { border-top-color: var(--map-warn); }
 
 /* Zoomknapparna nere till höger i kartan, procenten under dem och en liten hjälptext till vänster om rutan. */
 .map-zoom { position: absolute; z-index: 4; right: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: stretch;

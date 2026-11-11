@@ -93,8 +93,10 @@ public partial class CodeMapTests
         }
         """;
 
-    // Kör ett test mot sidan för en karta i en riktig webbläsare; sidan är klar när #map-view har data-ready.
-    private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test, IReadOnlySet<string>? hidden = null, bool showUnreached = true, ColorScheme? colors = null)
+    // Kör ett test mot sidan för en karta i en riktig webbläsare; sidan är klar när #map-view har data-ready. level är nivån som väljs
+    // direkt efter att sidan öppnats (de flesta testerna utgår från klasserna): "projects" är det sidan öppnar med, null låter den välja själv (inget sparat val).
+    // groupsOpen: anropsgrupperna är hopfällda från början; de flesta testerna vill se anropen i rutorna och fäller därför ut dem först.
+    private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test, IReadOnlySet<string>? hidden = null, bool showUnreached = true, ColorScheme? colors = null, string? level = "classes", bool groupsOpen = true)
     {
         var file = Path.Combine(Path.GetTempPath(), $"systemmap-page-{Guid.NewGuid():N}.html");
         await File.WriteAllTextAsync(file, CodeMapHtml.Write(map, hidden ?? new HashSet<string>(), showUnreached));
@@ -106,12 +108,31 @@ public partial class CodeMapTests
             await page.GotoAsync(new Uri(file).AbsoluteUri);
             Task Ready() => page.WaitForSelectorAsync("#map-view[data-ready='true']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Attached });
             await Ready();
+            await ChooseLevelAsync(page, Ready, level);
+            if (groupsOpen) await OpenGroupsAsync(page, Ready);
             await test(page, Ready);
         }
         finally
         {
             File.Delete(file);
         }
+    }
+
+    // Väljer nivån med listorna (så som en användare sparar den). Ett sessionStorage-värde satt av ett initskript gav ostabila omladdningar.
+    private static async Task ChooseLevelAsync(IPage page, Func<Task> ready, string? level)
+    {
+        if (level is null or "projects") return;
+        await PickAsync(page, "cls", "Alla");
+        if (level is "methods") await PickAsync(page, "fn", "Alla");
+        else if (level is "all") await PickAsync(page, "integ", "Alla, med läsningar och skrivningar");
+        await ready();
+    }
+
+    // Fäller ut alla hopfällda anropsgrupper (ett klick var på kartans nod).
+    private static async Task OpenGroupsAsync(IPage page, Func<Task> ready)
+    {
+        await page.EvaluateAsync("() => { const cy = SystemMap.cy(); if (!cy) return; for (const id of cy.nodes('.t-calls').map(n => n.id())) cy.getElementById(id).emit('tap'); }");
+        await ready();
     }
 
     // Mitten på varje klass (eller dess ruta) per namn, och pilarna som "källa>mål" (utan de osynliga hjälpmedlen).

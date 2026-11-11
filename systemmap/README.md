@@ -67,8 +67,11 @@ Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev
 
 Exitkoder: `0` klart, `2` fel (t.ex. att solutionen eller specen inte finns eller inte går att läsa), `70` internt fel, `130` avbrutet med Ctrl+C.
 
-JSON-filen börjar med `schemaVersion` (nu 3). null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider. Sedan version 2 (fälten på engelska)
+JSON-filen börjar med `schemaVersion` (nu 4). null utelämnas, listorna är sorterade och filen innehåller inga sökvägar eller tider. Sedan version 2 (fälten på engelska)
 har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och har `name`), att ett anrop vars namn en annan skulle dela har `qualifier`, att delar i `overview` som ingen ingång når har `reached: false`, och att ett HTTP-anrop vars adress varken står i koden eller i konfigurationen (den bestäms vid körning) har `address: "runtime"` i steget och i översiktens rad, medan `operation` och `name` bara är verbet.
+Version 4 har listan `projectReferences`: en rad per projektreferens mellan systemets projekt, sorterad på `from` och `to`, med `use` (`calls`, `startup`, `code` eller `unused`),
+`calls` (antal anrop in som går genom referensen), `callsBack` (anropen går också åt andra hållet), `examples` (högst tre) och `file` och `line` för det första exemplet.
+Se Beroenden mellan projekten.
 
 ## Filter i webbsidan
 
@@ -84,10 +87,20 @@ Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick
 - Anrop markerar vägarna för de kryssade anropen och dämpar resten (det är inget filter); listan visar bara anropen som går genom filtren.
 - Detaljnivån är en enda och väljs överst i listorna Klass, Funktion och Integration med radioknappar; listorna visar den: Klass: Visas inte är bara
   projekten, Klass: Alla klasserna, Funktion: Alla metoderna i klasserna och Integration: Alla, med läsningar och skrivningar allt utfällt. Ett val byter
-  nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion.
+  nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion. Webbsidan öppnas på
+  projektnivån (Klass: Visas inte) så att hela systemet får plats på skärmen; ett val i listorna sparas för sessionen och gäller före nästa gång.
+  `--level` (Mermaid) är oförändrat och har fortfarande `classes` som standard.
+- Projekten står i flödets ordning, från anropen in åt höger (uppifrån och ned i riktningen ↓): projekten som anropen går in i först, sedan de de anropar och så
+  vidare. Ett projekts plats är kortaste vägen dit från ett anrop in, och projekt på samma avstånd delar kolumn. Projekt som ingen ingång når står sist.
+- Anropen som hör ihop (samma sökväg, som `/orders`, eller samma sort, som Bakgrundstjänster) är hopfällda från början till ett enda anrop: "/orders · 5 anrop",
+  med pilar till allt de når. Ett klick på det fäller ut gruppen (en ruta med anropen), ett klick på rutans namn eller kant fäller ihop den igen; det man fällt ut
+  kommer man ihåg som för projekt och klasser tills nivån byts. Väljer man ett anrop (i listan Anrop eller på kartan) fälls dess grupp ut så att anropet syns
+  och vägen markeras; fälls gruppen ihop ändå markeras den som vägen. Listan Anrop, filtren och Mermaid-exporten visar alltid de riktiga anropen.
+- Anropen och integrationerna ställs nära systemrutan (ca 90 px luft) när kartan är ritad: anropen i en rad (kolumn) intill rutan, integrationerna i en tät kolumn på rutans
+  andra sida, och i flera kolumner när de blir fler än rutan är hög. Pilarna blir korta och kartan kan zoomas in mer.
 - Ett hopfällt projekt är en ljusgrön, rundad ruta med projektikonen uppe till vänster, namnet och på raden under vad som ligger i det ("3 klasser · 4 funktioner", räknat efter filtret och det som är dolt); ett klick fäller ut det, ett klick till fäller ihop det.
 - En hopfälld klass är en liten ruta på samma sätt: klassikonen uppe till vänster, namnet i fet stil och på raden under "3 funktioner" (ingen rad när klassen inte har några). Den har ingen "+N"-bricka. Ett klick fäller ut klassen, ett klick till fäller ihop den.
-- **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
+- **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Projekt). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
 - Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
   filen med `--mermaid` och `--entry`. Den vägrar också i den fristående sidan när något är dolt eller "Visa delar som inte nås" är avbockat (filerna skrevs utan det valet).
 
@@ -145,6 +158,32 @@ Vad som inte räknas alls: klasser som bara är data (enum, interface, record oc
 genererad kod (`obj`, `.g.cs`, `[GeneratedCode]`), `Program` och `Startup` i en webbapp samt själva uppstartsmetoderna. Ett projekt med bara sådant syns
 men sägs inte vara onått. Gränser: anrop som bara går genom reflektion, händelser, dynamisk dispatch eller längre än åtta anrop från ingången syns inte, och
 en klass som nås bara via hjälpmetoder som kartan inte ritar ritas inte alls (inte heller dess metoder som inte nås).
+
+## Beroenden mellan projekten
+
+Kartan visar också vilka projektreferenser (`ProjectReference` i csproj) mellan systemets projekt som används, hur, och vilka som inte används alls. Testprojekt räknas inte.
+För varje referens från projekt A till projekt B avgörs det så här, i den här ordningen:
+
+| `use` | Betyder |
+| --- | --- |
+| `calls` | Minst ett anrop in går från kod i A till kod i B (`calls` är antalet anrop in). |
+| `startup` | Inga anrop, men A använder något i B, och all användning ligger i uppstartskod: `Program` och `Startup` i en webbapp och metoder som tar eller ger ramverkets uppstartstyper (`IServiceCollection`, `WebApplication` ...), samma regel som för "Det som ingen ingång når". Typiskt `services.AddShopInfrastructure()` i `Program.cs`. |
+| `code` | Inga anrop, men A använder något i B på annat sätt: en typ, ett gränssnitt A implementerar, en basklass, en konstant, ett attribut, en statisk hjälpare eller en extension-metod. |
+| `unused` | Ingen kod i A använder något som B deklarerar. |
+
+Användningen räknas ur A:s kod med semantiska modellen: varje namn som pekar på en typ, metod, egenskap, fält eller händelse som deklareras i B (typer och bastyper, anrop,
+extension-metoder, generiska argument, `nameof` och `typeof`). Varje projekts kod gås igenom en gång för alla dess referenser. `examples` är högst tre, t.ex.
+`implementerar IOrderRepository`, `använder OrderDto` och `anropar ServiceCollectionExtensions.AddShopInfrastructure`, med uppstart efter annan användning, och `file` och `line` pekar på det första.
+`callsBack` är sant när anropen går åt andra hållet, från B till A (i en clean architecture pekar Infrastructure på Application, men anropen går från Application till Infrastructure).
+
+En referens som är `unused` kan ändå behövas: ett paket som följer med, Razor-tillgångar, analyzers, källgeneratorer eller kod som bara används genom reflektion. Kartan ser bara det som koden
+namnger, så läs `unused` som "kolla om den behövs", inte som "ta bort den".
+
+- **Text på stdout:** sist avsnittet `Projektreferenser:` med en rad per referens (`ShopApi → ShopApplication: används av 4 anrop`, `ShopApi → ShopInfrastructure: bara vid uppstart (anropar InfrastructureRegistration.AddShopInfrastructure, ShopApi/Program.cs:53)`), och `Referenser som inte används:` med `A → B (A.csproj)`.
+- **`--mermaid` på `--level projects`:** referenser utan anrop är streckade pilar (`-.->`) med texten `bara uppstart`, `används` eller `används inte`.
+- **Webbsidan, nivån Projekt:** pilen mellan två projekt med anrop får texten "N anrop". Referenser utan anrop är tunna streckade linjer: grå för `startup` och `code` (lätt böjda när anropen går åt andra hållet, så att de inte täcker anropspilen), orange med texten "används inte" för `unused`.
+  Ett klick på en linje (pil eller referens) öppnar kortet för paret med vad referensen används till, exemplen och var de står. Rutan nere till vänster förklarar linjerna när det finns några. På nivåerna Klasser och nedåt, och när ett anrop är valt, ritas inga referenslinjer.
+  Ett projekt som ingen ingång når men som ett annat refererar står i lagret efter det som refererar det.
 
 ## Vad som känns igen
 

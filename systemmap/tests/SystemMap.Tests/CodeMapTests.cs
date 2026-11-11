@@ -742,7 +742,7 @@ public partial class CodeMapTests
         var first = CodeMapJson.Serialize(await MapAsync(solution));
         var second = CodeMapJson.Serialize(await MapAsync(solution));
         Assert.That(second, Is.EqualTo(first));
-        Assert.That(first, Does.Contain("\"entryPoints\"").And.Contain("\"integrations\"").And.Contain("\"overview\"").And.Contain("\"schemaVersion\": 3"));
+        Assert.That(first, Does.Contain("\"entryPoints\"").And.Contain("\"integrations\"").And.Contain("\"overview\"").And.Contain("\"schemaVersion\": 4").And.Contain("\"projectReferences\""));
     }
 
     [Test]

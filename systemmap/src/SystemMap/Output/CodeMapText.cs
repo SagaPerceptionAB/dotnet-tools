@@ -56,6 +56,37 @@ public static class CodeMapText
         }
 
         foreach (var line in UnreachedLines(overview)) yield return line;
+        foreach (var line in ReferenceLines(map)) yield return line;
+    }
+
+    /// <summary>Projektreferenserna och hur de används, och sist de som inte används alls.</summary>
+    private static IEnumerable<string> ReferenceLines(CodeMapModel map)
+    {
+        if (map.References.Count == 0) yield break;
+        yield return "";
+        yield return "Projektreferenser:";
+        foreach (var r in map.References)
+            yield return $"  {r.From} → {r.To}: {ReferenceText(r)}";
+        var unused = map.References.Where(r => r.Use == ReferenceUse.Unused).ToList();
+        if (unused.Count == 0) yield break;
+        yield return "";
+        yield return "Referenser som inte används:";
+        foreach (var r in unused) yield return $"  {r.From} → {r.To} ({r.From}.csproj)";
+    }
+
+    /// <summary>Hur en referens används, som en mening: "används av 4 anrop" eller "bara vid uppstart (anropar ..., Program.cs:53)".</summary>
+    public static string ReferenceText(ProjectReference r)
+    {
+        var where = r.Examples.Count == 0 ? "" : $"{r.Examples[0]}{(r.File is null ? "" : $", {r.File}:{r.Line}")}";
+        var more = r.Examples.Count > 1 ? " …" : "";
+        var back = r.CallsBack ? ", anropen går åt andra hållet" : "";
+        return r.Use switch
+        {
+            ReferenceUse.Calls => $"används av {r.Calls} anrop{(r.CallsBack ? ", anrop går också åt andra hållet" : "")}",
+            ReferenceUse.Startup => $"bara vid uppstart ({where}){back}",
+            ReferenceUse.Code => $"används ({r.Examples[0]}{more}){back}",
+            _ => "används inte",
+        };
     }
 
     /// <summary>

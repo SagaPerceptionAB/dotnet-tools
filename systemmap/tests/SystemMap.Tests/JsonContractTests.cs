@@ -31,7 +31,7 @@ public partial class JsonContractTests
         var json = await SampleJson();
         using var doc = JsonDocument.Parse(json);
         Assert.That(doc.RootElement.EnumerateObject().First().Name, Is.EqualTo("schemaVersion"));
-        Assert.That(doc.RootElement.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(3));
+        Assert.That(doc.RootElement.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(4));
         Assert.That(Walk(doc.RootElement).Count(e => e.ValueKind == JsonValueKind.Null), Is.Zero, "null utelämnas");
     }
 

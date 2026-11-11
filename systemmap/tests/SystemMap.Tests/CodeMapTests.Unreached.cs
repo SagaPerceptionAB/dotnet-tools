@@ -157,7 +157,7 @@ public partial class CodeMapTests
         var text = CodeMapText.Lines(map).ToList();
         var at = text.IndexOf("Nås inte från någon ingång:");
         Assert.That(at, Is.GreaterThan(0));
-        Assert.That(text.Skip(at + 1), Is.EqualTo(new[]
+        Assert.That(text.Skip(at + 1).TakeWhile(l => l.Length > 0), Is.EqualTo(new[]
         {
             "  Api: LegacyExporter; metoder i klasser som nås: OrderService.Archive",
             "  Lib: Orphan",

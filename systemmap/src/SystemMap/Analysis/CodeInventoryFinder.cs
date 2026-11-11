@@ -52,7 +52,7 @@ internal static class CodeInventoryFinder
                         !seen.Add(project.Name + "|" + Symbols.TypeKey(type)) || IsGenerated(type)) continue;
                     everything.Add(type);
                     var component = Symbols.Is(type, "Microsoft.AspNetCore.Components.IComponent");
-                    var startup = type.Name is "Program" or "Startup" && isApp;
+                    var startup = IsStartupClass(type, isApp);
                     var fromOutside = component || startup ? [] : ImplementedFromOutside(type);
                     // Varje metod med kod avgörs en gång: en krok är en rot, annars är den en metod som kartan följer anrop till.
                     var tracked = new List<IMethodSymbol>();
@@ -136,8 +136,14 @@ internal static class CodeInventoryFinder
         if (method.ExplicitInterfaceImplementations.Any(i => !IsOwn(i)) || fromOutside.Contains(method)) return true;
         if (method.Name is "Invoke" or "InvokeAsync" && (type.Name.EndsWith("Middleware", StringComparison.Ordinal) || method.Parameters.FirstOrDefault()?.Type.Name == "HttpContext" ||
                                                           Symbols.Is(type, "Microsoft.AspNetCore.Mvc.ViewComponent"))) return true;
-        return method.Parameters.Select(p => p.Type).Append(method.ReturnType).Any(IsStartupType);
+        return IsStartupMethod(method);
     }
+
+    /// <summary>Uppstart: en metod som tar eller ger en av ramverkets typer för att sätta upp en app (<c>IServiceCollection</c>, <c>WebApplication</c> ...).</summary>
+    internal static bool IsStartupMethod(IMethodSymbol method) => method.Parameters.Select(p => p.Type).Append(method.ReturnType).Any(IsStartupType);
+
+    /// <summary><c>Program</c> och <c>Startup</c> i en webbapp.</summary>
+    internal static bool IsStartupClass(INamedTypeSymbol type, bool isApp) => type.Name is "Program" or "Startup" && isApp;
 
     private static bool IsStartupType(ITypeSymbol type)
     {

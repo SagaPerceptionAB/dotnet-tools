@@ -367,7 +367,7 @@ public partial class CodeMapTests
     {
         var map = await Mixed();
         using var doc = JsonDocument.Parse(CodeMapJson.Serialize(map));
-        Assert.That(doc.RootElement.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(3));
+        Assert.That(doc.RootElement.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(4));
         var entries = doc.RootElement.GetProperty("entryPoints").EnumerateArray().ToList();
         Assert.That(entries.Select(e => e.GetProperty("kind").GetString()), Is.EqualTo(new[] { "controller", "background", "consumer", "signalr" }));
         var worker = entries[1];

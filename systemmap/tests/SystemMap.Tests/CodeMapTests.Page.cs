@@ -94,7 +94,7 @@ public partial class CodeMapTests
         """;
 
     // Kör ett test mot sidan för en karta i en riktig webbläsare; sidan är klar när #map-view har data-ready.
-    private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test, IReadOnlySet<string>? hidden = null, bool showUnreached = true)
+    private static async Task WithPageAsync(CodeMapModel map, Func<IPage, Func<Task>, Task> test, IReadOnlySet<string>? hidden = null, bool showUnreached = true, ColorScheme? colors = null)
     {
         var file = Path.Combine(Path.GetTempPath(), $"systemmap-page-{Guid.NewGuid():N}.html");
         await File.WriteAllTextAsync(file, CodeMapHtml.Write(map, hidden ?? new HashSet<string>(), showUnreached));
@@ -102,7 +102,7 @@ public partial class CodeMapTests
         {
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync();
-            var page = await browser.NewPageAsync(new BrowserNewPageOptions { ViewportSize = new ViewportSize { Width = 1400, Height = 900 }, ReducedMotion = ReducedMotion.Reduce });
+            var page = await browser.NewPageAsync(new BrowserNewPageOptions { ViewportSize = new ViewportSize { Width = 1400, Height = 900 }, ReducedMotion = ReducedMotion.Reduce, ColorScheme = colors });
             await page.GotoAsync(new Uri(file).AbsoluteUri);
             Task Ready() => page.WaitForSelectorAsync("#map-view[data-ready='true']", new PageWaitForSelectorOptions { State = WaitForSelectorState.Attached });
             await Ready();
@@ -115,8 +115,8 @@ public partial class CodeMapTests
     }
 
     // Mitten på varje klass (eller dess ruta) per namn, och pilarna som "källa>mål" (utan de osynliga hjälpmedlen).
-    private const string Centers = "() => Object.fromEntries(SystemMap.cy().nodes('.t-class').map(n => [n.data('label'), n.position()]))";
-    private const string Arrows = "() => SystemMap.cy().edges().not('.band').map(e => e.source().data('label') + '>' + e.target().data('label'))";
+    private const string Centers = "() => Object.fromEntries(SystemMap.cy().nodes('.t-class').map(n => [n.data('label').split('\\n')[0], n.position()]))";
+    private const string Arrows = "() => SystemMap.cy().edges().not('.band').map(e => e.source().data('label').split('\\n')[0] + '>' + e.target().data('label').split('\\n')[0])";
 
     [Test]
     public async Task Page_places_the_classes_in_steps_in_both_directions_and_at_every_level()
@@ -124,7 +124,7 @@ public partial class CodeMapTests
         var map = await MapAsync(Build(true, Web("Api", AppStart + FlowApi)));
         await WithPageAsync(map, async (page, ready) =>
         {
-            var steps = await page.EvaluateAsync<Dictionary<string, int>>("() => Object.fromEntries(Object.entries(SystemMap.steps()).map(([id, s]) => [SystemMap.cy().getElementById(id).data('label'), s]))");
+            var steps = await page.EvaluateAsync<Dictionary<string, int>>("() => Object.fromEntries(Object.entries(SystemMap.steps()).map(([id, s]) => [SystemMap.cy().getElementById(id).data('label').split('\\n')[0], s]))");
             Assert.That(steps.Where(s => s.Key.EndsWith("Controller")).Select(s => s.Value).Distinct(), Is.EqualTo(new[] { 1 }), "klasser som anropen in når är steg 1");
             Assert.That((steps["AuthService"], steps["FamilyService"], steps["AuthClient"]), Is.EqualTo((2, 2, 3)));
 
@@ -160,7 +160,7 @@ public partial class CodeMapTests
         {
             // Hela systemet: en pil per ruta och mål, det ensamma anropet behåller sin, och ingen pil går från ett anrop i en ruta.
             Assert.That(await page.EvaluateAsync<string[]>(Arrows), Is.SupersetOf(new[] { "/v1/auth>AuthController", "/v1/family>FamilyController", "GET /v1/me>MeController" }));
-            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges().filter(e => e.source().hasClass('t-callgroup')).map(e => e.source().data('label') + '>' + e.target().data('label'))"),
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges().filter(e => e.source().hasClass('t-callgroup')).map(e => e.source().data('label').split('\\n')[0] + '>' + e.target().data('label').split('\\n')[0])"),
                 Is.EquivalentTo(new[] { "/v1/auth>AuthController", "/v1/family>FamilyController" }));
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().edges().not('.band').filter(e => e.source().parent().hasClass('t-callgroup')).length"), Is.Zero);
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().edges().filter(e => e.source().hasClass('t-entry') && !e.source().parent().length).length"), Is.EqualTo(1));
@@ -184,7 +184,7 @@ public partial class CodeMapTests
             await PickAsync(page, "entry", "POST /v1/auth/in");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().edges().filter(e => e.source().hasClass('t-callgroup')).length"), Is.Zero);
-            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges('.path').map(e => e.source().data('label') + '>' + e.target().data('label'))"),
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges('.path').map(e => e.source().data('label').split('\\n')[0] + '>' + e.target().data('label').split('\\n')[0])"),
                 Does.Contain("POST /v1/auth/in>AuthController"));
         });
     }
@@ -197,7 +197,7 @@ public partial class CodeMapTests
         {
             await page.ClickAsync("[data-direction='TB']");
             await ready();
-            var labels = await page.EvaluateAsync<Dictionary<string, string[]>>(Members("n.data('label')"));
+            var labels = await page.EvaluateAsync<Dictionary<string, string[]>>(Members("n.data('label').split('\\n')[0]"));
             var xs = await page.EvaluateAsync<Dictionary<string, double[]>>(Members("n.position('x')"));
             var ys = await page.EvaluateAsync<Dictionary<string, double[]>>(Members("n.position('y')"));
 
@@ -219,7 +219,7 @@ public partial class CodeMapTests
             var under = await page.EvaluateAsync<double[]>("""
                 () => ['/v1/auth>AuthController', '/v1/family>FamilyController'].map(k => {
                   const [g, c] = k.split('>'), box = SystemMap.cy().nodes('.t-callgroup').filter(n => n.data('label') === g)[0].boundingBox();
-                  const p = SystemMap.cy().nodes('.t-class').filter(n => n.data('label') === c)[0].position();
+                  const p = SystemMap.cy().nodes('.t-class').filter(n => n.data('label').split('\n')[0] === c)[0].position();
                   return p.y > box.y2 && p.x >= box.x1 && p.x <= box.x2 ? 1 : 0;
                 })
                 """);

@@ -2,7 +2,7 @@ using Microsoft.Playwright;
 
 namespace SystemMap.Tests;
 
-/// <summary>Ett hopfällt projekt: en rundad ruta med innehållet i texten, utan bricka, som får plats i utläggningen.</summary>
+/// <summary>Ett hopfällt projekt (grönt): en rundad ruta med innehållet i texten, utan bricka, som får plats i utläggningen.</summary>
 public partial class CodeMapTests
 {
     private const string ShutBoxes = "SystemMap.cy().nodes('.t-project').not('.group')";
@@ -39,7 +39,7 @@ public partial class CodeMapTests
         {
             await LevelAsync(page, "projects");
             await ready();
-            Assert.That(await page.EvaluateAsync<bool>("() => " + ShutBoxes + ".length === 4 && " + ShutBoxes + ".every(n => n.hasClass('box') && !n.hasClass('badge') && n.style('corner-radius') === '24px' && n.height() === 84 && n.width() >= 230 && n.style('background-opacity') === '1' && n.style('background-color') === 'rgb(238,244,252)')"), Is.True);
+            Assert.That(await page.EvaluateAsync<bool>("() => " + ShutBoxes + ".length === 4 && " + ShutBoxes + ".every(n => n.hasClass('box') && !n.hasClass('badge') && n.style('corner-radius') === '24px' && n.height() === 84 && n.width() >= 230 && n.style('background-opacity') === '1' && n.style('background-color') === 'rgb(238,245,238)')"), Is.True);
             Assert.That(await page.EvaluateAsync<string[]>(ShutTexts), Has.Member("Lib | 2 klasser · 2 funktioner").And.Member("Solo | 1 klass · 1 funktion").And.Member("Data"),
                 "singular, plural och bara namnet när allt är 0");
             Assert.That(await page.EvaluateAsync<bool>("() => SystemMap.cy().nodes('.t-integration').every(n => !n.hasClass('box'))"), Is.True, "integrationer behåller sin form");
@@ -54,7 +54,7 @@ public partial class CodeMapTests
         {
             await PickAsync(page, "cls", "Writer");
             await ready();
-            await page.EvaluateAsync("() => SystemMap.cy().nodes('.t-project').filter(n => n.data('label') === 'Lib')[0].emit('tap')");
+            await page.EvaluateAsync("() => { SystemMap.cy().nodes('.t-project').filter(n => n.data('label') === 'Lib')[0].emit('tap'); }");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(ShutTexts), Is.EqualTo(new[] { "Lib | 1 klass · 1 funktion" }), "bara det som går igenom filtret räknas");
         });
@@ -87,12 +87,12 @@ public partial class CodeMapTests
                 await page.ClickAsync($"[data-direction='{dir}']");
                 await ready();
                 await AssertNoOverlapAsync(page, dir + " före");
-                await page.EvaluateAsync("() => SystemMap.cy().nodes('.t-project').filter(n => n.data('label') === 'Lib')[0].emit('tap')");
+                await page.EvaluateAsync("() => { SystemMap.cy().nodes('.t-project').filter(n => n.data('label') === 'Lib')[0].emit('tap'); }");
                 await ready();
                 Assert.That(await page.EvaluateAsync<string[]>(ShutTexts), Is.EqualTo(new[] { "Data", "Lib | 2 klasser · 2 funktioner" }));
                 Assert.That(await page.EvaluateAsync<bool>("() => " + ShutBoxes + ".every(n => !n.hasClass('badge'))"), Is.True);
                 await AssertNoOverlapAsync(page, dir);
-                await page.EvaluateAsync("() => " + ShutBoxes + ".filter(n => n.data('label') !== 'Data')[0].emit('tap')");
+                await page.EvaluateAsync("() => { " + ShutBoxes + ".filter(n => n.data('label') !== 'Data')[0].emit('tap'); }");
                 await ready();
                 Assert.That(await page.EvaluateAsync<int>("() => " + ShutBoxes + ".length"), Is.EqualTo(1), "ett klick fäller ut igen");
             }

@@ -8,8 +8,11 @@
 <title>Systemkarta – __TITLE__</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #f5f7fa; color: #1b2430; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-  .empty { margin: 24px; padding: 8px 12px; background: #eef1f5; border-left: 4px solid #94a3b8; border-radius: 4px; }
+  body { margin: 0; background: #ffffff; color: #3b3b3b; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .empty { margin: 24px; padding: 8px 12px; background: #f8f8f8; border-left: 4px solid #767676; border-radius: 4px; }
+  /* Sidan följer kartans tema (kartan sätter data-theme på sin rot): Light Modern och Dark Modern. */
+  body:has(#map[data-theme=dark]) { background: #1f1f1f; color: #cccccc; color-scheme: dark; }
+  body:has(#map[data-theme=dark]) .empty { background: #262626; border-left-color: #9d9d9d; }
   [hidden] { display: none !important; }
 __STYLE__
 </style>

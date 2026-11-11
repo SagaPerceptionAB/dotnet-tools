@@ -38,7 +38,7 @@ public partial class CodeMapTests
 
     /// <summary>Klickar på anropets nod i kartan.</summary>
     private static Task TapEntryAsync(IPage page, string label) =>
-        page.EvaluateAsync("label => SystemMap.cy().nodes('.t-entry').filter(n => n.data('label') === label)[0].emit('tap')", label);
+        page.EvaluateAsync("label => { SystemMap.cy().nodes('.t-entry').filter(n => n.data('label') === label)[0].emit('tap'); }", label);
 
     /// <summary>Nivån som sparats i webbläsaren.</summary>
     private static Task<string> StoredLevelAsync(IPage page) => page.EvaluateAsync<string>("() => sessionStorage.getItem('map-level')");
@@ -253,7 +253,7 @@ public partial class CodeMapTests
             Assert.That(await page.GetAttributeAsync("#map-entry", "title"), Is.EqualTo("POST /v1/auth/in, GET /v1/me"));
             Assert.That(await page.EvaluateAsync<string[]>(PathEntries), Is.EqualTo(new[] { "GET /v1/me", "POST /v1/auth/in" }), "båda vägarna markeras");
             Assert.That(await page.EvaluateAsync<string[]>(DimmedEntries), Is.EqualTo(new[] { "GET /v1/family", "POST /v1/auth/out", "POST /v1/family" }), "resten är dämpat");
-            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-class.path').map(n => n.data('label')).sort()"),
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-class.path').map(n => n.data('label').split('\\n')[0]).sort()"),
                 Is.EqualTo(new[] { "AuthClient", "AuthController", "AuthService", "FamilyService", "MeController" }));
             Assert.That(await page.IsHiddenAsync("#map-status"), Is.True, "Anrop är inget filter");
             Assert.That(await page.GetAttributeAsync("#map-clear", "aria-disabled"), Is.EqualTo("false"));

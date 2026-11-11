@@ -72,7 +72,7 @@ har version 3 att ingångar som inte är HTTP saknar `method` och `path` (och ha
 
 ## Filter i webbsidan
 
-Raden ovanför kartan har fem sökbara listor: **Anrop**, **Projekt**, **Klass**, **Funktion** och **Integration**, och sedan **Riktning** och exporten.
+Raden ovanför kartan har fem sökbara listor: **Anrop**, **Projekt**, **Klass**, **Funktion** och **Integration**, och sedan **Riktning**, **Tema** och exporten.
 Klicka eller tryck pil ned för att öppna en lista; skriv för att söka (träffen markeras) och kryssa ett eller flera värden med klick, Enter eller
 Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick utanför stänger den.
 
@@ -85,10 +85,29 @@ Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick
 - Detaljnivån är en enda och väljs överst i listorna Klass, Funktion och Integration med radioknappar; listorna visar den: Klass: Visas inte är bara
   projekten, Klass: Alla klasserna, Funktion: Alla metoderna i klasserna och Integration: Alla, med läsningar och skrivningar allt utfällt. Ett val byter
   nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion.
-- Ett hopfällt projekt är en ljusblå, rundad ruta med projektikonen uppe till vänster, namnet och på raden under vad som ligger i det ("3 klasser · 4 funktioner", räknat efter filtret och det som är dolt); ett klick fäller ut det, ett klick till fäller ihop det.
+- Ett hopfällt projekt är en ljusgrön, rundad ruta med projektikonen uppe till vänster, namnet och på raden under vad som ligger i det ("3 klasser · 4 funktioner", räknat efter filtret och det som är dolt); ett klick fäller ut det, ett klick till fäller ihop det.
+- En hopfälld klass är en liten ruta på samma sätt: klassikonen uppe till vänster, namnet i fet stil och på raden under "3 funktioner" (ingen rad när klassen inte har några). Den har ingen "+N"-bricka. Ett klick fäller ut klassen, ett klick till fäller ihop den.
 - **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
 - Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
   filen med `--mermaid` och `--entry`. Den vägrar också i den fristående sidan när något är dolt eller "Visa delar som inte nås" är avbockat (filerna skrevs utan det valet).
+
+### Färger och tema
+
+Kartan har ett ljust och ett mörkt tema med VS Codes färger (Light Modern och Dark Modern). Typen står alltid i text och som ikon, aldrig bara som färg.
+
+| Del | Ljust | Mörkt |
+|---|---|---|
+| Solution (ramen "Systemet (…)") | `#652D90` | `#B180D7` |
+| Projekt | `#388A34` | `#89D185` |
+| Klass | `#D67E00` | `#EE9D28` |
+| Funktion | `#795E26` | `#DCDCAA` |
+| Integration, med läsningar och skrivningar | `#0063D3` | `#59A4F9` |
+| Anrop in | `#767676` | `#9D9D9D` |
+| Pilar mellan kod | `#A0A0A0` | `#6E6E6E` |
+
+Pilar till en integration har integrationens färg, pilar från ett anrop anropets. Sidans egna färger (bakgrund `#FFFFFF` och `#1F1F1F`, text `#3B3B3B` och `#CCCCCC`, accent `#005FB8` och `#0078D4`) klarar kontrast WCAG AA för text.
+
+**Tema** i raden är en knapp som byter mellan ljust och mörkt; ikonen visar temat man byter till (månen i ljust, solen i mörkt). Från början följer kartan datorn (`prefers-color-scheme`), också när det ändras medan sidan är öppen. Ett klick väljer det andra temat och sparar valet i webbläsaren som riktningen; väljer man datorns tema igen tas valet bort och sidan följer datorn på nytt. Färgerna byts utan ny utläggning.
 
 ### Zoom
 
@@ -96,6 +115,10 @@ Nere till höger i kartan finns **+**, **−**, **Passa in hela kartan** och und
 (så att små metodnamn går att läsa i stora kartor); Passa in visar hela kartan, eller vägen för de valda anropen, och zoomar aldrig in mer än 120 %.
 Med fokus i kartan eller på zoomknapparna gör tangenterna `+` (eller `=`), `-` och `0` samma sak. Ctrl + rullhjul (⌘ + rullhjul på Mac) zoomar, på pekskärm nyper man med två
 fingrar; vanligt rullhjul rullar sidan.
+
+## Bädda in kartan i en egen sida
+
+En sida som bäddar in kartan med `SystemMap.create(root, opts)` (se `systemmap.js`) får temaknappen. Inställningen `theme` låser temat och döljer knappen, för sidor med eget tema: `'light'` och `'dark'` väljer temat, `'auto'` följer datorn. Temat sätts som `data-theme="light"` eller `"dark"` på kartans rot, och färgerna i `systemmap.css` är variabler (`--map-bg`, `--map-fg`, `--map-accent` med flera, se början av filen) som sidan kan sätta själv på kartans rot.
 
 ## I en app
 

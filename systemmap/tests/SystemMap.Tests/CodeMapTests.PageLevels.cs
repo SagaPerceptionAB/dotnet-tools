@@ -5,8 +5,8 @@ namespace SystemMap.Tests;
 /// <summary>Sidan i en riktig webbläsare: detaljnivån som väljs i listorna, och det som är dolt (hidden) med rutan nere till vänster.</summary>
 public partial class CodeMapTests
 {
-    private const string Methods = "() => SystemMap.cy().nodes('.t-method').map(n => n.parent().data('label') + '.' + n.data('label')).sort()";
-    private const string Classes = "() => SystemMap.cy().nodes('.t-class').map(n => n.data('label')).sort()";
+    private const string Methods = "() => SystemMap.cy().nodes('.t-method').map(n => n.parent().data('label').split('\\n')[0] + '.' + n.data('label').split('\\n')[0]).sort()";
+    private const string Classes = "() => SystemMap.cy().nodes('.t-class').map(n => n.data('label').split('\\n')[0]).sort()";
     private static readonly string[] AllClasses = ["AuthClient", "AuthController", "AuthService", "FamilyController", "FamilyService", "MeController"];
 
     private static IReadOnlySet<string> HiddenIn(CodeMapModel map, params string[] names) =>
@@ -38,7 +38,7 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-operation').length"), Is.Zero, "raderna i integrationen visas inte");
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-integration').length"), Is.EqualTo(1));
             Assert.That(await page.EvaluateAsync<bool>("() => SystemMap.cy().nodes('.t-integration').every(n => n.hasClass('badge'))"), Is.True, "integrationen är hopfälld, med antalet rader på");
-            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges().not('.band').filter(e => e.source().hasClass('t-method') && e.target().hasClass('t-method')).map(e => e.source().data('label') + '>' + e.target().data('label')).sort()"),
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().edges().not('.band').filter(e => e.source().hasClass('t-method') && e.target().hasClass('t-method')).map(e => e.source().data('label').split('\\n')[0] + '>' + e.target().data('label').split('\\n')[0]).sort()"),
                 Does.Contain("Check()>Verify()").And.Contain("Load()>Verify()").And.Contain("In()>Check()"), "anropen mellan metoderna");
 
             // Integration: med läsningar och skrivningar visar också raderna i integrationen.

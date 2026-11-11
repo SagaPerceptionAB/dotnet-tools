@@ -1197,6 +1197,8 @@
   // Själva kartan ritas av /lib/systemmap.js (samma som i testgen map --html); här finns felrutan och vägen i testkorten.
   var mapBody = null, mapLoading = false, mapStarted = false;
   var systemMap = SystemMap.create($('map'), {
+    // Kartan följer datorns tema (ljust eller mörkt) tills testgen får eget tema; temaknappen visas inte.
+    theme: 'auto',
     onError: function (e) { showMapError({ message: e.message, tip: e.tip }); },
     // Det som är dolt följer filen med (hide); valet om delar som inte nås följer den inte, och kartan vägrar inte för det.
     mermaidAccepts: { hidden: true, unreached: true },

@@ -455,7 +455,7 @@ public partial class CodeMapTests
             // Ett valt anrop som inte är HTTP visar sin väg.
             await PickAsync(page, "entry", "Bakgrund: OrderCleanupWorker");
             await ready();
-            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.path').map(n => n.data('label')).sort()"),
+            Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.path').map(n => n.data('label').split('\\n')[0]).sort()"),
                 Does.Contain("Bakgrund: OrderCleanupWorker").And.Contain("Writer"));
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-entry.dimmed').map(n => n.data('label')).sort()"), Does.Contain("POST /x").And.Not.Contain("Bakgrund: OrderCleanupWorker"));
         });

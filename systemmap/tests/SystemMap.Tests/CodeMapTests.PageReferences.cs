@@ -236,6 +236,9 @@ public partial class CodeMapTests
     private const string Row = """
         () => {
           const cy = SystemMap.cy(), at = { Api: [-400, 0], Application: [0, 0], Infrastructure: [400, 0], Shared: [0, 400], Legacy: [-400, 400] };
+          // Anropen och integrationerna flyttas långt bort, så att bara projekten står där linjerna går (annars beror det på typsnittet,
+          // som ger noderna deras bredd, om de råkar stå i vägen).
+          cy.nodes().filter(n => !n.isParent() && !n.hasClass('t-project') && !n.hasClass('anchor')).forEach(n => n.position({ x: n.position().x + 8000, y: n.position().y + 8000 }));
           cy.nodes('.t-project').forEach(n => { const p = at[n.data('label').split('\n')[0]]; n.position({ x: p[0], y: p[1] }); });
           SystemMap.routeLines();
         }

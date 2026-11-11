@@ -1683,24 +1683,30 @@
     });
     var apart = function (e) { return boxes.filter(function (x) { return x.id !== e.source().id() && x.id !== e.target().id(); }); };
     var inside = function (pt, b, m) { return pt.x > b.x1 - m && pt.x < b.x2 + m && pt.y > b.y1 - m && pt.y < b.y2 + m; };
+    // Sätter böjen d (0 = rak) och säger om linjen som Cytoscape då ritar går fri från alla andra noder. Kurvan räknas med Cytoscapes egna
+    // ändpunkter (där linjen möter nodernas kant) och kontrollpunkt: en kurva räknad från nodernas mitt skiljer sig från den ritade, mest när
+    // noderna är breda (bredden beror på typsnittet), så den kunde gå fri i uträkningen men skära en nod i bilden.
+    var bend = function (e, d) {
+      if (d === 0) e.style({ 'curve-style': 'straight' });
+      else e.style({ 'curve-style': 'unbundled-bezier', 'control-point-distances': [d], 'control-point-weights': [0.5] });
+    };
+    var clearOf = function (e, others) {
+      var s = e.sourceEndpoint(), t = e.targetEndpoint(), c = e.style('curve-style') === 'unbundled-bezier' ? (e.controlPoints() || [])[0] : null;
+      for (var i = 0; i <= 48; i++) {
+        var k = i / 48, u = 1 - k;
+        var pt = c ? { x: u * u * s.x + 2 * u * k * c.x + k * k * t.x, y: u * u * s.y + 2 * u * k * c.y + k * k * t.y } : { x: s.x + (t.x - s.x) * k, y: s.y + (t.y - s.y) * k };
+        if (others.some(function (o) { return inside(pt, o.b, LINE_MARGIN); })) return false;
+      }
+      return true;
+    };
     cy.edges('.ref').forEach(function (e) {
-      var a = e.source().position(), b = e.target().position(), dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
       var others = apart(e), back = e.hasClass('ref-back');
       // Raka linjen (eller den lätt böjda när anropen går åt andra hållet) först, sedan allt mer böjd, åt båda hållen, tills den går förbi allt.
       var tries = back ? [-40, 40] : [0];
       for (var d = back ? 80 : 40; d <= 600; d += 40) tries.push(d, -d);
-      var free = tries.filter(function (d) {
-        // Böjen är en kvadratisk bezier med kontrollpunkten d från mitten (som Cytoscapes unbundled-bezier), så kurvan når d / 2.
-        var c = { x: (a.x + b.x) / 2 + nx * d, y: (a.y + b.y) / 2 + ny * d };
-        for (var i = 0; i <= 48; i++) {
-          var t = i / 48, u = 1 - t, pt = { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y };
-          if (others.some(function (o) { return inside(pt, o.b, LINE_MARGIN); })) return false;
-        }
-        return true;
-      })[0];
-      if (free === undefined) return;
-      if (free === 0) e.style({ 'curve-style': 'straight' });
-      else e.style({ 'curve-style': 'unbundled-bezier', 'control-point-distances': [free], 'control-point-weights': [0.5] });
+      var free = tries.filter(function (d) { bend(e, d); return clearOf(e, others); })[0];
+      // Går ingen böj fri står linjen som förut: rak, eller lätt böjd när anropen går åt andra hållet.
+      bend(e, free === undefined ? tries[0] : free);
     });
     cy.edges('.counted').forEach(function (e) { placeCount(e, boxes); });
   }

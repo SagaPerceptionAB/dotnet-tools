@@ -110,8 +110,9 @@ public partial class CodeMapTests
             await ready();
             Assert.That(await page.IsHiddenAsync("#map-status"), Is.True);
             Assert.That(await page.InputValueAsync("#map-cls"), Is.EqualTo("Alla"));
+            await OpenGroupsAsync(page, ready);   // en ny nivå (klasserna) fäller ihop grupperna igen
             Assert.That(await page.EvaluateAsync<string[]>(EntryNodes), Has.Length.EqualTo(5));
-        });
+        }, level: null);   // inget sparat val: Rensa är grå från början
     }
 
     [Test]
@@ -330,18 +331,18 @@ public partial class CodeMapTests
 
             await page.ClickAsync("#map-clear");
             await ready();
-            foreach (var (field, text) in new[] { ("entry", "Hela systemet"), ("project", "Alla"), ("cls", "Alla"), ("fn", "Visas inte"), ("integ", "Alla") })
+            foreach (var (field, text) in new[] { ("entry", "Hela systemet"), ("project", "Alla"), ("cls", "Visas inte"), ("fn", "Visas inte"), ("integ", "Alla") })
             {
                 Assert.That(await page.InputValueAsync($"#map-{field}"), Is.EqualTo(text), field);
                 Assert.That(await HasValueAsync(page, field), Is.False, field);
             }
             Assert.That(await page.GetAttributeAsync("#map-clear", "aria-disabled"), Is.EqualTo("true"), "grå när allt är nollställt");
             Assert.That(await page.IsHiddenAsync("#map-status"), Is.True);
-            Assert.That(await StoredLevelAsync(page), Is.EqualTo("classes"), "nivån är Klasser");
-            Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-method, .t-operation').length"), Is.Zero);
+            Assert.That(await StoredLevelAsync(page), Is.EqualTo("projects"), "nivån är Projekt (startvyn)");
+            Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-class, .t-method, .t-operation').length"), Is.Zero);
             Assert.That(await page.GetAttributeAsync("[data-direction='TB']", "aria-pressed"), Is.EqualTo("true"), "riktningen är orörd");
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False, "valet om det som inte nås är orört");
-        });
+        }, level: null);   // inget sparat val: startvyn är Projekt, och då är inget valt
     }
 
     // --- Mermaid ------------------------------------------------------------------------------------

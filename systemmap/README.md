@@ -84,10 +84,20 @@ Mellanslag. Listan står kvar öppen medan man kryssar; Esc, Tab eller ett klick
 - Anrop markerar vägarna för de kryssade anropen och dämpar resten (det är inget filter); listan visar bara anropen som går genom filtren.
 - Detaljnivån är en enda och väljs överst i listorna Klass, Funktion och Integration med radioknappar; listorna visar den: Klass: Visas inte är bara
   projekten, Klass: Alla klasserna, Funktion: Alla metoderna i klasserna och Integration: Alla, med läsningar och skrivningar allt utfällt. Ett val byter
-  nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion.
+  nivån och de andra listorna följer med (Funktion: Alla ger också Klass: Alla). Klass: Visas inte stänger av Funktion. Webbsidan öppnas på
+  projektnivån (Klass: Visas inte) så att hela systemet får plats på skärmen; ett val i listorna sparas för sessionen och gäller före nästa gång.
+  `--level` (Mermaid) är oförändrat och har fortfarande `classes` som standard.
+- Projekten står i flödets ordning, från anropen in åt höger (uppifrån och ned i riktningen ↓): projekten som anropen går in i först, sedan de de anropar och så
+  vidare. Ett projekts plats är kortaste vägen dit från ett anrop in, och projekt på samma avstånd delar kolumn. Projekt som ingen ingång når står sist.
+- Anropen som hör ihop (samma sökväg, som `/orders`, eller samma sort, som Bakgrundstjänster) är hopfällda från början till ett enda anrop: "/orders · 5 anrop",
+  med pilar till allt de når. Ett klick på det fäller ut gruppen (en ruta med anropen), ett klick på rutans namn eller kant fäller ihop den igen; det man fällt ut
+  kommer man ihåg som för projekt och klasser tills nivån byts. Väljer man ett anrop (i listan Anrop eller på kartan) fälls dess grupp ut så att anropet syns
+  och vägen markeras; fälls gruppen ihop ändå markeras den som vägen. Listan Anrop, filtren och Mermaid-exporten visar alltid de riktiga anropen.
+- Anropen och integrationerna ställs nära systemrutan (ca 90 px luft) när kartan är ritad: anropen i en rad (kolumn) intill rutan, integrationerna i en tät kolumn på rutans
+  andra sida, och i flera kolumner när de blir fler än rutan är hög. Pilarna blir korta och kartan kan zoomas in mer.
 - Ett hopfällt projekt är en ljusgrön, rundad ruta med projektikonen uppe till vänster, namnet och på raden under vad som ligger i det ("3 klasser · 4 funktioner", räknat efter filtret och det som är dolt); ett klick fäller ut det, ett klick till fäller ihop det.
 - En hopfälld klass är en liten ruta på samma sätt: klassikonen uppe till vänster, namnet i fet stil och på raden under "3 funktioner" (ingen rad när klassen inte har några). Den har ingen "+N"-bricka. Ett klick fäller ut klassen, ett klick till fäller ihop den.
-- **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Klasser). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
+- **✕ Rensa** tar bort alla kryss och återställer nivåvalen (nivån Projekt). Riktningen, det som är dolt och valet om delar som inte nås rörs inte.
 - Exportera som Mermaid vägrar när ett filter är valt eller flera anrop är kryssade: filen följer inte filtret och visar ett anrop i taget. Välj Rensa, eller skapa
   filen med `--mermaid` och `--entry`. Den vägrar också i den fristående sidan när något är dolt eller "Visa delar som inte nås" är avbockat (filerna skrevs utan det valet).
 

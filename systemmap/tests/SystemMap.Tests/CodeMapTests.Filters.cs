@@ -316,6 +316,7 @@ public partial class CodeMapTests
             Assert.That(await page.GetAttributeAsync("#map-clear", "aria-disabled"), Is.EqualTo("true"), "inget är valt");
             Assert.That(await page.IsDisabledAsync("#map-clear"), Is.True, "grå: går inte att klicka");
 
+            await OpenShowAsync(page);
             await page.UncheckAsync("#map-unreached");
             await ready();
             await page.ClickAsync("[data-direction='TB']");
@@ -341,6 +342,7 @@ public partial class CodeMapTests
             Assert.That(await StoredLevelAsync(page), Is.EqualTo("projects"), "nivån är Projekt (startvyn)");
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-class, .t-method, .t-operation').length"), Is.Zero);
             Assert.That(await page.GetAttributeAsync("[data-direction='TB']", "aria-pressed"), Is.EqualTo("true"), "riktningen är orörd");
+            await OpenShowAsync(page);
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False, "valet om det som inte nås är orört");
         }, level: null);   // inget sparat val: startvyn är Projekt, och då är inget valt
     }

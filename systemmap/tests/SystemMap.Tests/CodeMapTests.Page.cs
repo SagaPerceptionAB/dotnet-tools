@@ -128,6 +128,13 @@ public partial class CodeMapTests
         await ready();
     }
 
+    // Öppnar panelen under knappen Visa i raden (förklaringen, delar som inte nås och det dolda), om den inte redan är öppen.
+    private static async Task OpenShowAsync(IPage page)
+    {
+        if (await page.GetAttributeAsync("#map-show", "aria-expanded") != "true") await page.ClickAsync("#map-show");
+        await page.WaitForSelectorAsync("#map-show-panel", new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible });
+    }
+
     // Fäller ut alla hopfällda anropsgrupper (ett klick var på kartans nod).
     private static async Task OpenGroupsAsync(IPage page, Func<Task> ready)
     {

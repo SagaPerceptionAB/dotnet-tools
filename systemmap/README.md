@@ -61,7 +61,7 @@ Utan `--html`, `--mermaid` och `--json` skrivs kartan som en webbsida i en tillf
 - En dold integration tas bort med sina läsningar, skrivningar och meddelanden och pilarna dit.
 - Anrop (ingångarna) går inte att dölja.
 - Texten på stdout, `--mermaid` och `--json` blir utan de dolda delarna, och säger vilka som är dolda (en rad `Dolda delar:` i texten och Mermaid-filen, och listan `hidden` med id:n i JSON). JSON-filen har samma form som annars (`schemaVersion`, sorterade listor): `entryPoints`, `integrations`, `apps` och `overview` är filtrerade, men ett anrops egen `handler` står kvar, och `file` för en integration anges där den anropas.
-- `--html` får hela kartan, med delarna dolda. Rutan nere till vänster i kartan säger hur många som är dolda ("2 dolda med --hide", med namnen i title) och har knappen **Visa dem**, så att den som läser kan se dem. Nya delar går inte att dölja i sidan; det man vill se mindre av väljer man bort med filtren. Att visa dem sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
+- `--html` får hela kartan, med delarna dolda. Knappen **Visa** i raden (efter Tema) öppnar en panel som säger hur många som är dolda ("2 dolda med --hide", med namnen i title) och har knappen **Visa dem**, så att den som läser kan se dem. Nya delar går inte att dölja i sidan; det man vill se mindre av väljer man bort med filtren. Att visa dem sparas i webbläsaren och gäller före `--hide` nästa gång sidan öppnas i samma flik. Exportera som Mermaid i sidan följer inte det som är dolt; skapa filen med `--mermaid` och `--hide`.
 
 Kartan skrivs som text på stdout. Förlopp, varningar och bekräftelser (`Skrev karta.html (webbsida)`) skrivs på stderr.
 
@@ -143,7 +143,7 @@ konfiguration står i [SagaPerception.SystemMap.AspNetCore](https://github.com/S
 
 Alla projekt (utom testprojekt) och alla klasser med metoder som har kod finns på kartan, också de som ingen ingång når. De ritas dämpade och streckade
 (`reached: false` i JSON), och i texten som en lista sist ("Nås inte från någon ingång:", per
-projekt). På nivåerna Funktioner och Allt syns också metoderna i en klass som nås men som ingen anropar. I sidan har rutan nere till vänster i kartan
+projekt). På nivåerna Funktioner och Allt syns också metoderna i en klass som nås men som ingen anropar. I sidan har panelen under knappen **Visa** i raden
 valet "Visa delar som inte nås", med den streckade rutan som förklaring (från början ibockat, sparas i webbläsaren som det man väljer); `--no-unreached`
 tar bort dem ur text, Mermaid och JSON och avbockar valet i `--html`. `--hide` fungerar på dem som på andra projekt och klasser.
 
@@ -182,7 +182,7 @@ namnger, så läs `unused` som "kolla om den behövs", inte som "ta bort den".
 - **Text på stdout:** sist avsnittet `Projektreferenser:` med en rad per referens (`ShopApi → ShopApplication: används av 4 anrop`, `ShopApi → ShopInfrastructure: bara vid uppstart (anropar InfrastructureRegistration.AddShopInfrastructure, ShopApi/Program.cs:53)`), och `Referenser som inte används:` med `A → B (A.csproj)`.
 - **`--mermaid` på `--level projects`:** referenser utan anrop är streckade pilar (`-.->`) med texten `bara uppstart`, `används` eller `används inte`.
 - **Webbsidan, nivån Projekt:** pilen mellan två projekt med anrop får texten "N anrop". Referenser utan anrop är tunna streckade linjer: grå för `startup` och `code` (lätt böjda när anropen går åt andra hållet, så att de inte täcker anropspilen), orange med texten "används inte" för `unused`.
-  Ett klick på en linje (pil eller referens) öppnar kortet för paret med vad referensen används till, exemplen och var de står. Rutan nere till vänster förklarar linjerna när det finns några. På nivåerna Klasser och nedåt, och när ett anrop är valt, ritas inga referenslinjer.
+  Ett klick på en linje (pil eller referens) öppnar kortet för paret med vad referensen används till, exemplen och var de står. Panelen under knappen **Visa** i raden (en knapp med info-ikonen, högerjusterad panel som stängs med Esc, ett klick utanför eller ett nytt klick på knappen) förklarar linjerna när det finns några; knappen syns bara när panelen har något att visa. På nivåerna Klasser och nedåt, och när ett anrop är valt, ritas inga referenslinjer.
   Ett projekt som ingen ingång når men som ett annat refererar står i lagret efter det som refererar det.
 
 ## Vad som känns igen

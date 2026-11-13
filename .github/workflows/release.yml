@@ -60,18 +60,15 @@ jobs:
             echo "::error::Taggen '$tag' har ingen giltig semver-version ('$version'). Exempel: $component/v1.2.3 eller $component/v1.2.3-beta.1"
             exit 1
           fi
-          browser=""
           case "$component" in
-            testgen)       projects="testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli"; browser="testgen/tests/TestGen.Browser.Tests"; test="dotnet test testgen/testgen.slnx" ;;
-            systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore"; browser="systemmap/tests/SystemMap.Tests"; test="dotnet test systemmap/SystemMap.slnx" ;;
+            testgen)       projects="testgen/src/SagaPerception.TestGen.NUnit testgen/src/TestGen.Cli" ;;
+            systemmap)     projects="systemmap/src/SystemMap.Cli systemmap/src/SystemMap.AspNetCore" ;;
             *) echo "::error::Okänd komponent '$component'"; exit 1 ;;
           esac
           {
             echo "component=$component"
             echo "version=$version"
             echo "projects=$projects"
-            echo "browser=$browser"
-            echo "test=$test"
           } >> "$GITHUB_OUTPUT"
           echo "Ger ut $component $version ($projects)"
 
@@ -89,16 +86,7 @@ jobs:
             echo "$p: $actual stämmer med taggen"
           done
 
-      # Testprojektet i browser kör Chromium (som i ci.yml).
-      - name: Installera Chromium
-        if: steps.tag.outputs.browser != ''
-        shell: pwsh
-        run: |
-          dotnet build ${{ steps.tag.outputs.browser }}
-          ${{ steps.tag.outputs.browser }}/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
-
-      - name: Test
-        run: ${{ steps.tag.outputs.test }}
+      # Testerna körs inte igen här: commiten på main har testats i sin pull request (ci.yml). Paketen kontrolleras nedan.
 
       - name: Paketera
         shell: bash

@@ -118,6 +118,7 @@ public partial class CodeMapTests
         var map = await MapRefsAsync();
         await WithPageAsync(map, async (page, ready) =>
         {
+            await OpenShowAsync(page);
             Assert.That(await page.IsVisibleAsync("#map-refs"), Is.True);
             await PickAsync(page, "cls", "Alla");
             await ready();
@@ -128,6 +129,7 @@ public partial class CodeMapTests
             await PickAsync(page, "cls", "Visas inte");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(RefLines), Has.Length.EqualTo(4));
+            await OpenShowAsync(page);
             Assert.That(await page.IsVisibleAsync("#map-refs"), Is.True);
         }, level: "projects", groupsOpen: false);
     }
@@ -137,9 +139,10 @@ public partial class CodeMapTests
     {
         await WithPageAsync(await MapRefsAsync(), async (page, ready) =>
         {
-            Assert.That(await page.IsVisibleAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsVisibleAsync("#map-show-field"), Is.True);
+            await OpenShowAsync(page);
             Assert.That(await page.InnerTextAsync("#map-refs"), Is.EqualTo(
-                "Mellan projekten\nanrop som går genom referensen (antal anrop in)\nreferens i csproj som används på annat sätt (uppstart, anrop åt andra hållet)\nreferens i csproj som inte används"));
+                "Förklaring\nanrop mellan projekten (antal anrop in)\nreferens i csproj, används på annat sätt\nreferens i csproj som inte används"));
             Assert.That(await page.Locator("#map-refs .map-ref-row").CountAsync(), Is.EqualTo(3));
             Assert.That(await page.GetAttributeAsync("#map-refs", "aria-label"), Is.EqualTo("Linjerna mellan projekten"));
         }, level: "projects", groupsOpen: false);
@@ -147,7 +150,7 @@ public partial class CodeMapTests
         await WithPageAsync(await MapAsync(Controller("", "")), async (page, ready) =>
         {
             Assert.That(await page.IsHiddenAsync("#map-refs"), Is.True, "inga referenser");
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsHiddenAsync("#map-show-field"), Is.True);
         }, level: "projects", groupsOpen: false, showUnreached: false);
     }
 

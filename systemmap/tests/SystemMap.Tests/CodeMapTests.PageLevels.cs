@@ -97,7 +97,7 @@ public partial class CodeMapTests
         var map = await MapAsync(Build(true, Web("Api", AppStart + FlowApi)));
         await WithPageAsync(map, async (page, ready) =>
         {
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True, "inget är dolt och allt nås: ingen ruta");
+            Assert.That(await page.IsHiddenAsync("#map-show-field"), Is.True, "inget är dolt och allt nås: ingen knapp");
         });
 
         await WithPageAsync(map, async (page, ready) =>
@@ -105,16 +105,18 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<string[]>(Classes), Is.EqualTo(AllClasses.Where(c => c != "AuthService")));
             Assert.That(await page.EvaluateAsync<string[]>(Arrows), Does.Contain("AuthController>AuthClient").And.Not.Contain("AuthController>AuthService"),
                 "vägen genom den dolda klassen står kvar: controllern anropar nu klassen efter den");
-            Assert.That(await page.IsVisibleAsync("#map-legend"), Is.True, "den som läser kartan ser att något är dolt");
+            Assert.That(await page.IsVisibleAsync("#map-show-field"), Is.True, "den som läser kartan ser att något är dolt");
+            await OpenShowAsync(page);
             Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("1 dold med --hide"));
             Assert.That(await page.GetAttributeAsync("#map-hint", "title"), Does.Contain("AuthService"));
             Assert.That(await page.IsHiddenAsync("#map-unreached-field"), Is.True, "allt nås: inget val om det");
             Assert.That(await OptionTextsAsync(page, "cls"), Does.Not.Contain("AuthService"), "det som är dolt går inte att välja");
 
+            await OpenShowAsync(page);
             await page.ClickAsync("#map-show-all");
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(Classes), Is.EqualTo(AllClasses));
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True, "inget är dolt längre");
+            Assert.That(await page.IsHiddenAsync("#map-show-field"), Is.True, "inget är dolt längre");
             Assert.That(await OptionTextsAsync(page, "cls"), Does.Contain("AuthService"));
         }, HiddenIn(map, "AuthService"));
 
@@ -122,6 +124,7 @@ public partial class CodeMapTests
         await WithPageAsync(map, async (page, ready) =>
         {
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-project, .t-class, .t-method').length"), Is.Zero);
+            await OpenShowAsync(page);
             Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("1 dold med --hide"));
         }, HiddenIn(map, "projekt:Api"));
     }
@@ -140,10 +143,11 @@ public partial class CodeMapTests
             Assert.That(await page.EvaluateAsync<string[]>(Classes), Is.EqualTo(AllClasses), "klasserna är kvar");
             Assert.That(await OptionTextsAsync(page, "integ"), Is.EqualTo(new[] { "Alla", "Alla, med läsningar och skrivningar" }), "inga integrationer att välja");
 
+            await OpenShowAsync(page);
             await page.ClickAsync("#map-show-all");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.t-integration').length"), Is.EqualTo(1));
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsHiddenAsync("#map-show-field"), Is.True);
         }, HiddenIn(map, integrations));
     }
 
@@ -155,17 +159,19 @@ public partial class CodeMapTests
         await WithPageAsync(map, async (page, ready) =>
         {
             Assert.That(await page.EvaluateAsync<string[]>(Classes), Is.EqualTo(AllClasses.Where(c => c != "AuthService" && c != "MeController")), "dolda från början");
+            await OpenShowAsync(page);
             Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("2 dolda med --hide"));
             await page.ReloadAsync();
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(Classes), Is.EqualTo(AllClasses.Where(c => c != "AuthService" && c != "MeController")), "inget sparat än: sidans val gäller");
 
+            await OpenShowAsync(page);
             await page.ClickAsync("#map-show-all");
             await ready();
             await page.ReloadAsync();
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(Classes), Is.EqualTo(AllClasses), "att visa allt är också ett val som sparas, och det gäller före det sidan skrevs med");
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsHiddenAsync("#map-show-field"), Is.True);
         }, HiddenIn(map, "AuthService", "MeController"));
     }
 
@@ -179,6 +185,7 @@ public partial class CodeMapTests
             await page.WaitForFunctionAsync("() => document.getElementById('map-mermaid-status').textContent !== ''");
             Assert.That(await page.InnerTextAsync("#map-mermaid-status"), Does.Contain("Mermaid-filen kan inte följa det som är dolt i sidan.").And.Contain("dotnet systemmap --mermaid karta.mmd --hide"));
 
+            await OpenShowAsync(page);
             await page.ClickAsync("#map-show-all");
             await ready();
             var download = await page.RunAndWaitForDownloadAsync(() => page.ClickAsync("#map-mermaid"));

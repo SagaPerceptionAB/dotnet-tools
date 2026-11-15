@@ -229,8 +229,9 @@ public partial class CodeMapTests
         var map = await WithUnreached();
         await WithPageAsync(map, async (page, ready) =>
         {
-            Assert.That(await page.IsVisibleAsync("#map-legend"), Is.True);
-            Assert.That(await page.InnerTextAsync("#map-legend"), Is.EqualTo("Visa delar som inte nås"), "valet, med den streckade rutan som förklaring");
+            Assert.That(await page.IsVisibleAsync("#map-show-field"), Is.True);
+            await OpenShowAsync(page);
+            Assert.That(await page.InnerTextAsync("#map-show-panel"), Is.EqualTo("Visa delar som inte nås"), "valet, med den streckade rutan som förklaring");
             Assert.That(await page.IsHiddenAsync("#map-hidden-row"), Is.True, "inget är dolt med --hide");
             Assert.That(await page.EvaluateAsync<string[]>(Unreached), Is.EqualTo(new[] { "class:Api/LegacyExporter", "class:Lib/Orphan", "class:Tools/Migrator", "proj:Tools" }),
                 "på nivån Klasser: klasserna och projektet, inte metoderna");
@@ -269,7 +270,7 @@ public partial class CodeMapTests
         var map = await MapAsync(Build(true, Web("Api", AppStart + "[ApiController, Route(\"x\")] public class XController : ControllerBase { [HttpGet] public int Get() => 1; }")));
         await WithPageAsync(map, async (page, ready) =>
         {
-            Assert.That(await page.IsHiddenAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsHiddenAsync("#map-show-field"), Is.True);
             Assert.That(await page.IsHiddenAsync("#map-unreached-field"), Is.True);
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
         });
@@ -281,15 +282,17 @@ public partial class CodeMapTests
         var map = await WithUnreached();
         await WithPageAsync(map, async (page, ready) =>
         {
+            await OpenShowAsync(page);
             Assert.That(await page.InnerTextAsync("#map-unreached-field"), Is.EqualTo("Visa delar som inte nås"));
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.True, "från början ibockad");
             Assert.That(await OptionTextsAsync(page, "cls"), Does.Contain("LegacyExporter").And.Contain("OrderService"));
 
             // Valet tar bort allt som inte nås. Rutan står kvar, så att man kan bocka i det igen.
+            await OpenShowAsync(page);
             await page.UncheckAsync("#map-unreached");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
-            Assert.That(await page.IsVisibleAsync("#map-legend"), Is.True);
+            Assert.That(await page.IsVisibleAsync("#map-show-field"), Is.True);
             Assert.That(await page.IsHiddenAsync("#map-hidden-row"), Is.True, "bara valet, inget är dolt med --hide");
             Assert.That(await page.EvaluateAsync<string[]>("() => SystemMap.cy().nodes('.t-class').map(n => n.id()).sort()"), Is.EqualTo(new[] { "class:Api/OrderService", "class:Api/OrdersController", "class:Lib/Store" }),
                 "det som nås är kvar");
@@ -299,6 +302,7 @@ public partial class CodeMapTests
             await page.ReloadAsync();
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
+            await OpenShowAsync(page);
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False);
 
             // Mermaid-filen kan inte följa det som är dolt.
@@ -306,6 +310,7 @@ public partial class CodeMapTests
             Assert.That(await page.InnerTextAsync("#map-mermaid-status"), Does.Contain("Mermaid-filen kan inte följa det som är dolt").And.Contain("--no-unreached"));
 
             // Att bocka i det ger tillbaka dem.
+            await OpenShowAsync(page);
             await page.CheckAsync("#map-unreached");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.GreaterThan(0));
@@ -316,11 +321,12 @@ public partial class CodeMapTests
     }
 
     [Test]
-    public async Task Page_with_both_hidden_parts_and_unreached_parts_has_both_in_the_legend_and_the_saved_choice_to_show_unreached_beats_no_unreached()
+    public async Task Page_with_both_hidden_parts_and_unreached_parts_has_both_in_the_panel_and_the_saved_choice_to_show_unreached_beats_no_unreached()
     {
         var map = await WithUnreached();
         await WithPageAsync(map, async (page, ready) =>
         {
+            await OpenShowAsync(page);
             Assert.That(await page.IsVisibleAsync("#map-unreached-field"), Is.True);
             Assert.That(await page.InnerTextAsync("#map-hint"), Is.EqualTo("1 dold med --hide"));
             Assert.That(await page.GetAttributeAsync("#map-hint", "title"), Does.Contain("LegacyExporter"));
@@ -329,7 +335,7 @@ public partial class CodeMapTests
             await ready();
             Assert.That(await page.EvaluateAsync<string[]>(Unreached), Does.Contain("class:Api/LegacyExporter"));
             Assert.That(await page.IsHiddenAsync("#map-hidden-row"), Is.True);
-            Assert.That(await page.IsVisibleAsync("#map-unreached-field"), Is.True, "rutan står kvar med valet om det som inte nås");
+            Assert.That(await page.IsVisibleAsync("#map-unreached-field"), Is.True, "panelen står kvar med valet om det som inte nås");
         }, HiddenIn(map, "LegacyExporter"));
     }
 
@@ -341,6 +347,7 @@ public partial class CodeMapTests
         {
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.Zero);
             Assert.That(await page.IsCheckedAsync("#map-unreached"), Is.False);
+            await OpenShowAsync(page);
             await page.CheckAsync("#map-unreached");
             await ready();
             Assert.That(await page.EvaluateAsync<int>("() => SystemMap.cy().nodes('.unreached').length"), Is.GreaterThan(0));

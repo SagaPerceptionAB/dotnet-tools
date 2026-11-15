@@ -1,10 +1,17 @@
-# Bygger och testar allt i repot. Docker behövs inte. Chromium installeras för sviterna som har browser i matrisen.
+# Bygger och testar det en ändring påverkar. Docker behövs inte. Chromium installeras för sviterna som har browser i matrisen.
+#
+# Körs på pull requests (inte en gång till när de mergas: det som mergas är redan testat) och varje måndag på main, då allt körs
+# (fångar nya sårbarheter i paket, en ny .NET SDK på GitHubs maskiner och ger CodeQL en analys av main). workflow_dispatch kör allt.
+# Jobbet changes avgör vad en PR påverkar utifrån vilka filer den ändrar (se reglerna där); det som inte påverkas hoppas över.
+# Jobbet "ci klar" samlar resultatet: gör det till den enda obligatoriska kontrollen i branch protection, eftersom de andra jobben
+# kan hoppas över.
 name: ci
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,19 +25,103 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
+  # Vad ändringen påverkar. Beroendena: shared används av systemmap och testgen, systemmap av testgen (Views och Cli), testgen av
+  # exemplen (Shop.Tests), och systemmap- och testgentesterna läser exemplen. Byggfilerna i roten, eng/ (utom versionerna) och
+  # workflowen påverkar allt. Ändrad dokumentation (*.md, docs/) kör ingenting.
+  changes:
+    name: vad som påverkas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.f.outputs.matrix }}
+      samples: ${{ steps.f.outputs.samples }}
+      pack: ${{ steps.f.outputs.pack }}
+      code: ${{ steps.f.outputs.code }}
+      packages: ${{ steps.f.outputs.packages }}
+      format: ${{ steps.f.outputs.format }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: f
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          shared=0 systemmap=0 testgen=0 samples=0 repository=0 pack=0 code=0 packages=0
+          format=""   # lösningarna vars C#-filer ändrats: dotnet format går bara igenom dem
+          all() {
+            shared=1 systemmap=1 testgen=1 samples=1 repository=1 pack=1 code=1 packages=1
+            format="shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj"
+          }
+          formats() { case " $format " in *" $1 "*) ;; *) format="$format $1" ;; esac; }
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            all
+          else
+            git diff --name-only "$BASE...$HEAD" > changed.txt
+            echo "Ändrade filer:"; cat changed.txt
+            while IFS= read -r f; do
+              case "$f" in
+                *.md|docs/*|LICENSE|.github/CODEOWNERS|.github/pull_request_template.md|.github/dependabot.yml) ;;
+                eng/Versions.props) pack=1 ;;
+                eng/try-packages.sh|eng/check-packages.sh) pack=1 ;;
+                eng/check-expected-failures.sh) samples=1 ;;
+                shared/*) shared=1 systemmap=1 testgen=1 samples=1 pack=1 ;;
+                systemmap/*) systemmap=1 testgen=1 pack=1 ;;
+                testgen/*) testgen=1 samples=1 pack=1 ;;
+                samples/*) samples=1 systemmap=1 testgen=1 ;;
+                tests/*) repository=1 ;;
+                *) all ;;
+              esac
+              # C# och projektfiler: CodeQL, arkitekturtestet och dotnet format för lösningen filen ligger i.
+              case "$f" in
+                eng/*) ;;
+                *.cs|*.csproj|*.props|*.targets|*.slnx|*.razor|*.cshtml)
+                  code=1 repository=1
+                  case "$f" in
+                    shared/*) formats shared/Shared.slnx ;;
+                    systemmap/*) formats systemmap/SystemMap.slnx ;;
+                    testgen/*) formats testgen/testgen.slnx ;;
+                    samples/*) formats samples/Shop.slnx ;;
+                    tests/*) formats tests/Repository.Tests/Repository.Tests.csproj ;;
+                  esac ;;
+              esac
+              case "$f" in
+                *.csproj|Directory.Packages.props|global.json) packages=1 ;;
+              esac
+            done < changed.txt
+          fi
+          # Testmatrisen: Linux för allt, Windows för det som läser sökvägar och processer (inte arkitekturtestet).
+          entries=()
+          add() { entries+=("{\"name\":\"$1\",\"solution\":\"$2\",\"browser\":\"$3\",\"os\":\"$4\"}"); }
+          for os in ubuntu-latest windows-latest; do
+            [ $shared = 1 ] && add shared shared/Shared.slnx "" $os
+            [ $testgen = 1 ] && add testgen testgen/testgen.slnx testgen/tests/TestGen.Browser.Tests $os
+            [ $systemmap = 1 ] && add systemmap systemmap/SystemMap.slnx systemmap/tests/SystemMap.Tests $os
+          done
+          [ $repository = 1 ] && add repository tests/Repository.Tests/Repository.Tests.csproj "" ubuntu-latest
+          matrix="[$(IFS=,; echo "${entries[*]-}")]"
+          {
+            echo "matrix=$matrix"
+            echo "samples=$samples"
+            echo "pack=$pack"
+            echo "code=$code"
+            echo "packages=$packages"
+            echo "format=${format# }"
+          } | tee -a "$GITHUB_OUTPUT"
+
   test:
-    name: test ${{ matrix.suite.name }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: test ${{ matrix.suite.name }} (${{ matrix.suite.os }})
+    needs: changes
+    if: needs.changes.outputs.matrix != '[]'
+    runs-on: ${{ matrix.suite.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
-        suite:
-          - { name: shared, solution: shared/Shared.slnx }
-          - { name: testgen, solution: testgen/testgen.slnx, browser: testgen/tests/TestGen.Browser.Tests }
-          - { name: systemmap, solution: systemmap/SystemMap.slnx, browser: systemmap/tests/SystemMap.Tests }
-          - { name: repository, solution: tests/Repository.Tests/Repository.Tests.csproj }
+        suite: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -44,7 +135,7 @@ jobs:
       # Sviter med browser har tester som kör Chromium. Webbläsaren installeras med playwright.ps1 i det projektet och cachas på
       # Playwright-versionen (Directory.Packages.props).
       - name: Cache för Chromium
-        if: matrix.suite.browser
+        if: matrix.suite.browser != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -52,7 +143,7 @@ jobs:
             ~/AppData/Local/ms-playwright
           key: ${{ runner.os }}-chromium-${{ hashFiles('Directory.Packages.props') }}
       - name: Installera Chromium
-        if: matrix.suite.browser
+        if: matrix.suite.browser != ''
         shell: pwsh
         run: |
           dotnet build ${{ matrix.suite.browser }}
@@ -64,13 +155,15 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: testresultat-${{ matrix.suite.name }}-${{ matrix.os }}
+          name: testresultat-${{ matrix.suite.name }}-${{ matrix.suite.os }}
           path: TestResults
           retention-days: 7
           if-no-files-found: ignore
 
   samples:
     name: exemplen
+    needs: changes
+    if: needs.changes.outputs.samples == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -100,6 +193,8 @@ jobs:
 
   format:
     name: format
+    needs: changes
+    if: needs.changes.outputs.format != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -109,18 +204,23 @@ jobs:
           dotnet-version: 10.0.x
       - name: dotnet format
         shell: bash
+        env:
+          SOLUTIONS: ${{ needs.changes.outputs.format }}
         run: |
           set -euo pipefail
-          for s in shared/Shared.slnx testgen/testgen.slnx systemmap/SystemMap.slnx samples/Shop.slnx tests/Repository.Tests/Repository.Tests.csproj; do
+          for s in $SOLUTIONS; do
             echo "::group::$s"
             dotnet format whitespace "$s" --verify-no-changes
             dotnet format style "$s" --verify-no-changes
             echo "::endgroup::"
           done
 
-  # Egen jobb så att en ny sårbarhetsvarning (NU190x, som inte stoppar bygget) fäller här och inte i orelaterade PR:er.
+  # Eget jobb så att en ny sårbarhetsvarning (NU190x, som inte stoppar bygget) fäller här och inte i orelaterade PR:er. Körs när
+  # paketen ändras och varje måndag (nya sårbarheter publiceras utan att repot ändras).
   audit:
     name: audit
+    needs: changes
+    if: needs.changes.outputs.packages == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -150,6 +250,8 @@ jobs:
   # i paketet, modulerna som inte bakats in eller fel ToolCommandName.
   pack-smoke:
     name: paket (installera och starta)
+    needs: changes
+    if: needs.changes.outputs.pack == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -179,6 +281,8 @@ jobs:
   # Kodanalys för C#. Gratis i ett publikt repo (se ADR 0009). Resultatet visas under Security > Code scanning.
   codeql:
     name: codeql
+    needs: changes
+    if: needs.changes.outputs.code == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -198,3 +302,22 @@ jobs:
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:csharp
+
+  # Ett samlat resultat för branch protection: rött om något jobb föll eller avbröts, grönt om allt som kördes gick igenom (det som
+  # inte påverkas hoppas över och räknas som klart).
+  done:
+    name: ci klar
+    needs: [ changes, test, samples, format, audit, pack-smoke, codeql ]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resultat
+        shell: bash
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Jobben: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "::error::Minst ett jobb blev $r."; exit 1 ;; esac
+          done

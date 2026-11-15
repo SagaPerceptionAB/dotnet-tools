@@ -100,7 +100,7 @@ public partial class CodeMapTests
     }
 
     [Test]
-    public async Task Page_zoom_box_does_not_cover_the_legend_and_the_hint_names_the_modifier_key()
+    public async Task Page_zoom_box_has_no_legend_box_in_the_map_and_the_hint_names_the_modifier_key()
     {
         var map = await MapAsync(Build(true, Web("Api", AppStart + FlowApi)));
         await WithPageAsync(map, async (page, ready) =>
@@ -108,8 +108,7 @@ public partial class CodeMapTests
             Assert.That(await page.InnerTextAsync("#map-zoom-hint"), Does.Contain("rullhjul zoomar"));
             var zoom = await page.Locator("#map-zoom").BoundingBoxAsync();
             Assert.That(zoom, Is.Not.Null);
-            var legend = await page.Locator("#map-legend").BoundingBoxAsync();
-            if (legend != null) Assert.That(legend.X + legend.Width, Is.LessThan(zoom!.X), "förklaringen ligger till vänster om zoomrutan");
+            Assert.That(await page.Locator("#map-legend").CountAsync(), Is.Zero, "ingen ruta nere till vänster i kartan");
             Assert.That(await page.GetAttributeAsync("#map-view", "tabindex"), Is.EqualTo("0"));
         });
     }

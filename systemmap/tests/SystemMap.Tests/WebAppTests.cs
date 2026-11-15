@@ -70,6 +70,7 @@ public class WebAppTests
         var dir = Directory.CreateTempSubdirectory("systemmap-web-").FullName;
         try
         {
+            TestPaths.PinSdk(dir);
             void Write(string path, string text)
             {
                 var full = Path.Combine(dir, path);
@@ -176,6 +177,7 @@ public class WebAppTests
         var dir = Directory.CreateTempSubdirectory("systemmap-tests-").FullName;
         try
         {
+            TestPaths.PinSdk(dir);
             void Write(string path, string text)
             {
                 var full = Path.Combine(dir, path);

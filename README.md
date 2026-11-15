@@ -71,7 +71,7 @@ shared/           CommandLine: kod som verktygen delar
 samples/          exemplet Shop, som verktygen provas mot
 tests/            Repository.Tests: arkitekturreglerna för hela repot
 docs/adr/         besluten bakom verktygen
-.github/workflows ci.yml (bygge, test, kodanalys och paketprov) och release.yml (ger ut paket vid tagg)
+.github/workflows ci.yml (bygge, test, kodanalys och paketprov för det en PR påverkar, allt varje måndag) och release.yml (ger ut paket vid tagg)
 testgen.sh        startar testgen från källkoden (Windows: testgen.cmd)
 ```
 
@@ -110,7 +110,8 @@ Versionerna står på ett ställe: [eng/Versions.props](eng/Versions.props). Var
 
 1. Höj versionen i `eng/Versions.props` i en PR och merga den.
 2. Tagga: `<komponent>/v<version>` (semver). [release.yml](.github/workflows/release.yml) avbryter om taggen inte är samma version som i
-   `eng/Versions.props`, och annars testar komponenten, paketerar och publicerar till organisationens GitHub Packages. Taggen måste ligga på `main`.
+   `eng/Versions.props`, och annars paketerar, kontrollerar paketen och publicerar till organisationens GitHub Packages. Taggen måste ligga på `main`.
+   Testerna körs inte igen vid utgivningen: commiten har testats i sin pull request.
 
 | Tagg | Paket |
 |---|---|

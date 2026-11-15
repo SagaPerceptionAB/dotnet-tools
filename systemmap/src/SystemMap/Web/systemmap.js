@@ -20,8 +20,8 @@
 // integration väljs i sökbara listor i raden ovanför kartan, där också riktningen och exporten finns. Ett val av projekt, klass, funktion
 // eller integration är ett filter: kartan visar bara anropen som går genom det. Detaljnivån väljs i samma listor ("Visas inte", "Alla",
 // "Alla, med läsningar och skrivningar"). "Rensa" tar bort filtren. Ett anrop går också att välja genom att klicka på dess nod.
-// Rutan nere till vänster i kartan har valet om det som ingen ingång når (delar med reached: false, ritade dämpat och streckat) syns, och
-// "Visa dem" när något är dolt med hidden. SystemMap.hide(overview, ids) är regeln för det som döljs; SystemMap.dropUnreached(overview) tar bort det som inte nås.
+// Knappen Visa i raden (efter Tema) öppnar en panel med förklaringen av linjerna mellan projekten, valet om det som ingen ingång når (delar med
+// reached: false, ritade dämpat och streckat) syns, och "Visa dem" när något är dolt med hidden; knappen syns bara när något av det finns. SystemMap.hide(overview, ids) är regeln för det som döljs; SystemMap.dropUnreached(overview) tar bort det som inte nås.
 // SystemMap.summary(json) ger "4 anrop, 3 delar av systemet och 6 integrationer.".
 (function () {
   'use strict';
@@ -52,6 +52,17 @@
     '      <span class="segmented" role="group" aria-label="Riktning"><button type="button" data-direction="LR" title="Anropen går från vänster till höger">→</button><button type="button" data-direction="TB" title="Anropen går uppifrån och ned">↓</button></span></span>' +
     '    <span class="map-field map-field-theme" id="map-theme-field"><span class="map-label" aria-hidden="true">Tema</span>' +
     '      <button type="button" id="map-theme"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></span>' +
+    '    <span class="map-field map-field-show" id="map-show-field" hidden><span class="map-label" aria-hidden="true">Visa</span>' +
+    '      <span class="map-show-box"><button type="button" id="map-show" aria-label="Visa och förklaring" title="Visa och förklaring" aria-expanded="false" aria-controls="map-show-panel"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5M10 6.2v.1"/></svg></button>' +
+    '      <div class="map-show-panel" id="map-show-panel" role="group" aria-label="Visa och förklaring" hidden>' +
+    '        <span class="map-refs" id="map-refs" role="group" aria-label="Linjerna mellan projekten" hidden><strong>Förklaring</strong>' +
+    '          <span class="map-ref-row"><span class="map-line" aria-hidden="true"></span><span>anrop mellan projekten (antal anrop in)</span></span>' +
+    '          <span class="map-ref-row"><span class="map-line dashed" aria-hidden="true"></span><span>referens i csproj, används på annat sätt</span></span>' +
+    '          <span class="map-ref-row warn"><span class="map-line dashed warn" aria-hidden="true"></span><span>referens i csproj som inte används</span></span></span>' +
+    '        <hr class="map-show-sep" id="map-show-sep" hidden>' +
+    '        <label class="map-unreached" id="map-unreached-field" hidden><input type="checkbox" id="map-unreached"><span class="map-swatch" aria-hidden="true"></span><span>Visa delar som inte nås</span></label>' +
+    '        <span class="map-hidden-row" id="map-hidden-row" hidden><span class="map-hint" id="map-hint"></span><button type="button" id="map-show-all">Visa dem</button></span>' +
+    '      </div></span></span>' +
     '    <span id="map-export"><button type="button" id="map-mermaid" aria-label="Exportera som Mermaid" title="Exportera som Mermaid. Ett flödesschema att lägga i dokumentation. Filen följer riktningen, nivån och anropet du valt."><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.5 V11 M5.5 7.5 L9 11 L12.5 7.5"/><path d="M2.5 11.5 V15 H15.5 V11.5"/></svg></button>' +
     '      <span class="map-sr" id="map-mermaid-status"></span></span>' +
     '    <details class="map-extra" id="map-diff" name="map-extra" hidden><summary id="map-diff-summary" title="Anrop som bara finns i koden eller bara i API-beskrivningen"></summary><ul id="map-diff-list"></ul></details>' +
@@ -59,14 +70,6 @@
     '  </div>' +
     '  <div class="map-view" id="map-view" tabindex="0" role="group" aria-label="Systemkarta. Tangenterna + och − zoomar, 0 passar in hela kartan."></div>' +
     '  <div class="map-status" id="map-status" hidden></div>' +
-    '  <div class="map-legend" id="map-legend" role="group" aria-label="Förklaring" hidden>' +
-    '    <label class="map-unreached" id="map-unreached-field" hidden><input type="checkbox" id="map-unreached"><span class="map-swatch" aria-hidden="true"></span><span>Visa delar som inte nås</span></label>' +
-    '    <span class="map-refs" id="map-refs" role="group" aria-label="Linjerna mellan projekten" hidden><strong>Mellan projekten</strong>' +
-    '      <span class="map-ref-row"><span class="map-line" aria-hidden="true"></span><span>anrop som går genom referensen (antal anrop in)</span></span>' +
-    '      <span class="map-ref-row"><span class="map-line dashed" aria-hidden="true"></span><span>referens i csproj som används på annat sätt (uppstart, anrop åt andra hållet)</span></span>' +
-    '      <span class="map-ref-row warn"><span class="map-line dashed warn" aria-hidden="true"></span><span>referens i csproj som inte används</span></span></span>' +
-    '    <span class="map-hidden-row" id="map-hidden-row" hidden><span class="map-hint" id="map-hint"></span><button type="button" id="map-show-all">Visa dem</button></span>' +
-    '  </div>' +
     '  <div class="map-zoom-hint" id="map-zoom-hint" aria-hidden="true"></div>' +
     '  <div class="map-zoom" id="map-zoom" role="group" aria-label="Zoom">' +
     '    <button type="button" id="map-zoom-in" aria-label="Zooma in (+)" title="Zooma in (+)">+</button>' +
@@ -202,11 +205,13 @@
       changeFilter(function () { state.f = emptyFilter(); state.level = 'projects'; setPicked([]); state.shut = {}; }, 'Filtren är borttagna.');
       $('map-clear').blur();
     });
+    initShow(root);
     initZoom(root);
     // Esc stänger detaljkortet, och skillnader och varningar som fällts ut över kartan (fokus går då tillbaka till rubriken).
     // En öppen lista stänger sig själv och stoppar Esc, så att inget annat stängs samtidigt.
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape') return;
+      if (showOpen()) { setShow(false); $('map-show').focus(); return; }   // Visa-panelen: fokus tillbaka till knappen
       hideCard();
       var open = root.querySelector('.map-extra[open]');
       if (open) { open.open = false; open.querySelector('summary').focus(); }
@@ -608,17 +613,37 @@
     state.combos.entry.set(state.picked.map(entryKey), '');
     $('map-clear').setAttribute('aria-disabled', pristine() ? 'true' : 'false');
   }
-  // Rutan nere till vänster: valet om det som inte nås syns (med den streckade rutan som förklaring) och, när något är dolt, hur många och
-  // "Visa dem". Den syns bara när något av det finns.
+  // Knappen Visa i raden och panelen under den: förklaringen av linjerna mellan projekten (när de ritas), valet om det som inte nås
+  // (med den streckade rutan som förklaring) och, när något är dolt, hur många och "Visa dem". Knappen syns bara när något av det finns.
   function syncLegend() {
-    var n = hiddenIds().length, names = hiddenIds().map(nameInMap);
+    var n = hiddenIds().length, names = hiddenIds().map(nameInMap), any = state.anyUnreached || n > 0 || state.refsShown;
     $('map-unreached-field').hidden = !state.anyUnreached;
     $('map-unreached').checked = state.unreached;
     $('map-hidden-row').hidden = n === 0;
     $('map-hint').textContent = n === 1 ? '1 dold med --hide' : n + ' dolda med --hide';
     $('map-hint').title = $('map-show-all').title = (n === 1 ? 'Dold: ' : 'Dolda: ') + names.join(', ');
     $('map-refs').hidden = !state.refsShown;
-    $('map-legend').hidden = !state.anyUnreached && n === 0 && !state.refsShown;
+    $('map-show-sep').hidden = !(state.refsShown && (state.anyUnreached || n > 0));
+    $('map-show-field').hidden = !any;
+    if (!any) setShow(false);
+  }
+  function showOpen() { return $('map-show').getAttribute('aria-expanded') === 'true'; }
+  function setShow(open) {
+    $('map-show').setAttribute('aria-expanded', open ? 'true' : 'false');
+    var panel = $('map-show-panel');
+    panel.hidden = !open;
+    // Högerjusterad mot knappen; på en smal skärm, där knappen kan stå långt till vänster, flyttas den så att den ryms i fönstret.
+    panel.style.right = '';
+    if (open) { var left = panel.getBoundingClientRect().left; if (left < 8) panel.style.right = (left - 8) + 'px'; }
+  }
+  // Panelen öppnas och stängs som listorna: ett klick på knappen, Esc (fokus tillbaka till knappen) eller ett klick utanför. Bara en av dem är öppen.
+  function initShow(root) {
+    var field = $('map-show-field');
+    $('map-show').addEventListener('click', function () { setShow(!showOpen()); });
+    var outside = function (ev) { if (showOpen() && !field.contains(ev.target)) setShow(false); };
+    document.addEventListener('mousedown', outside, true);
+    document.addEventListener('touchstart', outside, true);
+    document.addEventListener('focusin', outside);
   }
 
   // ---- Sökbara listor med flerval ----

@@ -5,6 +5,7 @@
 # Arbetskatalog: $WORK_DIR om den är satt, annars en ny temporär katalog.
 set -euo pipefail
 
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 feed="$(cd "${1:?Ange katalogen med paketen}" && pwd)"
 work="${WORK_DIR:-$(mktemp -d)}"
 mkdir -p "$work"
@@ -21,6 +22,9 @@ native() { if command -v cygpath >/dev/null; then cygpath -m "$1"; else echo "$1
 tools="$work/tools"
 demo="$work/Demo"
 mkdir -p "$demo"
+# Samma .NET SDK som repot: utan global.json skapar dotnet new projekten för den nyaste SDK:n på datorn, och verktygen stöder ännu
+# bara .NET 10 (mallarna för .NET 11 använder Microsoft.OpenApi 3).
+cp "$repo/global.json" "$demo/global.json"
 cd "$demo"
 
 cat > nuget.config <<XML
